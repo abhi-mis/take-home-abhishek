@@ -256,3 +256,54 @@ export const UI_COPY = {
     "A couple of questions only apply to some patients, so we will skip the rest for you.",
   sexGateFooter: "Only two questions depend on this, and you can change it with Back.",
 } as const;
+
+/**
+ * Chat mode copy.
+ *
+ * Written to be SPOKEN as well as read, which changes the rules: no parentheses, no
+ * slashes, no "tap below" (there may be nothing below by the time it is heard), and
+ * short enough that a patient can hold the whole question in their head while they
+ * answer it. Question titles themselves are NOT here - those come from COPY above, so
+ * the assistant and the form ask each question in exactly the same words.
+ */
+export const CHAT_COPY = {
+  title: "GenoRoot assistant",
+  intro:
+    "Hello. I will ask you a few questions about your hair and scalp. You can speak, type, or tap the answers - whichever is easiest.",
+  introResume: "Welcome back. Let us carry on where you left off.",
+
+  placeholder: "Type your answer, or tap the mic",
+  placeholderMulti: "Tap all that apply, or just tell me",
+
+  thinkingText: "Reading that…",
+  thinkingVoice: "Working out your answer…",
+
+  recorded: "Recorded:",
+  confirmYes: "Yes, these are correct",
+  confirmNo: "No, let me redo it",
+  redo: "No problem - I will ask them one at a time instead.",
+
+  // Two different failures, two different instructions. Telling someone to rephrase
+  // when the real problem is that only a fixed set of answers is valid wastes their time.
+  nudgeTap: "Sorry, I did not catch that. Please tap one of the answers below.",
+  nudgeRephrase: "Sorry, I did not catch that. Could you say it another way?",
+  extractFailed: "I could not read that answer. Please tap one of the buttons below.",
+
+  tapToHear: "Tap to hear the question",
+  switchToForm: "I would rather tap through the form",
+  review: "Review my answers",
+} as const;
+
+/** Landing page: the two ways in. */
+export const WAYS_COPY = {
+  heading: "Two ways to answer",
+  chatTitle: "Talk it through",
+  chatBody:
+    "Our assistant asks each question out loud and fills the form as you answer. Speak, type, or tap.",
+  chatBadge: "Voice",
+  formTitle: "Fill the form yourself",
+  formBody:
+    "One question per screen, with pictures where they help. Three of them accept voice too.",
+  formBadge: "Tap",
+  either: "Both produce the same form, and you can switch between them at any question.",
+} as const;

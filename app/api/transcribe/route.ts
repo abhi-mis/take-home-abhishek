@@ -21,12 +21,16 @@ const SARVAM_URL = "https://api.sarvam.ai/speech-to-text";
 const MAX_BYTES = 8 * 1024 * 1024;
 
 export async function POST(req: Request) {
-  const key = process.env.SARVAM_API_KEY;
-  if (!key) {
+  const sarvamKey = process.env.SARVAM_API_KEY;
+
+  if (!sarvamKey) {
     // A missing key is a config problem, not a patient problem - say so clearly so
-    // the UI can fall back to tapping instead of showing a generic failure.
+    // the UI can fall back to tapping or typing instead of a generic failure.
     return NextResponse.json(
-      { error: "Voice is off: SARVAM_API_KEY is not set. Tap the answers below instead." },
+      {
+        error:
+          "Voice input is off: SARVAM_API_KEY is not set. You can still tap or type your answers.",
+      },
       { status: 503 },
     );
   }
@@ -55,7 +59,7 @@ export async function POST(req: Request) {
   try {
     const res = await fetch(SARVAM_URL, {
       method: "POST",
-      headers: { "api-subscription-key": key },
+      headers: { "api-subscription-key": sarvamKey },
       body: upstream,
       signal: AbortSignal.timeout(25_000),
     });
@@ -64,7 +68,7 @@ export async function POST(req: Request) {
       const detail = await res.text().catch(() => "");
       console.error("[transcribe] sarvam", res.status, detail.slice(0, 300));
       return NextResponse.json(
-        { error: "Could not understand the audio. Tap the answers below instead." },
+        { error: "Could not understand the audio. You can tap or type instead." },
         { status: 502 },
       );
     }

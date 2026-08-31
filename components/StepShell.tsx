@@ -10,11 +10,13 @@
  *  - `autoAdvance` questions have no Next button at all. Tapping the answer IS the
  *    Next tap, so a 16-question form costs 16 taps instead of 32.
  */
+import Link from "next/link";
 import { AnimatePresence, motion } from "framer-motion";
 import { ProgressBar } from "./ProgressBar";
 import { Button } from "./ui/Button";
 import { UI_COPY } from "@/lib/copy";
 import { ThemeToggle } from "./ThemeToggle";
+import { rememberMode } from "@/lib/mode";
 import { cn } from "@/lib/utils";
 
 export function StepShell({
@@ -59,6 +61,24 @@ export function StepShell({
           <p className="min-w-0 flex-1 truncate text-[11px] font-semibold uppercase tracking-[0.12em] text-muted">
             {sectionTitle}
           </p>
+          {/*
+            The other direction of "two ways to answer". The form and the assistant are
+            views onto one store, so this hands over mid-intake with every answer intact
+            - and the link is in the header on every question, not only at the start,
+            because the moment a patient wants to stop tapping is usually Q11.
+          */}
+          <Link
+            href="/chat"
+            onClick={() => rememberMode("chat")}
+            aria-label="Switch to the assistant and answer by talking"
+            className="-my-1 flex h-9 shrink-0 items-center gap-1.5 rounded-full border border-line bg-card px-2.5 text-[11.5px] font-semibold text-muted transition-colors hover:border-brand/50 hover:text-brand-ink"
+          >
+            <svg viewBox="0 0 24 24" aria-hidden className="size-[15px]" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+              <path d="M12 4a3 3 0 0 1 3 3v5a3 3 0 0 1-6 0V7a3 3 0 0 1 3-3Z" />
+              <path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v2.5" />
+            </svg>
+            Talk
+          </Link>
           <ThemeToggle className="-my-1" />
         </div>
       </header>

@@ -69,11 +69,25 @@ const tapCheck = (name) => tap(page.getByRole("checkbox", { name }), `check "${n
 const tapButton = (name) => tap(page.getByRole("button", { name }), `button "${name}"`);
 
 try {
-  // ---------- landing ----------
+  // ---------- landing: two ways to answer ----------
   await page.goto(BASE, { waitUntil: "networkidle" });
   notes.push(`page title: ${JSON.stringify(await page.title())}`);
-  await tapButton("Start");
+  // Both paths must be offered, and both must be real links rather than one being a
+  // disabled "coming soon" - the landing page promises a choice.
+  const ways = page.getByRole("link", { name: /Talk it through|Fill the form yourself/ });
+  const waysCount = await ways.count();
+  if (waysCount !== 2) errors.push({ kind: "landing", text: `expected 2 ways, found ${waysCount}`, fatal: false });
+  notes.push(`landing offers ${waysCount} ways to answer`);
+
+  await tap(page.getByRole("link", { name: /Fill the form yourself/ }), "way: form");
   await page.waitForURL(/\/intake/, { timeout: 15_000 });
+
+  // The form must offer the way back to the assistant on every question, not only at
+  // the start: the moment a patient wants to stop tapping is usually Q11.
+  const talkLink = page.getByRole("link", { name: /Switch to the assistant/ });
+  if ((await talkLink.count()) === 0)
+    errors.push({ kind: "switch", text: "no assistant link in the form header", fatal: false });
+  else notes.push("form header offers the assistant");
 
   // ---------- Q1 age (preset + explicit Next) ----------
   await tapButton(/^30s/);

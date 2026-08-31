@@ -1,46 +1,45 @@
 /**
- * POST /api/extract  { questionKey, transcript } -> { patch, unfilled }
+ * POST /api/extract  { questionKey, transcript } -> { patch, unfilled, none? }
  *
- * The one place NVIDIA_API_KEY exists, and the boundary the model's output has to get
- * past before it can touch a patient's answers.
+ * The one place the LLM key exists, and the boundary the model's output has to get past
+ * before it can touch a patient's answers.
  *
- * Three defences, in order:
- *   1. `questionKey` must be one of the four voice-enabled keys, so a caller cannot
- *      ask the model to fill consent or sample_type.
+ * Four defences, in order:
+ *   1. `questionKey` must be on the EXTRACT_KEYS allow-list, so a caller cannot ask the
+ *      model to fill consent - the one answer that may never be inferred from prose.
  *   2. the model is shown ONE schema slice and nothing else, at temperature 0.
- *   3. whatever comes back is fence-stripped, JSON-parsed, Zod-validated against that
- *      slice, and reduced to allowed fields only. Off-schema values are dropped, not
- *      coerced - a wrong option string in a medical intake is worse than a blank.
+ *   3. on Anthropic the assistant turn is PREFILLED with an opening brace, so the model
+ *      is continuing a JSON object rather than starting a message - no preamble, no code
+ *      fence. The fence-stripping parser still runs, for the NIM path and for safety.
+ *   4. whatever comes back is JSON-parsed, Zod-validated against that slice, and
+ *      reduced to allowed fields only. Off-schema values are dropped, not coerced - a
+ *      wrong option string in a medical intake is worse than a blank.
  *
- * Fields the transcript did not mention come back in `unfilled` so the UI can ask for
- * a tap. The model is never allowed to guess to fill a gap.
+ * Fields the reply did not mention come back in `unfilled` so the UI can ask again.
+ * The model is never allowed to guess to fill a gap.
  */
 import { NextResponse } from "next/server";
-import OpenAI from "openai";
 import {
   SLICES,
   SYSTEM_PROMPT,
   buildUserMessage,
   extractFromModelText,
-  isVoiceKey,
-  modelConfig,
+  isExtractKey,
 } from "@/lib/extractPrompt";
+import { NO_PROVIDER_MESSAGE, callModel, llmSettings } from "@/lib/llm";
 
 export const runtime = "nodejs";
-// Measured on the free NVIDIA tier: 8-19s per call depending on slice size. 30s of
-// headroom keeps the worst case (the 4-column products table) inside the budget.
+// Claude answers a single slice in a couple of seconds; the NIM alternative measured
+// 8-19s on the free tier. 60s of headroom covers the worst case (the 4-column products
+// table on a cold NIM node).
 export const maxDuration = 60;
 
 export async function POST(req: Request) {
-  const key = process.env.NVIDIA_API_KEY;
-  const baseURL = process.env.NVIDIA_BASE_URL ?? "https://integrate.api.nvidia.com/v1";
-  const model = modelConfig().model;
-
-  if (!key) {
-    return NextResponse.json(
-      { error: "Auto-fill is off: NVIDIA_API_KEY is not set. Tap the answers below instead." },
-      { status: 503 },
-    );
+  const settings = llmSettings();
+  if (settings === null) {
+    // A missing key is a config problem, not a patient problem: say so plainly so the
+    // UI can fall back to tapping instead of showing a generic failure.
+    return NextResponse.json({ error: NO_PROVIDER_MESSAGE }, { status: 503 });
   }
 
   let body: { questionKey?: string; transcript?: string };
@@ -51,36 +50,27 @@ export async function POST(req: Request) {
   }
 
   const { questionKey, transcript } = body;
-  if (!questionKey || !isVoiceKey(questionKey))
-    return NextResponse.json({ error: "Unknown or non-voice questionKey" }, { status: 400 });
+  if (!questionKey || !isExtractKey(questionKey))
+    return NextResponse.json({ error: "Unknown or non-extractable questionKey" }, { status: 400 });
   if (!transcript || transcript.trim().length < 2)
     return NextResponse.json({ error: "Empty transcript" }, { status: 400 });
   if (transcript.length > 4000)
     return NextResponse.json({ error: "Transcript too long" }, { status: 413 });
 
   const slice = SLICES[questionKey];
-  const client = new OpenAI({ apiKey: key, baseURL });
 
   try {
-    const res = await client.chat.completions.create(
-      {
-        ...modelConfig(),
-        model, // env override wins, so a retired catalog ID is a config fix not a deploy
-        messages: [
-          { role: "system", content: SYSTEM_PROMPT },
-          { role: "user", content: buildUserMessage(slice, transcript) },
-        ],
-      } as OpenAI.ChatCompletionCreateParamsNonStreaming,
-      { timeout: 28_000 },
-    );
-
-    const text = res.choices[0]?.message?.content ?? "";
+    const text = await callModel(settings, SYSTEM_PROMPT, buildUserMessage(slice, transcript));
     const result = extractFromModelText(questionKey, text);
 
     if (result === null) {
-      // The model produced something unparseable. The patient still has the grid, so
-      // this is a soft failure, not a 500.
-      console.warn("[extract] unparseable output", { questionKey, sample: text.slice(0, 200) });
+      // The model produced something unparseable. The patient can still tap or type,
+      // so this is a soft failure, not a 500.
+      console.warn("[extract] unparseable output", {
+        provider: settings.provider,
+        questionKey,
+        sample: text.slice(0, 200),
+      });
       return NextResponse.json({
         patch: {},
         unfilled: [],
@@ -90,9 +80,9 @@ export async function POST(req: Request) {
 
     return NextResponse.json(result);
   } catch (e) {
-    console.error("[extract]", e);
+    console.error("[extract]", settings.provider, e);
     return NextResponse.json(
-      { error: "Auto-fill failed. Tap the answers below instead." },
+      { error: "Auto-fill failed. You can tap or type the answer instead." },
       { status: 502 },
     );
   }

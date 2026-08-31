@@ -1,5 +1,5 @@
 /**
- * Live extraction eval - `npm run eval` (needs NVIDIA_API_KEY).
+ * Live extraction eval - `npm run eval` (needs ANTHROPIC_API_KEY).
  *
  * This is the honest answer to "how did you verify the fill". It is deliberately NOT
  * part of `npm test`, because an LLM is not deterministic and a flaky red build
@@ -19,16 +19,15 @@
  */
 import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
-import OpenAI from "openai";
 import {
   SLICES,
   SYSTEM_PROMPT,
   buildUserMessage,
   extractFromModelText,
-  isVoiceKey,
-  modelConfig,
+  isExtractKey,
   type ExtractResult,
 } from "../lib/extractPrompt";
+import { callModel, describeSettings, llmSettings, type LlmSettings } from "../lib/llm";
 
 interface Fixture {
   id: string;
@@ -53,25 +52,21 @@ function loadFixtures(): Fixture[] {
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /**
- * One call, with a single retry. The free NVIDIA tier cold-starts and throttles, so a
+ * One call, with a single retry. A free shared endpoint cold-starts and throttles, so a
  * lone timeout says nothing about extraction quality - retrying once keeps the score
  * about the model's answers rather than about the queue depth.
+ *
+ * The call goes through the SAME callModel() the route uses, so provider, model,
+ * temperature and the JSON prefill are identical. A benchmark that runs different
+ * settings than production is worthless.
  */
-async function callModel(client: OpenAI, key: string, transcript: string): Promise<string> {
-  const params = {
-    ...modelConfig(),
-    messages: [
-      { role: "system", content: SYSTEM_PROMPT },
-      { role: "user", content: buildUserMessage(SLICES[key as never], transcript) },
-    ],
-  } as Parameters<typeof client.chat.completions.create>[0];
+async function ask(settings: LlmSettings, key: string, transcript: string): Promise<string> {
+  const user = buildUserMessage(SLICES[key as never], transcript);
 
   let lastErr: unknown;
   for (let attempt = 1; attempt <= 2; attempt++) {
     try {
-      const res = await client.chat.completions.create(params, { timeout: 60_000 });
-      if ("choices" in res) return res.choices[0]?.message?.content ?? "";
-      return "";
+      return await callModel(settings, SYSTEM_PROMPT, user, 60_000);
     } catch (e) {
       lastErr = e;
       if (attempt === 1) await sleep(2_000);
@@ -130,36 +125,30 @@ function scoreOne(fx: Fixture, result: ExtractResult): Check[] {
 }
 
 async function main() {
-  const apiKey = process.env.NVIDIA_API_KEY;
-  if (!apiKey) {
+  const settings = llmSettings();
+  if (settings === null) {
     console.error(
-      "NVIDIA_API_KEY is not set.\n" +
+      "No LLM key is set (OPENAI_API_KEY or NVIDIA_API_KEY).\n" +
         "This eval calls a live model on purpose - the deterministic checks are in\n" +
-        "`npm test`, which needs no key. Set the key (see .env.example) to run it.",
+        "`npm test`, which needs no key. Set a key (see .env.example) to run it.",
     );
     process.exit(1);
   }
 
-  const client = new OpenAI({
-    apiKey,
-    baseURL: process.env.NVIDIA_BASE_URL ?? "https://integrate.api.nvidia.com/v1",
-  });
-
   const fixtures = loadFixtures();
-  const cfg = modelConfig();
   console.log(
     `\nExtraction eval - ${fixtures.length} fixtures x ${RUNS} run(s)\n` +
-      `model: ${cfg.model}   temp: ${cfg.temperature}` +
-      `${cfg.reasoning_effort ? `   reasoning: ${cfg.reasoning_effort}` : ""}\n`,
+      `${describeSettings(settings)}\n`,
   );
+
 
   let passedChecks = 0;
   let totalChecks = 0;
   let hardFailures = 0;
 
   for (const fx of fixtures) {
-    if (!isVoiceKey(fx.questionKey)) {
-      console.log(`SKIP ${fx.id} - ${fx.questionKey} is not a voice question`);
+    if (!isExtractKey(fx.questionKey)) {
+      console.log(`SKIP ${fx.id} - ${fx.questionKey} is not an extractable question`);
       continue;
     }
 
@@ -168,7 +157,7 @@ async function main() {
       await sleep(400); // be a good citizen on a free shared endpoint
       let raw = "";
       try {
-        raw = await callModel(client, fx.questionKey, fx.transcript);
+        raw = await ask(settings, fx.questionKey, fx.transcript);
       } catch (e) {
         console.log(`\x1b[31mERROR\x1b[0m ${tag} - model call failed: ${String(e).slice(0, 120)}`);
         hardFailures++;

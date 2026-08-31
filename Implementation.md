@@ -306,7 +306,7 @@ choose how often"), and a test asserts those messages never leak a snake_case fi
 mic → WAV (16kHz mono, in-browser)
     → POST /api/transcribe   (Sarvam Saaras, key server-side)
     → transcript
-    → POST /api/extract      (NVIDIA NIM + ONE schema slice, temp 0)
+    → POST /api/extract      (Claude + ONE schema slice, temp 0, JSON prefill)
     → Zod-validated patch → merged into store → grid highlights what changed → tap to confirm
 ```
 
@@ -327,7 +327,7 @@ survives is mostly *reasoning* models, and their default effort is fatal on a fo
 `reasoning_effort: low` answered the same transcript identically in **4.7 s**.
 Extraction against a fixed 8-field schema needs no deliberation, so low effort costs
 nothing and is the whole difference between a usable and unusable step. Both settings
-live in `modelConfig()`, shared by the route and the eval - a benchmark that runs
+live in `chatParams()` (`lib/llm.ts`), shared by the route and the eval - a benchmark that runs
 different settings than production is worthless.
 
 **Latency is designed for, not wished away.** Measured 8-19 s per slice on the free
@@ -383,7 +383,7 @@ of the UI, so a bad extraction patch can't bypass the interface.
 
 ## What's tested, and what deliberately isn't
 
-**`npm test` - 86 deterministic tests, no API key needed.** These are the dependable
+**`npm test` - 158 deterministic tests, no API key needed.** These are the dependable
 checks: the step builder, sex gating in all four states, every conditional-followup
 rule in both directions, exclusive options, 16-key coverage, and - most of the value - the slice layer fed what a 70B model *actually* returns: markdown fences, prose
 wrappers, invented option strings, extra keys, followups with no trigger, rows that
@@ -414,10 +414,25 @@ over-eager `false` is visible and editable on the Review screen.
 through the actual routes: transcribe **1.6 s**, verbatim; extract filled all six habit
 fields correctly.
 
+**The conversation is tested by walking it.** `tests/chatFlow.test.ts` answers whatever
+the assistant asks, turn by turn, with no knowledge of the question list, and then runs
+the result through the same Zod validator the download button uses - so the claim under
+test is "a patient who only ever talks produces a schema-valid form", not "bubbles
+render". `tests/apply.test.ts` pins the write rules both modes now share (a flag answered
+No must null its detail columns, or the finished form is off-schema), and
+`tests/llm.test.ts` pins the per-provider request shape.
+
+**Two real-browser smokes, both keyless.** `npm run smoke` walks the form;
+`npm run smoke:chat` walks the conversation to 17/17 with no API keys at all and the TTS
+route stubbed to 503 - which is how the "open table question has no chips" dead end was
+found.
+
 **Also verified by hand:** production build clean, `tsc --noEmit` clean (strict, plus
-`noUncheckedIndexedAccess`, zero `any`), both pages server-render the right copy, and
-the extract route rejects `consent` and `sample_type` with a 400 - those two can never
-be model-filled, even with a valid key.
+`noUncheckedIndexedAccess`, zero `any`), and the extract route rejects `consent` with a
+400. Note that `sample_type` **is** extractable now - chat mode has no grid to fall back
+on, so a typed "saliva is fine" has to be understood. `consent` is the one answer that
+stays off the allow-list permanently: it is a tap or the patient's own typed yes/no,
+never a model's reading of prose.
 
 ---
 
@@ -457,6 +472,173 @@ real software: `getByText("Saliva")` was clicking the *hint* text ("Saliva mein 
 lagti") that sits above the options - so it now uses roles, because the options are real
 `radio`/`checkbox` elements; and Back from Q6 lands on Q5, not the sex gate, because the
 gate is inserted before the first section-B question.
+
+---
+
+## Chat mode: the conversation is a view, not a second app
+
+The risk with "add a chat mode" is obvious: you end up with two apps that ask the same
+16 questions and disagree about what a valid answer is. Then a patient finishes the
+conversation, lands on the review screen, and the download button is disabled with no
+visible reason - because the chat accepted something the validator does not.
+
+So chat mode owns exactly one thing: the conversation. Everything that decides anything
+is shared.
+
+```
+lib/chatFlow.ts   nextTurn(answers, meta, explicitNone)
+    |
+    |-- visibleSteps(meta)        <- the SAME list the wizard renders
+    |-- validateStep(step, ...)   <- the SAME gate the Next button uses
+    |-- outstandingFieldsFor(...) <- the SAME conditional descriptors the grid uses
+    |-- COPY[key].title           <- the SAME question wording
+    v
+first step that does not validate  ->  ask it
+```
+
+There is no question list in `chatFlow.ts`, no "step 7 of 16", no state machine to keep
+in sync. The consequences are the point:
+
+- **Add a question to the schema** and it appears in the conversation with no edit here.
+- **The finishing line cannot lie.** The assistant says "that is everything" when every
+  visible step passes `validateStep` - the same condition the form's last Next needs.
+- **Switching modes works mid-question**, in both directions, because both are views
+  onto one store. `stepIdForTurn()` is the bridge: it maps the current turn back to a
+  wizard step id so "I would rather tap through the form" lands on the question the
+  assistant just asked, not back at Q1.
+
+`chatFlow.ts` is pure - no React, no fetch, no store import - which is what lets
+`tests/chatFlow.test.ts` answer whatever the assistant asks, one turn at a time, with no
+knowledge of the question list, and then run the result through the same Zod validator
+the download button uses. A test that says "chat mode renders bubbles" is worthless; the
+claim worth testing is "a patient who only ever talks produces a schema-valid form".
+There is a source-scanning guard test that fails if that purity is ever broken.
+
+### How much of a reply reaches the model
+
+`interpretLocally()` first, model second. It resolves a tapped chip, yes/no (including
+`haan`, `nahi`, `bilkul`), a bare age, an option repeated verbatim, and a blanket "none
+of these" with no API call at all - which is most replies, and is why the conversation
+feels instant rather than two seconds behind every answer.
+
+It is deliberately conservative. `"it started at 30 and I am 45 now"` returns null and
+goes to the model, because a regex picking the wrong one of two numbers is a wrong
+medical answer that nobody will notice. `"20s"` maps to the same value as tapping the
+"20s" chip, not to the digits inside it - otherwise the typed and the tapped answer
+would quietly differ by five years.
+
+Two categories never reach the model:
+
+1. **Consent.** A tap, or the patient's own typed yes/no. It is absent from
+   `EXTRACT_KEYS`, so `/api/extract` refuses it even if the UI asked - defence in depth,
+   because "the patient probably agreed" is not consent.
+2. **A conditional detail.** "Did it help?" is not sent to the model, because the slice
+   for that question covers the whole table and a bare "it helped a bit" carries no clue
+   which row it belongs to. A guess written into the wrong row is a silent wrong answer.
+   Those turns always have chips, so "tap one of these" is a complete answer.
+
+### The read-back, and what "no" means
+
+When one sentence fills six fields, the assistant lists them and asks. Treating silence
+as agreement is not consent, so `fillSummary()` produces the counts ("I got 4, and 2
+still to go") and the label/value list, and the patient confirms.
+
+"No, let me redo it" runs `clearQuestionOps()` and re-asks the question one field at a
+time. The alternatives are worse: keeping a fill the patient just rejected, or asking
+them to correct fields one by one without knowing which one is wrong.
+
+### Never a dead end - the gap the smoke test caught
+
+The first version of the open table question had **no chips at all**: it wanted a
+sentence, and a sentence needs the model. Which means a missing API key, a rate limit, or
+an accent the transcriber cannot read left the conversation with no way forward - the
+exact failure the form avoids with "I would rather answer by tapping".
+
+`scripts/smoke-chat.mjs` completes the whole intake with **no API keys**, which is how
+that surfaced. The fix is the "Ask me one at a time" chip: it is not an answer, it flips
+that question to the per-field path (`preferFields`), which has chips for everything.
+The same flag is set automatically when an extraction returns nothing usable, so a
+patient the model cannot read is never asked the same six-part question twice.
+
+### Speech: an enhancement, never a channel
+
+Every line is rendered as a bubble *before* `speak()` is called, so speech is never the
+channel a question arrives through.
+
+The voice is the browser's own `speechSynthesis`. Anthropic has no text-to-speech
+endpoint, and I did not want to add a second vendor to get one: that would mean another
+key to leak, a network round trip before every question, and - the part that actually
+decided it - audio of a patient's medical answers being posted to a third party, since
+some of what the assistant says is their own answers read back. The browser voice is
+more robotic and needs no key, no network, and no trust.
+
+Two details matter more than the voice quality:
+
+- **Barge-in.** `speak()` bumps a `generation` counter, and a stale utterance cannot
+  report itself as spoken. Without it a patient who answers quickly gets the previous
+  question spoken over the new one - two voices at once, and the app sounds broken.
+- **Noticing silence.** Chrome silently drops `speak()` when the document has had no
+  user activation, with no error and no event - and the tap that got here happened on
+  the *previous* page. So the promise waits ~1.2s for `onstart` and reports `blocked` if
+  it never fires, which is what turns a dead mute button into a visible "tap to hear the
+  question".
+
+`en-IN` is preferred where the platform has it, because a Hindi word inside an English
+sentence is at least pronounced plausibly. It is a preference, not a requirement.
+
+---
+
+## Swapping the extraction provider
+
+Extraction runs on **Anthropic** - `claude-sonnet-5`, temperature 0. NVIDIA NIM is kept
+as an alternative because the brief named it and it costs almost nothing to keep: NIM
+speaks the OpenAI wire format, so the `openai` SDK covers it. [lib/llm.ts](lib/llm.ts) is
+the entire difference between the two, and nothing else in the app knows which one
+answered.
+
+```
+resolveProvider()
+  EXTRACT_PROVIDER=anthropic|nvidia -> explicit always wins
+  ANTHROPIC_API_KEY present         -> anthropic
+  NVIDIA_API_KEY present            -> nvidia
+  neither                           -> null, and the route returns 503 with a message
+                                       telling the patient to tap instead
+```
+
+### The JSON prefill
+
+The interesting part of the Anthropic path is how it is made to return bare JSON.
+Instead of asking for JSON and hoping, the request ends with an **assistant turn
+prefilled with an opening brace**:
+
+```
+user:      Question: ... Schema: {...} Transcript: "..."
+assistant: {
+```
+
+The model is now physically continuing a JSON object rather than starting a message, so
+there is no "Here is the JSON:", no code fence, no apology. The brace is added back to
+the response before parsing, because the API returns only what was generated after the
+prefill. The fence-stripping parser still runs behind it - it costs nothing, it covers
+the NIM path, and a parser you only trust on the happy path is not a parser.
+
+### Two NIM traps, asserted rather than discovered
+
+Both are hard 400s in production and completely invisible without a test
+(`tests/llm.test.ts`):
+
+- **Reasoning models** (`o*`, `gpt-5*` style ids) reject `temperature` and want
+  `max_completion_tokens` instead of `max_tokens`. Detecting that from the model id is
+  ugly, but the id is the only signal available.
+- **`reasoning_effort`** is not universally accepted, so `NVIDIA_REASONING_EFFORT=none`
+  omits the field entirely rather than sending the string "none".
+
+`callModel()` is shared by the route and `npm run eval`, so the benchmark cannot run a
+different provider, model, temperature or JSON strategy than production does.
+
+Sarvam remains the transcriber: it is trained for Hinglish and Indian-accented English,
+which is where general-purpose STT degrades first for this audience. And the assistant's
+voice needs no vendor at all - see above.
 
 ---
 

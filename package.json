@@ -11,9 +11,11 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "eval": "tsx --env-file=.env scripts/eval-fixtures.ts",
-    "smoke": "node scripts/smoke-browser.mjs"
+    "smoke": "node scripts/smoke-browser.mjs",
+    "smoke:chat": "node scripts/smoke-chat.mjs"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.122.0",
     "clsx": "^2.1.1",
     "framer-motion": "^11.11.17",
     "next": "^15.1.0",

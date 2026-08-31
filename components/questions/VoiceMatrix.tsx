@@ -28,6 +28,7 @@ import { FollowUpFlow } from "./FollowUpFlow";
 import { SpeakFirst } from "./SpeakFirst";
 import { ResultDialog } from "./ResultDialog";
 import { answeredFieldsFor, outstandingFieldsFor, type OutstandingField } from "@/lib/followups";
+import { fieldOps, mergeRows } from "@/lib/apply";
 
 const PRODUCT_COLUMNS: ColumnSpec[] = [
   { key: "duration", label: "How long", kind: "options", options: PRODUCT_DUR },
@@ -164,33 +165,11 @@ export function VoiceMatrix({
    * validate.ts holds no matter which control the patient used.
    */
   function answerField(field: OutstandingField, value: boolean | string) {
-    if (questionKey === "habits") {
-      const p: Record<string, unknown> = { [field.field]: value };
-      if (field.field === "smoking" && value === false) p.smoking_severity = null;
-      if (field.field === "salon_treatments" && value === false) p.salon_treatment_detail = null;
-      patch({ habits: { ...answers.habits, ...p } as Answers["habits"] });
-      return;
-    }
-
-    const row = field.row;
-    if (!row) return;
-    const isProducts = questionKey === "products";
-    const table = isProducts ? answers.products : answers.procedures;
-    const flag = isProducts ? "used" : "done";
-    const details = isProducts ? ["duration", "helped", "side_effects"] : ["sessions", "helped"];
-
-    const current = (table as unknown as Record<string, Record<string, unknown>>)[row] ?? {};
-    const cell: Record<string, unknown> = { ...current, [field.field]: value };
-    if (field.field === flag && value === false) {
-      for (const d of details) cell[d] = null;
-    }
-
-    const next = { ...(table as Record<string, unknown>), [row]: cell };
-    patch(
-      isProducts
-        ? { products: next as Answers["products"] }
-        : { procedures: next as Answers["procedures"] },
-    );
+    // The write rules (notably "a No nulls that row's detail columns") live in
+    // lib/apply.ts because chat mode answers the same follow-ups. Two copies of a
+    // clinical invariant is one copy too many.
+    const ops = fieldOps(questionKey, field, value, answers);
+    if (ops.patch) patch(ops.patch);
   }
 
   /** Ask the conditional questions a "yes" just unlocked, and nothing else. */
@@ -376,18 +355,6 @@ export function VoiceMatrix({
  * Generic over the row key and entry type, so products and procedures share it
  * without either side losing its literal row-name union.
  */
-function mergeRows<K extends string, E extends object>(
-  current: Record<K, E>,
-  incoming: Partial<Record<K, Partial<E>>>,
-): Record<K, E> {
-  const out = { ...current };
-  for (const [row, cell] of Object.entries(incoming) as [K, Partial<E> | undefined][]) {
-    if (!cell) continue;
-    out[row] = { ...current[row], ...cell };
-  }
-  return out;
-}
-
 function rowCount(key: "habits" | "products" | "procedures"): number {
   if (key === "habits") return INTAKE_SCHEMA.sections[2].questions[1].rows.length;
   if (key === "products") return PRODUCT_ROWS.length;
