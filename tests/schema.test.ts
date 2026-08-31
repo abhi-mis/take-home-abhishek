@@ -4,7 +4,7 @@
  *
  * fixtures/intake-schema.published.json is the file as downloaded from
  * haikustudio.ai/hiring/intake-schema.json. If someone "tidies up" an option string
- * in lib/schema.ts, this test fails — which matters because that string is what ends
+ * in lib/schema.ts, this test fails - which matters because that string is what ends
  * up in the doctor's output and in the model's allowed vocabulary.
  */
 import { describe, expect, it } from "vitest";

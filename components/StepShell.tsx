@@ -52,7 +52,7 @@ export function StepShell({
 }) {
   return (
     <div className="mx-auto flex min-h-dvh w-full max-w-md flex-col">
-      <header className="sticky top-0 z-10 bg-paper/95 px-5 pb-3 pt-4 backdrop-blur">
+      <header className="sticky top-0 z-30 bg-paper/95 px-5 pb-3 pt-4 backdrop-blur">
         <ProgressBar index={index} total={total} />
         <p className="mt-2.5 truncate text-[11px] font-semibold uppercase tracking-[0.12em] text-muted">
           {sectionTitle}
@@ -80,7 +80,7 @@ export function StepShell({
             {/*
               Validation is shown HERE, attached to the question, rather than only as a
               disabled Next button. A greyed-out button tells a patient that something is
-              wrong but not what — this names each outstanding item, and on the table
+              wrong but not what - this names each outstanding item, and on the table
               questions that is also the list of rows still to answer.
             */}
             <AnimatePresence initial={false}>
@@ -118,7 +118,7 @@ export function StepShell({
 
       <footer
         className={cn(
-          "fixed inset-x-0 bottom-0 z-20 border-t border-line bg-paper/95 backdrop-blur",
+          "fixed inset-x-0 bottom-0 z-30 border-t border-line bg-paper/95 backdrop-blur",
           "px-5 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3",
         )}
       >
@@ -131,7 +131,7 @@ export function StepShell({
               variant="ghost"
               size="lg"
               onClick={onBack}
-              className="w-[88px] shrink-0"
+              className="group w-[88px] shrink-0"
               aria-label={UI_COPY.back}
             >
               <BackArrow /> {UI_COPY.back}

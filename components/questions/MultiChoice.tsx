@@ -15,7 +15,7 @@
  *    legitimate. Rather than invent a schema option, this renders a UI-only control
  *    whose selection is recorded in the store's `explicitNone` set. The answer stays
  *    exactly on-schema (`[]`), while validation can still tell "deliberately none"
- *    from "not answered yet" — which is what makes a strict per-step gate possible.
+ *    from "not answered yet" - which is what makes a strict per-step gate possible.
  *
  * 3. NOTHING IS OPTIONAL. There is no skip. An empty selection with no explicit "none"
  *    keeps Next disabled and prints why (see StepShell).
@@ -87,7 +87,7 @@ export function MultiChoice({
             "transition-colors active:scale-[0.99]",
             noneChosen
               ? "border-brand bg-brand-soft text-brand-ink"
-              : "border-dashed border-line bg-transparent text-muted",
+              : "border-dashed border-line bg-transparent text-muted hover:border-brand/50 hover:text-ink",
           )}
         >
           {noneLabel}

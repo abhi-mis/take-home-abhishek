@@ -4,7 +4,7 @@
  * Q2 duration, Q6 menstrual, Q7 pregnancy, Q15 sample type.
  *
  * Auto-advance: picking an option writes the answer and moves on after a 180ms beat
- * — long enough that the patient sees their choice register, short enough that it
+ *  - long enough that the patient sees their choice register, short enough that it
  * never feels like waiting. That beat is why these steps hide the Next button.
  *
  * `suggestion` is the "pre-select and confirm" affordance (used by Q6). It renders a
@@ -65,7 +65,7 @@ export function SingleChoice({
             onClick={() => choose(suggestion.value)}
             className="mt-2.5 min-h-[44px] w-full rounded-xl bg-brand px-4 text-[14px] font-semibold text-white active:scale-[0.98]"
           >
-            Yes — {suggestion.value}
+            Yes - {suggestion.value}
           </button>
         </motion.div>
       ) : null}

@@ -46,7 +46,7 @@ const Blood = () => (
   </Icon>
 );
 
-/** Either — two paths converging on one choice. */
+/** Either - two paths converging on one choice. */
 const Either = () => (
   <Icon>
     <path d="M4 8h5l3 4 3-4h5" />

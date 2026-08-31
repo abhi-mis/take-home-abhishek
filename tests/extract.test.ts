@@ -1,7 +1,7 @@
 /**
  * Extraction slices, tested WITHOUT the model.
  *
- * The genuinely risky part of a voice pipeline isn't the LLM call — it's what your
+ * The genuinely risky part of a voice pipeline isn't the LLM call - it's what your
  * code does with a hostile or sloppy reply. So these tests feed the slice layer the
  * things a 70B open model actually produces: markdown fences, invented option
  * strings, extra keys, a followup with no trigger, a row that doesn't exist.
@@ -168,7 +168,7 @@ describe("products slice", () => {
       helped: true,
       side_effects: false,
     });
-    // Silence about the other rows is NOT a "no" — they are left untouched.
+    // Silence about the other rows is NOT a "no" - they are left untouched.
     expect(products).not.toHaveProperty("Hair Oils/Serums");
     // A row switched on with no detail becomes a set of taps to collect.
     expect(r.unfilled).toEqual(
@@ -219,12 +219,35 @@ describe("products slice", () => {
       }),
     )!;
     const incoming = rows(r.patch.products);
+    // Every unrelated field has to be fully answered, or the failure would come from
+    // habits rather than from the products patch under test.
     const merged: Answers = {
       ...structuredClone(EMPTY_ANSWERS),
-      // hair_wash_frequency is the one habits field with no safe default, so it has
-      // to be set here or the failure would come from habits rather than products.
-      habits: { ...structuredClone(EMPTY_ANSWERS.habits), hair_wash_frequency: "Weekly" },
-      products: { ...structuredClone(EMPTY_ANSWERS.products), ...incoming } as Answers["products"],
+      habits: {
+        smoking: false,
+        smoking_severity: null,
+        alcohol: false,
+        hard_water: false,
+        hair_wash_frequency: "Weekly",
+        heating_tools_styling_chemicals: false,
+        salon_treatments: false,
+        salon_treatment_detail: null,
+      },
+      products: {
+        ...(Object.fromEntries(
+          PRODUCT_ROWS.map((r) => [
+            r,
+            { used: false, duration: null, helped: null, side_effects: null },
+          ]),
+        ) as Answers["products"]),
+        ...incoming,
+      } as Answers["products"],
+      procedures: Object.fromEntries(
+        Object.keys(EMPTY_ANSWERS.procedures).map((r) => [
+          r,
+          { done: false, sessions: null, helped: null },
+        ]),
+      ) as Answers["procedures"],
     };
     const parsed = AnswersSchema.safeParse(merged);
     expect(parsed.error?.issues ?? []).toEqual([]);

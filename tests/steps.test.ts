@@ -107,7 +107,7 @@ describe("isStepComplete", () => {
     ).toBe(true);
   });
 
-  it("BLOCKS an empty multi-select — nothing is optional", () => {
+  it("BLOCKS an empty multi-select - nothing is optional", () => {
     expect(isStepComplete(step("past_6_months"), EMPTY_ANSWERS, male)).toBe(false);
     expect(validateStep(step("past_6_months"), EMPTY_ANSWERS, male).outstanding[0]).toMatch(
       /None of these/,
@@ -196,7 +196,7 @@ describe("table steps require every row to be answered", () => {
     a.habits.smoking = true;
     const r = validateStep(step("habits"), a, male);
     expect(r.complete).toBe(false);
-    expect(r.outstanding.join(" ")).toMatch(/how much/i);
+    expect(r.outstanding.join(" ")).toMatch(/Smoking amount/i);
   });
 
   it("requires a salon detail when salon treatments is Yes", () => {
@@ -211,7 +211,9 @@ describe("table steps require every row to be answered", () => {
       salon_treatments: true,
       salon_treatment_detail: null,
     };
-    expect(validateStep(step("habits"), a, male).outstanding.join(" ")).toMatch(/which treatment/i);
+    expect(validateStep(step("habits"), a, male).outstanding.join(" ")).toMatch(
+      /Salon treatment/i,
+    );
   });
 
   it("names every unanswered product row, then only the used rows' details", () => {

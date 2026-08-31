@@ -5,7 +5,7 @@
  *
  * The brief calls for shadcn/ui; these keep its API shape (variant/size props, a
  * `cn()` merge, class overrides win) but drop the Radix dependency because nothing
- * in this form needs a portal, a popover or focus trapping — every control is a
+ * in this form needs a portal, a popover or focus trapping - every control is a
  * plain <button>, which is what a screen reader and a thumb both handle best.
  * Minimum height is 48px on every variant, above the 44px floor.
  */
@@ -17,10 +17,10 @@ type Size = "md" | "lg";
 
 const VARIANTS: Record<Variant, string> = {
   primary:
-    "bg-brand text-white shadow-sm active:bg-brand-ink disabled:bg-line disabled:text-muted disabled:shadow-none",
-  secondary: "bg-card text-ink border border-line active:bg-paper",
-  ghost: "bg-transparent text-muted active:bg-brand-soft",
-  danger: "bg-card text-warn border border-warn/30 active:bg-warn/5",
+    "bg-brand text-white shadow-sm hover:bg-brand-ink hover:shadow-md active:bg-brand-ink disabled:bg-line disabled:text-muted disabled:shadow-none disabled:hover:shadow-none",
+  secondary: "bg-card text-ink border border-line hover:border-brand/50 hover:bg-brand-soft/40 active:bg-paper",
+  ghost: "bg-transparent text-muted hover:bg-brand-soft hover:text-brand-ink active:bg-brand-soft",
+  danger: "bg-card text-warn border border-warn/30 hover:bg-warn/10 active:bg-warn/5",
 };
 
 const SIZES: Record<Size, string> = {
@@ -87,7 +87,7 @@ export function OptionCard({
         "min-h-[56px] transition-all duration-100 active:scale-[0.99]",
         selected
           ? "border-brand bg-brand-soft"
-          : "border-line bg-card active:border-brand/40",
+          : "border-line bg-card hover:border-brand/45 hover:bg-brand-soft/35 active:border-brand/40",
         className,
       )}
     >
@@ -171,7 +171,7 @@ export function Chip({
         "inline-flex min-h-[44px] items-center gap-1.5 rounded-full border px-3.5 py-2",
         "text-[13px] font-medium leading-none",
         tones[tone],
-        onClick && "active:scale-[0.97] transition-transform",
+        onClick && "transition-transform hover:scale-[1.03] active:scale-[0.97]",
         className,
       )}
     >

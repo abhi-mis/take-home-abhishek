@@ -6,7 +6,7 @@
  * 1. Show the filled form back as STRUCTURED DATA, grouped by schema section, with
  *    every gated null explained rather than hidden. This is the thing being graded,
  *    so it is on screen and inspectable, not buried in a download.
- * 2. Gate the download on validate() — shape + all-16 coverage. If anything is
+ * 2. Gate the download on validate() - shape + all-16 coverage. If anything is
  *    unresolved, the failing questions become tap-to-jump links instead of an error.
  * 3. Handle the decline path: consent === false produces no JSON at all.
  */
@@ -75,7 +75,7 @@ export function ReviewScreen({
                 <button
                   type="button"
                   onClick={() => onJump(key)}
-                  className="min-h-[44px] text-left text-[14px] font-semibold text-warn underline decoration-warn/40 underline-offset-2"
+                  className="min-h-[44px] text-left text-[14px] font-semibold text-warn underline decoration-warn/40 underline-offset-2 transition-colors hover:decoration-warn"
                 >
                   {COPY[key as keyof typeof COPY]?.title ?? key} →
                 </button>
@@ -103,7 +103,7 @@ export function ReviewScreen({
                   type="button"
                   onClick={() => onJump(q.key)}
                   className={cn(
-                    "flex w-full items-start gap-3 px-4 py-3 text-left active:bg-paper",
+                    "flex w-full items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-brand-soft/40 active:bg-paper",
                     i > 0 && "border-t border-line",
                   )}
                 >
@@ -164,13 +164,13 @@ function renderAnswer(key: string, a: Answers, meta: Meta): React.ReactNode {
     (key === "menstrual_cycle" || key === "pregnancy_related") && meta.patient_sex !== "female";
   if (gatedOut)
     return (
-      <span className="font-normal italic text-muted">null — skipped, never asked</span>
+      <span className="font-normal italic text-muted">null - skipped, never asked</span>
     );
 
   switch (key) {
     case "habits": {
       const h = a.habits;
-      // `null` is rendered as "?" rather than folded into the "no" branch — an
+      // `null` is rendered as "?" rather than folded into the "no" branch - an
       // unanswered row must never read as a confident No on the doctor's summary.
       const yn = (v: boolean | null, yes: string, no: string) =>
         v === null ? "? " + yes : v ? yes : no;
@@ -178,7 +178,7 @@ function renderAnswer(key: string, a: Answers, meta: Meta): React.ReactNode {
         h.smoking === true ? `smoking: ${h.smoking_severity ?? "?"}` : yn(h.smoking, "smoking", "no smoking"),
         yn(h.alcohol, "alcohol", "no alcohol"),
         yn(h.hard_water, "hard water", "no hard water"),
-        `wash: ${h.hair_wash_frequency ?? "—"}`,
+        `wash: ${h.hair_wash_frequency ?? " - "}`,
         yn(h.heating_tools_styling_chemicals, "heat/chemicals", "no heat"),
         h.salon_treatments === true
           ? `salon: ${h.salon_treatment_detail ?? "?"}`
@@ -216,7 +216,7 @@ function renderAnswer(key: string, a: Answers, meta: Meta): React.ReactNode {
       if (a.past_treatment_side_effects === null) return <Missing />;
       return (
         <span className="font-normal">
-          {a.past_treatment_side_effects ? `Yes — ${a.past_treatment_describe ?? "?"}` : "No"}
+          {a.past_treatment_side_effects ? `Yes - ${a.past_treatment_describe ?? "?"}` : "No"}
         </span>
       );
     default: {
@@ -235,7 +235,7 @@ function renderAnswer(key: string, a: Answers, meta: Meta): React.ReactNode {
 }
 
 function Empty({ label }: { label: string }) {
-  return <span className="font-normal italic text-muted">[] — {label}</span>;
+  return <span className="font-normal italic text-muted">[] - {label}</span>;
 }
 function Missing() {
   return <span className="font-normal italic text-warn">not answered yet</span>;
@@ -245,7 +245,7 @@ function Declined({ onJump }: { onJump: (id: string) => void }) {
   return (
     <div className="mx-auto w-full max-w-md px-5 pt-16">
       <h1 className="text-[22px] font-bold leading-tight text-ink">
-        Understood — no genetic test.
+        Understood - no genetic test.
       </h1>
       <p className="mt-3 text-[15px] leading-relaxed text-muted">
         You have not given permission, so we will not collect a sample and no genetic

@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Q4 — the picture question.
+ * Q4 - the picture question.
  *
  * A two-column grid of diagram cards instead of a list of chips. The patient matches a
  * shape to what they see in the mirror, which is both faster and more accurate than
@@ -9,7 +9,7 @@
  * at once.
  *
  * Selection state is carried by border, background, a check badge AND the diagram
- * brightening — never colour alone.
+ * brightening - never colour alone.
  */
 import { motion } from "framer-motion";
 import { PATTERN } from "@/lib/types";
@@ -52,14 +52,16 @@ export function PatternPicker({
               className={cn(
                 "relative flex flex-col overflow-hidden rounded-2xl border-2 p-2 text-left",
                 "transition-all duration-100 active:scale-[0.98]",
-                selected ? "border-brand bg-brand-soft" : "border-line bg-card",
+                selected
+                  ? "border-brand bg-brand-soft"
+                  : "border-line bg-card hover:border-brand/45 hover:bg-brand-soft/30 hover:shadow-sm",
               )}
             >
               {selected ? (
                 <motion.span
                   initial={{ scale: 0.6, opacity: 0 }}
                   animate={{ scale: 1, opacity: 1 }}
-                  className="absolute right-2 top-2 z-10 grid size-6 place-items-center rounded-full bg-brand text-white"
+                  className="absolute right-2 top-2 grid size-6 place-items-center rounded-full bg-brand text-white"
                 >
                   <CheckIcon className="size-3.5" />
                 </motion.span>
@@ -97,7 +99,7 @@ export function PatternPicker({
       {/*
         Q4 has no "none" option in the schema, but "I cannot tell" is a real answer.
         This UI-only control records the choice in the store's explicitNone set and
-        writes [] to the answer — so validation is satisfied without inventing an option.
+        writes [] to the answer - so validation is satisfied without inventing an option.
       */}
       <button
         type="button"
@@ -110,10 +112,10 @@ export function PatternPicker({
           "min-h-[48px] rounded-2xl border px-4 py-3 text-[14px] font-medium transition-colors active:scale-[0.99]",
           noneChosen
             ? "border-brand bg-brand-soft text-brand-ink"
-            : "border-dashed border-line bg-transparent text-muted",
+            : "border-dashed border-line bg-transparent text-muted hover:border-brand/50 hover:text-ink",
         )}
       >
-        {UI_COPY.notSure} — I cannot tell which
+        {UI_COPY.notSure} - I cannot tell which
       </button>
     </div>
   );

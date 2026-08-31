@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Scalp diagrams for Q4 — one drawing per schema pattern option.
+ * Scalp diagrams for Q4 - one drawing per schema pattern option.
  *
  * Why pictures instead of text chips: "Diffuse thinning" and "Widening part line" are
  * clinician's words. A patient looking at their own scalp in a mirror recognises a
@@ -10,12 +10,12 @@
  * the affected area marked, and the exact schema string stays as the label.
  *
  * All six share one head outline and one visual language:
- *   - four are TOP-DOWN views (crown, part line, diffuse, patchy) because that is how
+ *  - four are TOP-DOWN views (crown, part line, diffuse, patchy) because that is how
  *     you would see them in a mirror or a photo taken from above;
- *   - the receding hairline is a FRONT view, since that is where it reads;
- *   - shedding shows loose strands, because it is an event, not a location.
+ *  - the receding hairline is a FRONT view, since that is where it reads;
+ *  - shedding shows loose strands, because it is an event, not a location.
  * The affected region always uses the same warm accent, so "this is the bit we mean"
- * needs no legend. Inline SVG — no image files, no network, scales with the card.
+ * needs no legend. Inline SVG - no image files, no network, scales with the card.
  */
 
 const HAIR = "var(--color-ink)";
@@ -29,7 +29,7 @@ function TopHead({ children }: { children: React.ReactNode }) {
     <>
       {/* scalp base */}
       <ellipse cx="50" cy="52" rx="30" ry="36" fill={SCALP} stroke={OUTLINE} strokeWidth="1.5" />
-      {/* nose notch — tells the viewer which way the head faces */}
+      {/* nose notch - tells the viewer which way the head faces */}
       <path d="M46 17 L50 10 L54 17" fill="none" stroke={OUTLINE} strokeWidth="1.5" strokeLinecap="round" />
       {/* ears */}
       <path d="M20 48 q-4 4 0 8" fill="none" stroke={OUTLINE} strokeWidth="1.5" strokeLinecap="round" />
@@ -77,32 +77,39 @@ function Svg({ children }: { children: React.ReactNode }) {
   );
 }
 
-/** Receding hairline — front view, hair pulled back into the classic M. */
+/**
+ * Receding hairline - top view, like the other five.
+ *
+ * The first version drew a front-facing face with arrows. Side by side with five
+ * top-down scalps it read as a different kind of picture entirely (and the arrows
+ * looked like antennae), which is exactly the confusion these diagrams exist to
+ * remove. Same head, same shading: the bare region is the front, with the temples
+ * pushed further back than the middle - the classic M, seen from above.
+ */
+const RECEDED_FRONT =
+  "M22 50 C28 45 33 43 38 41 C44 39 47 36 50 32 C53 36 56 39 62 41 " +
+  "C67 43 72 45 78 50 C77 30 66 16 50 16 C34 16 23 30 22 50 Z";
+
 function RecedingHairline() {
   return (
     <Svg>
-      {/* face */}
-      <path
-        d="M26 44 q0 34 24 40 q24 -6 24 -40 z"
-        fill={SCALP}
-        stroke={OUTLINE}
-        strokeWidth="1.5"
-      />
-      <circle cx="40" cy="58" r="1.8" fill={OUTLINE} />
-      <circle cx="60" cy="58" r="1.8" fill={OUTLINE} />
-      <path d="M43 72 q7 5 14 0" fill="none" stroke={OUTLINE} strokeWidth="1.5" strokeLinecap="round" />
-      {/* exposed temples + forehead, marked */}
-      <path d="M26 44 q4 -22 24 -24 q20 2 24 24 q-8 -10 -24 -9 q-16 -1 -24 9 z" fill={AFFECTED} opacity="0.35" />
-      {/* remaining hair sits high and back */}
-      <path d="M26 42 q6 -24 24 -25 q18 1 24 25 q-9 -13 -24 -12 q-15 -1 -24 12 z" fill={HAIR} />
-      {/* arrows showing the direction of retreat */}
-      <path d="M32 34 l-5 -6" stroke={AFFECTED} strokeWidth="2" strokeLinecap="round" />
-      <path d="M68 34 l5 -6" stroke={AFFECTED} strokeWidth="2" strokeLinecap="round" />
+      <TopHead>
+        <Hair />
+        <path d={RECEDED_FRONT} fill={SCALP} />
+        <path d={RECEDED_FRONT} fill={AFFECTED} opacity="0.32" />
+        <path
+          d={RECEDED_FRONT}
+          fill="none"
+          stroke={AFFECTED}
+          strokeWidth="1.6"
+          strokeDasharray="3 2.5"
+        />
+      </TopHead>
     </Svg>
   );
 }
 
-/** Thinning at crown — top view, a bald disc at the back of the head. */
+/** Thinning at crown - top view, a bald disc at the back of the head. */
 function ThinningAtCrown() {
   return (
     <Svg>
@@ -125,7 +132,7 @@ function ThinningAtCrown() {
   );
 }
 
-/** Widening part line — top view, a broad bare stripe down the middle. */
+/** Widening part line - top view, a broad bare stripe down the middle. */
 function WideningPartLine() {
   return (
     <Svg>
@@ -140,7 +147,7 @@ function WideningPartLine() {
   );
 }
 
-/** Diffuse thinning — top view, hair present everywhere but sparse. */
+/** Diffuse thinning - top view, hair present everywhere but sparse. */
 function DiffuseThinning() {
   return (
     <Svg>
@@ -153,7 +160,7 @@ function DiffuseThinning() {
   );
 }
 
-/** Patchy loss — top view, discrete round bald spots. */
+/** Patchy loss - top view, discrete round bald spots. */
 function PatchyLoss() {
   const spots = [
     { cx: 38, cy: 38, r: 7 },
@@ -176,7 +183,7 @@ function PatchyLoss() {
   );
 }
 
-/** Sudden excessive shedding — an event, so: a head plus falling strands. */
+/** Sudden excessive shedding - an event, so: a head plus falling strands. */
 function SuddenShedding() {
   return (
     <Svg>

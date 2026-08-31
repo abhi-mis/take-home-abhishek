@@ -10,7 +10,7 @@
  *   2. the model is shown ONE schema slice and nothing else, at temperature 0.
  *   3. whatever comes back is fence-stripped, JSON-parsed, Zod-validated against that
  *      slice, and reduced to allowed fields only. Off-schema values are dropped, not
- *      coerced — a wrong option string in a medical intake is worse than a blank.
+ *      coerced - a wrong option string in a medical intake is worse than a blank.
  *
  * Fields the transcript did not mention come back in `unfilled` so the UI can ask for
  * a tap. The model is never allowed to guess to fill a gap.
@@ -84,7 +84,7 @@ export async function POST(req: Request) {
       return NextResponse.json({
         patch: {},
         unfilled: [],
-        note: "Model output could not be parsed — tap fallback in use.",
+        note: "Model output could not be parsed - tap fallback in use.",
       });
     }
 

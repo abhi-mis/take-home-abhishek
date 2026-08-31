@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Q11 / Q12 / Q13 — the "software does the work" steps.
+ * Q11 / Q12 / Q13 - the "software does the work" steps.
  *
  * Flow: mic -> /api/transcribe -> /api/extract (one schema slice) -> patch the store
  * -> the grid below re-renders with those rows highlighted -> the patient confirms or
@@ -14,7 +14,7 @@
  * `justFilled` is derived by diffing the patch against what was there, so the
  * highlight marks what the model actually changed rather than everything it returned.
  */
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { INTAKE_SCHEMA } from "@/lib/schema";
 import { PRODUCT_DUR, PRODUCT_ROWS, PROCEDURE_ROWS, SESSIONS } from "@/lib/types";
 import type { Answers, Habits } from "@/lib/types";
@@ -23,6 +23,8 @@ import { UI_COPY } from "@/lib/copy";
 import { VoicePanel } from "./VoicePanel";
 import { HabitsGrid } from "./HabitsGrid";
 import { TableGrid, type ColumnSpec } from "./TableGrid";
+import { FollowUpFlow } from "./FollowUpFlow";
+import { outstandingFieldsFor, type OutstandingField } from "@/lib/followups";
 
 const PRODUCT_COLUMNS: ColumnSpec[] = [
   { key: "duration", label: "How long", kind: "options", options: PRODUCT_DUR },
@@ -54,13 +56,33 @@ export function VoiceMatrix({
   questionKey,
   answers,
   patch,
+  flowOpen,
+  setFlowOpen,
 }: {
   questionKey: "habits" | "products" | "procedures";
   answers: Answers;
   patch: (p: Partial<Answers>) => void;
+  /**
+   * Whether the guided follow-up flow is showing. Owned by the page rather than here,
+   * because StepShell also needs to know: while the flow is running it hides its own
+   * "still needed" summary, which would otherwise repeat the very list the flow is
+   * walking the patient through.
+   */
+  flowOpen: boolean;
+  setFlowOpen: (open: boolean) => void;
 }) {
   const [justFilled, setJustFilled] = useState<string[]>([]);
-  const [gaps, setGaps] = useState<string[]>([]);
+
+  /**
+   * Recomputed from the answers on every render, NOT from the model's `unfilled` list.
+   * That matters: it means the flow shrinks as the patient answers (including answers
+   * they give by tapping the grid directly), and it stays exactly in step with what
+   * validateStep() is blocking Next on.
+   */
+  const outstanding: OutstandingField[] = useMemo(
+    () => outstandingFieldsFor(questionKey, answers),
+    [questionKey, answers],
+  );
 
   /**
    * Merge, never replace. The model returns only fields the patient mentioned, so a
@@ -69,7 +91,8 @@ export function VoiceMatrix({
    */
   function apply(result: ExtractResult) {
     const p = result.patch;
-    setGaps(result.unfilled);
+    // Whatever the model left blank becomes the follow-up queue.
+    setFlowOpen(true);
 
     if (questionKey === "habits" && p.habits) {
       const incoming = p.habits as Partial<Habits>;
@@ -96,25 +119,95 @@ export function VoiceMatrix({
       return;
     }
 
-    // The model understood nothing usable — say so plainly and leave the grid alone.
+    // The model understood nothing usable - say so plainly and leave the grid alone.
     setJustFilled([]);
+  }
+
+  /**
+   * Write one follow-up answer back into the store.
+   *
+   * Mirrors the grid's own edit rules exactly - in particular, answering a flag "No"
+   * nulls that row's detail columns, so the "must be null when false" invariant in
+   * validate.ts holds no matter which control the patient used.
+   */
+  function answerField(field: OutstandingField, value: boolean | string) {
+    if (questionKey === "habits") {
+      const p: Record<string, unknown> = { [field.field]: value };
+      if (field.field === "smoking" && value === false) p.smoking_severity = null;
+      if (field.field === "salon_treatments" && value === false) p.salon_treatment_detail = null;
+      patch({ habits: { ...answers.habits, ...p } as Answers["habits"] });
+      return;
+    }
+
+    const row = field.row;
+    if (!row) return;
+    const isProducts = questionKey === "products";
+    const table = isProducts ? answers.products : answers.procedures;
+    const flag = isProducts ? "used" : "done";
+    const details = isProducts ? ["duration", "helped", "side_effects"] : ["sessions", "helped"];
+
+    const current = (table as unknown as Record<string, Record<string, unknown>>)[row] ?? {};
+    const cell: Record<string, unknown> = { ...current, [field.field]: value };
+    if (field.field === flag && value === false) {
+      for (const d of details) cell[d] = null;
+    }
+
+    const next = { ...(table as Record<string, unknown>), [row]: cell };
+    patch(
+      isProducts
+        ? { products: next as Answers["products"] }
+        : { procedures: next as Answers["procedures"] },
+    );
   }
 
   return (
     <div>
       <VoicePanel questionKey={questionKey} onResult={apply} />
 
-      {justFilled.length > 0 ? (
+      {/*
+        The layered-question answer: rather than listing what is missing and leaving the
+        patient to hunt through collapsed rows, each gap is asked as its own full-size
+        question, one at a time.
+      */}
+      {flowOpen ? (
+        <FollowUpFlow
+          fields={outstanding}
+          onAnswer={answerField}
+          onClose={() => setFlowOpen(false)}
+        />
+      ) : outstanding.length > 0 ? (
+        <button
+          type="button"
+          onClick={() => setFlowOpen(true)}
+          className="mb-4 flex w-full items-center gap-3 rounded-2xl border border-brand/35 bg-brand-soft/50 px-4 py-3 text-left transition-colors hover:bg-brand-soft"
+        >
+          <span className="grid size-8 shrink-0 place-items-center rounded-full bg-brand text-[13px] font-bold text-white tabular-nums">
+            {outstanding.length}
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block text-[14px] font-bold leading-snug text-brand-ink">
+              Answer the remaining {outstanding.length} one at a time
+            </span>
+            <span className="mt-0.5 block text-[12px] leading-snug text-muted">
+              Quicker than finding them in the list below
+            </span>
+          </span>
+          <span aria-hidden className="shrink-0 text-brand">
+            →
+          </span>
+        </button>
+      ) : justFilled.length > 0 ? (
         <p className="mb-3 text-[13px] font-medium text-brand-ink">{UI_COPY.confirmHint}</p>
       ) : null}
 
-      {gaps.length > 0 ? (
-        <p className="mb-3 rounded-xl border border-dashed border-warn/50 bg-warn/5 px-3 py-2 text-[12.5px] leading-snug text-warn">
-          Not mentioned — please tap these: {gaps.map(prettyGap).join(", ")}
-        </p>
-      ) : null}
-
-      {questionKey === "habits" ? (
+      {/*
+        While the flow is open the grid is hidden. Showing both meant the patient saw
+        "Do you smoke?" twice on one screen - once in the focused card and again in the
+        row underneath, which is exactly the kind of duplication that makes a form feel
+        like it was assembled rather than designed. Closing the flow brings the grid
+        straight back, with the voice highlights intact.
+      */}
+      {flowOpen ? null : questionKey === "habits" ? (
         <HabitsGrid
           value={answers.habits}
           justFilled={justFilled}
@@ -159,9 +252,11 @@ export function VoiceMatrix({
       )}
 
       {/* Sanity check that the rendered rows come from the schema, not a local list. */}
-      <p className="mt-4 text-[11px] text-muted/70">
-        {rowCount(questionKey)} rows from the intake schema.
-      </p>
+      {flowOpen ? null : (
+        <p className="mt-4 text-[11px] text-muted/70">
+          {rowCount(questionKey)} rows from the intake schema.
+        </p>
+      )}
     </div>
   );
 }
@@ -189,13 +284,3 @@ function rowCount(key: "habits" | "products" | "procedures"): number {
   return PROCEDURE_ROWS.length;
 }
 
-/** "Hair Oils/Serums.duration" -> "Hair Oils/Serums — kitne time se" */
-function prettyGap(path: string): string {
-  const [head, tail] = path.split(".");
-  if (!tail) return head ?? path;
-  const label =
-    PRODUCT_COLUMNS.find((c) => c.key === tail)?.label ??
-    PROCEDURE_COLUMNS.find((c) => c.key === tail)?.label ??
-    tail.replace(/_/g, " ");
-  return head === "habits" ? label : `${head} — ${label}`;
-}

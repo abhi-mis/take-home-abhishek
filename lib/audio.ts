@@ -10,7 +10,7 @@
  *
  * Instead we decode whatever was captured and re-encode it as 16 kHz mono 16-bit WAV
  * in the browser. One format reaches the server, speech models want 16 kHz anyway,
- * and the upload drops to roughly 32 KB/second — which matters on clinic 4G.
+ * and the upload drops to roughly 32 KB/second - which matters on clinic 4G.
  */
 
 const TARGET_RATE = 16_000;
@@ -32,6 +32,16 @@ function pickMimeType(): string | undefined {
 export interface Recorder {
   stop: () => Promise<Blob>;
   cancel: () => void;
+  /**
+   * Current input loudness, 0..1, read straight off the live mic.
+   *
+   * The waveform in VoicePanel is driven by this rather than by a canned animation,
+   * which matters more than it sounds: a fake animation looks identical whether the mic
+   * is working or muted, so a patient in a noisy clinic gets no feedback that they are
+   * actually being heard. Real levels make "it is not picking me up" obvious in the
+   * first second instead of after the transcript comes back empty.
+   */
+  getLevel: () => number;
 }
 
 export async function startRecording(): Promise<Recorder> {
@@ -52,9 +62,58 @@ export async function startRecording(): Promise<Recorder> {
   };
   rec.start(250);
 
-  const cleanup = () => stream.getTracks().forEach((t) => t.stop());
+  // Analyser tap for the live waveform. Kept separate from the recording path so a
+  // browser that refuses an AudioContext still records perfectly well.
+  // Uint8Array<ArrayBuffer>, not the default ArrayBufferLike: getByteTimeDomainData
+  // rejects a possibly-shared buffer under TS 5.7's stricter TypedArray generics.
+  let meter: {
+    ctx: AudioContext;
+    analyser: AnalyserNode;
+    buf: Uint8Array<ArrayBuffer>;
+  } | null = null;
+  try {
+    const AudioCtx =
+      window.AudioContext ??
+      (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+    const ctx = new AudioCtx();
+    const analyser = ctx.createAnalyser();
+    analyser.fftSize = 512;
+    analyser.smoothingTimeConstant = 0.6;
+    ctx.createMediaStreamSource(stream).connect(analyser);
+    meter = { ctx, analyser, buf: new Uint8Array(analyser.fftSize) };
+  } catch {
+    meter = null; // no meter, flat waveform - recording is unaffected
+  }
+
+  const getLevel = () => {
+    if (!meter) return 0;
+    meter.analyser.getByteTimeDomainData(meter.buf);
+    // RMS around the 128 midpoint, scaled so normal speech lands near the top.
+    let sum = 0;
+    for (let i = 0; i < meter.buf.length; i++) {
+      const v = ((meter.buf[i] ?? 128) - 128) / 128;
+      sum += v * v;
+    }
+    const rms = Math.sqrt(sum / meter.buf.length);
+    /**
+     * Perceptual curve, not a linear scale. Speech RMS sits around 0.05-0.15, so a
+     * linear mapping leaves the meter almost flat for a softly-spoken patient - and a
+     * meter that barely moves reads as "not hearing you". The 0.7 exponent lifts quiet
+     * input into visible range while still leaving headroom for a loud voice.
+     */
+    return Math.min(1, Math.pow(rms * 4, 0.7));
+  };
+
+  const cleanup = () => {
+    stream.getTracks().forEach((t) => t.stop());
+    if (meter) {
+      void meter.ctx.close();
+      meter = null;
+    }
+  };
 
   return {
+    getLevel,
     stop: () =>
       new Promise<Blob>((resolve, reject) => {
         rec.onstop = () => {

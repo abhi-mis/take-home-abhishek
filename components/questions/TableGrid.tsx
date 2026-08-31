@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Q12 products and Q13 procedures — one component, because the schema gives them the
+ * Q12 products and Q13 procedures - one component, because the schema gives them the
  * same shape: rows x columns where the first column is a boolean flag and the rest
  * only exist when that flag is true.
  *

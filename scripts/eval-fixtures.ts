@@ -1,5 +1,5 @@
 /**
- * Live extraction eval — `npm run eval` (needs NVIDIA_API_KEY).
+ * Live extraction eval - `npm run eval` (needs NVIDIA_API_KEY).
  *
  * This is the honest answer to "how did you verify the fill". It is deliberately NOT
  * part of `npm test`, because an LLM is not deterministic and a flaky red build
@@ -8,7 +8,7 @@
  * Scoring is TOLERANT on purpose, in two specific ways:
  *
  *  1. Only fields the transcript actually MENTIONS are compared. A fixture that says
- *     nothing about hard water does not penalise the model for leaving it null — that
+ *     nothing about hard water does not penalise the model for leaving it null - that
  *     is the correct behaviour, and `expectUnfilled` asserts it explicitly.
  *  2. Rows listed under `unmentionedRows` must be ABSENT from the patch. This catches
  *     the most dangerous failure mode in a medical intake: the model helpfully
@@ -54,7 +54,7 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /**
  * One call, with a single retry. The free NVIDIA tier cold-starts and throttles, so a
- * lone timeout says nothing about extraction quality — retrying once keeps the score
+ * lone timeout says nothing about extraction quality - retrying once keeps the score
  * about the model's answers rather than about the queue depth.
  */
 async function callModel(client: OpenAI, key: string, transcript: string): Promise<string> {
@@ -110,12 +110,12 @@ function scoreOne(fx: Fixture, result: ExtractResult): Check[] {
   for (const row of fx.unmentionedRows ?? []) {
     const table = (result.patch as Record<string, Record<string, unknown>>)[fx.questionKey] ?? {};
     const present = Object.prototype.hasOwnProperty.call(table, row);
-    checks.push({ ok: !present, label: `"${row}" left untouched${present ? " — INVENTED" : ""}` });
+    checks.push({ ok: !present, label: `"${row}" left untouched${present ? " - INVENTED" : ""}` });
   }
 
   for (const field of fx.expectUnfilled ?? []) {
     const has = result.unfilled.includes(field);
-    checks.push({ ok: has, label: `flagged unfilled: ${field}${has ? "" : " — MISSING"}` });
+    checks.push({ ok: has, label: `flagged unfilled: ${field}${has ? "" : " - MISSING"}` });
   }
 
   for (const word of fx.describeMustMention ?? []) {
@@ -123,7 +123,7 @@ function scoreOne(fx: Fixture, result: ExtractResult): Check[] {
       (result.patch as { past_treatment_describe?: string }).past_treatment_describe ?? "",
     ).toLowerCase();
     const has = text.includes(word.toLowerCase());
-    checks.push({ ok: has, label: `describe mentions "${word}"${has ? "" : " — LOST"}` });
+    checks.push({ ok: has, label: `describe mentions "${word}"${has ? "" : " - LOST"}` });
   }
 
   return checks;
@@ -134,7 +134,7 @@ async function main() {
   if (!apiKey) {
     console.error(
       "NVIDIA_API_KEY is not set.\n" +
-        "This eval calls a live model on purpose — the deterministic checks are in\n" +
+        "This eval calls a live model on purpose - the deterministic checks are in\n" +
         "`npm test`, which needs no key. Set the key (see .env.example) to run it.",
     );
     process.exit(1);
@@ -148,7 +148,7 @@ async function main() {
   const fixtures = loadFixtures();
   const cfg = modelConfig();
   console.log(
-    `\nExtraction eval — ${fixtures.length} fixtures x ${RUNS} run(s)\n` +
+    `\nExtraction eval - ${fixtures.length} fixtures x ${RUNS} run(s)\n` +
       `model: ${cfg.model}   temp: ${cfg.temperature}` +
       `${cfg.reasoning_effort ? `   reasoning: ${cfg.reasoning_effort}` : ""}\n`,
   );
@@ -159,7 +159,7 @@ async function main() {
 
   for (const fx of fixtures) {
     if (!isVoiceKey(fx.questionKey)) {
-      console.log(`SKIP ${fx.id} — ${fx.questionKey} is not a voice question`);
+      console.log(`SKIP ${fx.id} - ${fx.questionKey} is not a voice question`);
       continue;
     }
 
@@ -170,7 +170,7 @@ async function main() {
       try {
         raw = await callModel(client, fx.questionKey, fx.transcript);
       } catch (e) {
-        console.log(`\x1b[31mERROR\x1b[0m ${tag} — model call failed: ${String(e).slice(0, 120)}`);
+        console.log(`\x1b[31mERROR\x1b[0m ${tag} - model call failed: ${String(e).slice(0, 120)}`);
         hardFailures++;
         continue;
       }
@@ -179,7 +179,7 @@ async function main() {
       if (result === null) {
         // Unparseable output is a hard failure: the schema gate did its job, but the
         // patient got nothing auto-filled.
-        console.log(`\x1b[31mUNPARSEABLE\x1b[0m ${tag} — ${raw.slice(0, 100).replace(/\n/g, " ")}`);
+        console.log(`\x1b[31mUNPARSEABLE\x1b[0m ${tag} - ${raw.slice(0, 100).replace(/\n/g, " ")}`);
         hardFailures++;
         continue;
       }
@@ -208,8 +208,7 @@ async function main() {
       `and surface as a missing field, never as a bad value in the output.\n`,
   );
 
-  // Non-zero only on hard failures (no output at all), never on partial accuracy —
-  // this is a measurement, not a gate.
+  // Non-zero only on hard failures (no output at all), never on partial accuracy - // this is a measurement, not a gate.
   process.exit(hardFailures > 0 ? 1 : 0);
 }
 

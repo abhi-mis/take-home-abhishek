@@ -44,8 +44,7 @@ interface IntakeState {
 
 /**
  * NOTE: this store deliberately exposes NO derived getters (no `steps()`, no
- * `progress()`). A getter that builds an array or object is a trap in Zustand —
- * `useIntake((s) => s.steps())` returns a fresh reference on every call, never
+ * `progress()`). A getter that builds an array or object is a trap in Zustand - * `useIntake((s) => s.steps())` returns a fresh reference on every call, never
  * compares equal under Object.is, and re-renders until React throws
  * "Maximum update depth exceeded". Derive with `visibleSteps(meta)` in a `useMemo`
  * at the call site instead, keyed on the state it actually depends on.

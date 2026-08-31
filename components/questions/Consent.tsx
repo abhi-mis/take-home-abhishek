@@ -1,11 +1,11 @@
 "use client";
 
 /**
- * Q16 — its own screen, never pre-ticked.
+ * Q16 - its own screen, never pre-ticked.
  *
  * GenoRoot is a genetic test, so consent here covers a DNA sample and genetic
  * analysis. That deserves plain English about what is collected, what is analysed
- * and what happens to the sample, in plain language — not a checkbox labelled
+ * and what happens to the sample, in plain language - not a checkbox labelled
  * "I agree to the terms".
  *
  * The decline path is a first-class outcome: choosing "No" is recorded as
@@ -28,7 +28,7 @@ const POINTS: { title: string; plain: string }[] = [
   {
     title:
       "Your DNA is analysed for genes linked to hair loss, and for how you may respond to hair-loss treatment.",
-    plain: "We look only at hair-related genes — not ancestry, not disease risk.",
+    plain: "We look only at hair-related genes - not ancestry, not disease risk.",
   },
   {
     title:
@@ -79,7 +79,7 @@ export function Consent({
 
       <p className="text-[12px] leading-relaxed text-muted">
         Nothing is pre-selected on this screen. Choosing &ldquo;No&rdquo; is recorded and stops
-        the test — you can still speak to your doctor.
+        the test - you can still speak to your doctor.
       </p>
     </div>
   );

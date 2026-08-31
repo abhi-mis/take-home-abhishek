@@ -1,14 +1,14 @@
 "use client";
 
 /**
- * Q11 habits — six rows, two with conditional followups.
+ * Q11 habits - six rows, two with conditional followups.
  *
  * Rows are driven by INTAKE_SCHEMA.sections[C].questions[11].rows, so the schema's
  * followup declarations are what make the severity and salon-detail inputs appear.
  * Nothing about the followups is hardcoded here beyond their input widget.
  *
  * `justFilled` marks rows the model wrote on this pass. They get a brief highlight
- * so the patient's eye lands on what changed and can correct it — that is the
+ * so the patient's eye lands on what changed and can correct it - that is the
  * "confirm chips" step, done in place rather than on a separate screen.
  */
 import { motion } from "framer-motion";
@@ -100,7 +100,7 @@ export function HabitsGrid({
                   onChange={(e) =>
                     onChange({ salon_treatment_detail: e.target.value.trim() || null })
                   }
-                  className="min-h-[48px] w-full rounded-xl border border-line bg-paper px-3.5 text-[15px] text-ink placeholder:text-muted/70"
+                  className="min-h-[48px] w-full rounded-xl border border-line bg-paper px-3.5 text-[15px] text-ink transition-colors placeholder:text-muted/70 hover:border-brand/40 focus:border-brand focus:outline-none"
                 />
               </Followup>
             ) : null}
@@ -195,7 +195,7 @@ export function SegmentedRow({
             "transition-colors active:scale-[0.97]",
             value === o
               ? "border-brand bg-brand-soft text-brand-ink"
-              : "border-line bg-paper text-muted",
+              : "border-line bg-paper text-muted hover:border-brand/50 hover:bg-brand-soft/40 hover:text-ink",
           )}
         >
           {o}

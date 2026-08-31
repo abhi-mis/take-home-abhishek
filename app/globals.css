@@ -37,9 +37,38 @@ body {
   card feels like a button rather than a link.
 */
 button,
-[role="button"] {
+[role="button"],
+[role="radio"],
+[role="checkbox"] {
   -webkit-tap-highlight-color: transparent;
   touch-action: manipulation;
+}
+
+/*
+  Cursors. Tailwind v4's preflight sets `cursor: default` on buttons (a deliberate
+  change from v3), so every control in this app pointed at nothing on desktop - the
+  form felt dead under a mouse even though it worked perfectly under a thumb. Restore
+  the pointer here, once, rather than sprinkling `cursor-pointer` through 20 components.
+*/
+button:not(:disabled),
+[role="button"]:not([aria-disabled="true"]),
+[role="radio"],
+[role="checkbox"],
+label,
+summary {
+  cursor: pointer;
+}
+
+button:disabled,
+[aria-disabled="true"] {
+  cursor: not-allowed;
+}
+
+input[type="range"] {
+  cursor: grab;
+}
+input[type="range"]:active {
+  cursor: grabbing;
 }
 
 @media (prefers-reduced-motion: reduce) {

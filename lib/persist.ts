@@ -16,7 +16,7 @@ export function createJSONStorage() {
       window.sessionStorage.getItem("__probe__");
       return window.sessionStorage;
     } catch {
-      return noopStorage; // private mode / storage blocked — the form still works
+      return noopStorage; // private mode / storage blocked - the form still works
     }
   });
 }

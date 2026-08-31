@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Q8, Q9 — two big side-by-side buttons, thumb-reachable, auto-advancing.
+ * Q8, Q9 - two big side-by-side buttons, thumb-reachable, auto-advancing.
  * Also reused inside the habits and products grids as a compact inline pair.
  */
 import { useEffect, useState } from "react";
@@ -54,7 +54,7 @@ export function YesNo({
             size === "lg" ? "min-h-[88px] text-lg" : "min-h-[44px] px-3 text-[13px]",
             shown === v
               ? "border-brand bg-brand-soft text-brand-ink"
-              : "border-line bg-card text-muted",
+              : "border-line bg-card text-muted hover:border-brand/50 hover:bg-brand-soft/40 hover:text-ink",
           )}
         >
           {label}

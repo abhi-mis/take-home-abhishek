@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * The wizard shell — the only router in the app.
+ * The wizard shell - the only router in the app.
  *
  * It does exactly three things:
  *   1. reads the current step out of the store,
@@ -35,7 +35,7 @@ export default function IntakePage() {
   const router = useRouter();
 
   // One field per selector. Zustand compares selector results with Object.is, so a
-  // selector must never BUILD its result — `(s) => s.steps()` returns a fresh array
+  // selector must never BUILD its result - `(s) => s.steps()` returns a fresh array
   // every call, never compares equal, and re-renders forever.
   const answers = useIntake((s) => s.answers);
   const meta = useIntake((s) => s.meta);
@@ -52,13 +52,20 @@ export default function IntakePage() {
   const chooseNone = useIntake((s) => s.chooseNone);
   const reset = useIntake((s) => s.reset);
 
-  // Derived OUTSIDE the store, memoised on `meta` — the only input gating can depend
+  // Derived OUTSIDE the store, memoised on `meta` - the only input gating can depend
   // on. Same live-recompute behaviour, but a stable reference between sex changes.
   const steps = useMemo(() => visibleSteps(meta), [meta]);
 
   // Direction drives the slide animation; a plain ref beats storing it in the store.
   const [direction, setDirection] = useState<1 | -1>(1);
   const prevIndex = useRef(0);
+
+  /**
+   * "Focus mode" = the guided follow-up flow is open on a table question. It lives here
+   * rather than inside VoiceMatrix so StepShell can stand down its own outstanding-items
+   * summary while the flow is asking those very items one at a time.
+   */
+  const [focusMode, setFocusMode] = useState(false);
 
   const isReview = currentStepId === "review";
   const index = isReview ? steps.length : stepIndexById(steps, currentStepId);
@@ -69,10 +76,11 @@ export default function IntakePage() {
     prevIndex.current = index;
   }, [index]);
 
-  // Scroll to top on every step change — otherwise a long grid leaves the next
-  // question's heading off-screen.
+  // Scroll to top on every step change - otherwise a long grid leaves the next
+  // question's heading off-screen. Focus mode is per-question, so it resets too.
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: "instant" });
+    setFocusMode(false);
   }, [currentStepId]);
 
   function goBack() {
@@ -113,7 +121,7 @@ export default function IntakePage() {
       total={steps.length}
       direction={direction}
       canGoNext={check.complete}
-      outstanding={check.outstanding}
+      outstanding={focusMode ? [] : check.outstanding}
       onNext={next}
       onBack={goBack}
       // Auto-advancing kinds own their own progression, so no Next button is shown.
@@ -129,6 +137,8 @@ export default function IntakePage() {
         chooseNone,
         explicitNone,
         sex: meta.patient_sex,
+        focusMode,
+        setFocusMode,
       })}
     </StepShell>
   );
@@ -145,6 +155,8 @@ interface RenderArgs {
   chooseNone: (key: string) => void;
   explicitNone: Record<string, true>;
   sex: string | null;
+  focusMode: boolean;
+  setFocusMode: (open: boolean) => void;
 }
 
 function renderStep({
@@ -156,6 +168,8 @@ function renderStep({
   chooseNone,
   explicitNone,
   sex,
+  focusMode,
+  setFocusMode,
 }: RenderArgs) {
   switch (step.kind) {
     case "sexgate":
@@ -188,7 +202,7 @@ function renderStep({
     case "multi": {
       const key = step.key as QuestionKey;
 
-      // Q4 is the picture question — a grid of scalp diagrams rather than a text list,
+      // Q4 is the picture question - a grid of scalp diagrams rather than a text list,
       // because patients recognise the shape long before the clinical term.
       if (key === "pattern") {
         return (
@@ -237,6 +251,8 @@ function renderStep({
           questionKey={step.key as "habits" | "products" | "procedures"}
           answers={answers}
           patch={patch}
+          flowOpen={focusMode}
+          setFlowOpen={setFocusMode}
         />
       );
 
@@ -247,7 +263,7 @@ function renderStep({
 
 /**
  * Q6: a patient whose hair loss began at 50+ is very likely post-menopausal, so we
- * offer that answer instead of making her scroll — but only as a suggestion she has
+ * offer that answer instead of making her scroll - but only as a suggestion she has
  * to accept, never a silent pre-fill.
  *
  * Note we suggest "Menopausal" rather than "Not applicable": both skip the follow-up
@@ -264,6 +280,6 @@ function suggestionFor(
   if (onset === null || onset < 50) return undefined;
   return {
     value: "Menopausal",
-    reason: "You said your hair loss started after 50 — is this the right answer?",
+    reason: "You said your hair loss started after 50 - is this the right answer?",
   };
 }

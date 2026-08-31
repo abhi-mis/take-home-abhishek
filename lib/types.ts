@@ -34,7 +34,7 @@ export const EXCLUSIVE_OPTIONS: Record<string, string> = {
  * Because validation now requires a real answer on every step, empty-and-unanswered
  * must be distinguishable from empty-on-purpose. These two keys get a UI-only
  * "None of these" control whose selection is recorded in the store's `explicitNone`
- * set — never in `Answers`, so the graded output stays exactly on-schema.
+ * set - never in `Answers`, so the graded output stays exactly on-schema.
  */
 export const NONE_ESCAPE_KEYS = ["pattern", "past_6_months"] as const;
 export type NoneEscapeKey = (typeof NONE_ESCAPE_KEYS)[number];
@@ -58,7 +58,7 @@ export type SampleType = (typeof SAMPLE)[number];
  * Every yes/no field is `boolean | null` while the form is being filled.
  *
  * This matters more than it looks. If `smoking` defaulted to `false`, an untouched row
- * would be indistinguishable from a patient who answered "No" — so the form could
+ * would be indistinguishable from a patient who answered "No" - so the form could
  * never tell "not answered yet" from "answered No", and per-step validation would be a
  * lie. `null` means unanswered; validate.ts then REJECTS null, so a completed intake
  * always carries real booleans.
@@ -74,7 +74,7 @@ export interface Habits {
   salon_treatment_detail: string | null; // required iff salon_treatments === true
 }
 
-/** The yes/no rows of Q11, in schema order — used to validate that none is skipped. */
+/** The yes/no rows of Q11, in schema order - used to validate that none is skipped. */
 export const HABIT_YESNO_KEYS = [
   "smoking",
   "alcohol",
@@ -102,8 +102,8 @@ export interface Answers {
   family_history: string[];
   pattern: string[];
   diagnosed_conditions: string[];
-  menstrual_cycle: Menstrual | null; // null unless female — valid, not missing
-  pregnancy_related: Pregnancy | null; // null unless female — valid, not missing
+  menstrual_cycle: Menstrual | null; // null unless female - valid, not missing
+  pregnancy_related: Pregnancy | null; // null unless female - valid, not missing
   adult_acne_oily_skin: boolean | null;
   excess_body_facial_hair: boolean | null;
   past_6_months: string[];
@@ -119,7 +119,7 @@ export interface Answers {
 export type PatientSex = "male" | "female" | "prefer_not";
 
 /**
- * UI-only. Not one of the 16 graded answers — it exists purely to gate Q6/Q7.
+ * UI-only. Not one of the 16 graded answers - it exists purely to gate Q6/Q7.
  * Emitted alongside the answers as metadata so the doctor can see why they're null.
  */
 export interface Meta {

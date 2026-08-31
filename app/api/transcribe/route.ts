@@ -1,13 +1,12 @@
 /**
- * POST /api/transcribe — multipart audio -> { transcript }
+ * POST /api/transcribe - multipart audio -> { transcript }
  *
  * A thin proxy whose only real job is to be the one place SARVAM_API_KEY exists.
  * The client never sees it, and it is never in the repo.
  *
  * Why Sarvam: the patients here speak Hinglish and Indian-accented English, which is
  * where the big western STT models degrade first. Sarvam's Saaras is trained for
- * exactly that, and `mode=codemix` returns mixed Hindi/English in Roman script —
- * which is also the easiest thing for the extraction model to read.
+ * exactly that, and `mode=codemix` returns mixed Hindi/English in Roman script - * which is also the easiest thing for the extraction model to read.
  *
  * Contract verified against docs.sarvam.ai (Aug 2026): POST https://api.sarvam.ai/
  * speech-to-text, header `api-subscription-key`, multipart fields file/model/mode,
@@ -24,7 +23,7 @@ const MAX_BYTES = 8 * 1024 * 1024;
 export async function POST(req: Request) {
   const key = process.env.SARVAM_API_KEY;
   if (!key) {
-    // A missing key is a config problem, not a patient problem — say so clearly so
+    // A missing key is a config problem, not a patient problem - say so clearly so
     // the UI can fall back to tapping instead of showing a generic failure.
     return NextResponse.json(
       { error: "Voice is off: SARVAM_API_KEY is not set. Tap the answers below instead." },

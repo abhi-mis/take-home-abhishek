@@ -1,13 +1,18 @@
 "use client";
 
 /**
- * The mic affordance used by Q11/12/13/14.
+ * The mic. Used by Q11/12/13/14 - the questions where speaking beats tapping.
  *
  * State machine: idle -> recording -> transcribing -> extracting -> filled | error.
  * Every terminal state (including every error) leaves the tap grid underneath fully
- * usable — voice is an accelerator, never a gate. If the browser has no usable
+ * usable - voice is an accelerator, never a gate. If the browser has no usable
  * MediaRecorder (older iOS, desktop without a mic) the panel renders nothing at all
  * rather than a dead button.
+ *
+ * The waveform is driven by REAL microphone levels (Recorder.getLevel), not a canned
+ * animation. That distinction is the whole point: a fake animation looks identical
+ * whether the mic is live or muted, so a patient gets no signal that they are not being
+ * heard until the transcript comes back empty. Real levels make it obvious instantly.
  */
 import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
@@ -17,6 +22,9 @@ import { UI_COPY } from "@/lib/copy";
 import { cn, tick } from "@/lib/utils";
 
 type Phase = "idle" | "recording" | "transcribing" | "extracting" | "done" | "error";
+
+/** Bar count for the meter. 28 fills the width at 380px without looking sparse. */
+const BARS = 28;
 
 export function VoicePanel({
   questionKey,
@@ -29,6 +37,7 @@ export function VoicePanel({
   const [transcript, setTranscript] = useState<string>("");
   const [error, setError] = useState<string>("");
   const [elapsed, setElapsed] = useState(0);
+  const [levels, setLevels] = useState<number[]>(() => new Array(BARS).fill(0));
   const recorderRef = useRef<Recorder | null>(null);
   const supported = useSupported();
 
@@ -47,8 +56,22 @@ export function VoicePanel({
   }, [phase]);
 
   /**
+   * Waveform: sample the live level and push it onto a rolling window, so the bars
+   * scroll right-to-left like a real recorder. 40ms (25fps) is smooth to the eye and
+   * costs one small state update - cheaper than re-rendering 28 nodes at 60fps.
+   */
+  useEffect(() => {
+    if (phase !== "recording") return;
+    const id = setInterval(() => {
+      const lvl = recorderRef.current?.getLevel() ?? 0;
+      setLevels((prev) => [...prev.slice(1), lvl]);
+    }, 40);
+    return () => clearInterval(id);
+  }, [phase]);
+
+  /**
    * Count up while we wait on the two APIs. Measured round trip on the free NVIDIA
-   * tier is 8-19s depending on how many columns the slice has — long enough that a
+   * tier is 8-19s depending on how many columns the slice has - long enough that a
    * static "Filling it in…" reads as frozen. A ticking number reads as working, and
    * after 12s we say out loud that tapping is still an option.
    */
@@ -66,6 +89,7 @@ export function VoicePanel({
     tick(12);
     setError("");
     setTranscript("");
+    setLevels(new Array(BARS).fill(0));
     try {
       recorderRef.current = await startRecording();
       setPhase("recording");
@@ -121,29 +145,47 @@ export function VoicePanel({
   if (!supported) return null;
 
   const busy = phase === "transcribing" || phase === "extracting";
+  const recording = phase === "recording";
 
   return (
-    <div className="mb-5 overflow-hidden rounded-3xl border-2 border-brand/25 bg-card">
-      <div className="flex items-center gap-3.5 p-4">
+    <div
+      className={cn(
+        "mb-5 overflow-hidden rounded-3xl border-2 transition-colors duration-300",
+        recording
+          ? "border-warn/50 bg-warn/[0.03]"
+          : phase === "done"
+            ? "border-brand/40 bg-brand-soft/40"
+            : "border-brand/25 bg-card",
+      )}
+    >
+      <div className="flex items-center gap-4 p-4">
         <button
           type="button"
-          onClick={phase === "recording" ? stop : begin}
+          onClick={recording ? stop : begin}
           disabled={busy}
-          aria-label={phase === "recording" ? UI_COPY.recordStop : UI_COPY.recordCta}
+          aria-label={recording ? UI_COPY.recordStop : UI_COPY.recordCta}
           className={cn(
-            "relative grid size-16 shrink-0 place-items-center rounded-full transition-colors",
-            "active:scale-95 disabled:opacity-60",
-            phase === "recording" ? "bg-warn text-white" : "bg-brand text-white",
+            "group relative grid size-[68px] shrink-0 cursor-pointer place-items-center rounded-full",
+            "text-white transition-[transform,background-color,box-shadow] duration-150",
+            "hover:scale-[1.04] active:scale-95",
+            "disabled:cursor-wait disabled:opacity-70 disabled:hover:scale-100",
+            recording
+              ? "bg-warn shadow-[0_0_0_6px_rgba(154,52,18,0.12)]"
+              : "bg-brand shadow-[0_2px_10px_rgba(13,107,95,0.28)] hover:shadow-[0_4px_18px_rgba(13,107,95,0.36)]",
           )}
         >
-          {phase === "recording" ? (
+          {recording ? (
             <>
-              <motion.span
-                aria-hidden
-                className="absolute inset-0 rounded-full bg-warn/35"
-                animate={{ scale: [1, 1.45], opacity: [0.6, 0] }}
-                transition={{ duration: 1.3, repeat: Infinity, ease: "easeOut" }}
-              />
+              {/* Two offset pulses read as "live" far better than a single ring. */}
+              {[0, 0.65].map((delay) => (
+                <motion.span
+                  key={delay}
+                  aria-hidden
+                  className="absolute inset-0 rounded-full bg-warn/30"
+                  animate={{ scale: [1, 1.55], opacity: [0.55, 0] }}
+                  transition={{ duration: 1.3, repeat: Infinity, ease: "easeOut", delay }}
+                />
+              ))}
               <StopIcon />
             </>
           ) : busy ? (
@@ -154,8 +196,8 @@ export function VoicePanel({
         </button>
 
         <div className="min-w-0 flex-1">
-          <p className="text-[15px] font-semibold leading-snug text-ink">
-            {phase === "recording"
+          <p className="text-[15.5px] font-bold leading-snug text-ink">
+            {recording
               ? UI_COPY.recordListening
               : busy
                 ? UI_COPY.recordThinking
@@ -163,22 +205,29 @@ export function VoicePanel({
                   ? UI_COPY.recordFilled
                   : UI_COPY.recordCta}
           </p>
-          <p className="mt-0.5 text-[12.5px] leading-snug text-muted">
-            {phase === "recording" ? (
-              <span className="tabular-nums">
+
+          {/* While recording, the live waveform replaces the subtitle. */}
+          {recording ? (
+            <div className="mt-2">
+              <Waveform levels={levels} />
+              <p className="mt-1.5 text-[12px] font-medium tabular-nums text-warn">
                 {(elapsed / 1000).toFixed(0)}s · tap to stop
-              </span>
-            ) : busy ? (
-              <span className="tabular-nums">
-                {(elapsed / 1000).toFixed(0)}s
-                {elapsed > 12_000 ? " · taking a while — you can also tap the answers below" : ""}
-              </span>
-            ) : phase === "error" ? (
-              <span className="text-warn">{error}</span>
-            ) : (
-              UI_COPY.recordLanguages
-            )}
-          </p>
+              </p>
+            </div>
+          ) : (
+            <p className="mt-0.5 text-[12.5px] leading-snug text-muted">
+              {busy ? (
+                <span className="tabular-nums">
+                  {(elapsed / 1000).toFixed(0)}s
+                  {elapsed > 12_000 ? " · taking a while - you can also tap below" : ""}
+                </span>
+              ) : phase === "error" ? (
+                <span className="text-warn">{error}</span>
+              ) : (
+                UI_COPY.recordLanguages
+              )}
+            </p>
+          )}
         </div>
       </div>
 
@@ -198,6 +247,36 @@ export function VoicePanel({
           </motion.div>
         ) : null}
       </AnimatePresence>
+    </div>
+  );
+}
+
+/**
+ * Rolling level meter.
+ *
+ * Two details that make it read as a recorder rather than a bar chart: every bar keeps
+ * a 3px floor, so silence still shows a live baseline instead of an empty box that
+ * looks broken; and the oldest samples are tapered and faded, so the trail dissolves
+ * to the left instead of ending in a hard edge.
+ */
+function Waveform({ levels }: { levels: number[] }) {
+  return (
+    <div className="flex h-7 items-center gap-[2.5px]" aria-hidden>
+      {levels.map((lvl, i) => {
+        const age = i / levels.length;
+        const height = Math.max(3, lvl * 28 * (0.35 + age * 0.65));
+        return (
+          <span
+            key={i}
+            className="flex-1 rounded-full bg-warn"
+            style={{
+              height: `${height}px`,
+              opacity: 0.28 + age * 0.72,
+              transition: "height 60ms linear",
+            }}
+          />
+        );
+      })}
     </div>
   );
 }

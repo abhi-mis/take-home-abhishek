@@ -15,14 +15,8 @@
  * disagree.
  */
 import { QUESTIONS, type QuestionKey } from "./schema";
-import {
-  HABIT_YESNO_KEYS,
-  PRODUCT_ROWS,
-  PROCEDURE_ROWS,
-  hasNoneEscape,
-  type Answers,
-  type Meta,
-} from "./types";
+import { hasNoneEscape, type Answers, type Meta } from "./types";
+import { outstandingFieldsFor, type OutstandingField } from "./followups";
 
 export type StepKind =
   | "number"
@@ -109,15 +103,6 @@ export interface StepValidation {
 const OK: StepValidation = { complete: true, outstanding: [] };
 const fail = (...outstanding: string[]): StepValidation => ({ complete: false, outstanding });
 
-/** Human labels for the habit rows, so validation messages name the row. */
-const HABIT_LABELS: Record<string, string> = {
-  smoking: "Smoking",
-  alcohol: "Alcohol",
-  hard_water: "Hard water",
-  heating_tools_styling_chemicals: "Heat or styling chemicals",
-  salon_treatments: "Salon treatments",
-};
-
 /**
  * Everything a step needs before the patient may move on.
  *
@@ -147,7 +132,7 @@ export function validateStep(
     case "consent":
       return answers.consent !== null
         ? OK
-        : fail("Please choose Yes or No — nothing is selected for you");
+        : fail("Please choose Yes or No - nothing is selected for you");
 
     case "multi": {
       const key = step.key as "family_history";
@@ -178,56 +163,25 @@ export function validateStep(
 /**
  * Q11/Q12/Q13. Every row must be answered, and any row answered "yes" must have its
  * detail columns filled. This is what stops a voice fill from leaving silent gaps.
+ *
+ * The list is built from lib/followups.ts descriptors rather than from its own set of
+ * checks, so the "still needed" summary and the follow-up questions FollowUpFlow asks
+ * are literally the same data. They cannot disagree about what is missing.
  */
 function validateTableStep(key: QuestionKey | null, answers: Answers): StepValidation {
-  const outstanding: string[] = [];
+  const fields = outstandingFieldsFor(key, answers);
+  if (fields.length === 0) return OK;
+  return {
+    complete: false,
+    outstanding: fields.map((f) => `${f.label}: ${describeAsk(f)}`),
+  };
+}
 
-  if (key === "habits") {
-    for (const row of HABIT_YESNO_KEYS) {
-      if (answers.habits[row] === null) outstanding.push(`${HABIT_LABELS[row]}: choose Yes or No`);
-    }
-    if (answers.habits.hair_wash_frequency === null)
-      outstanding.push("Hair wash: choose how often");
-    if (answers.habits.smoking === true && answers.habits.smoking_severity === null)
-      outstanding.push("Smoking: choose how much");
-    if (
-      answers.habits.salon_treatments === true &&
-      !(answers.habits.salon_treatment_detail ?? "").trim()
-    )
-      outstanding.push("Salon treatments: say which treatment");
-    return outstanding.length === 0 ? OK : { complete: false, outstanding };
-  }
-
-  if (key === "products") {
-    for (const row of PRODUCT_ROWS) {
-      const e = answers.products[row];
-      if (e.used === null) {
-        outstanding.push(`${row}: choose Yes or No`);
-        continue;
-      }
-      if (e.used === false) continue;
-      if (e.duration === null) outstanding.push(`${row}: how long`);
-      if (e.helped === null) outstanding.push(`${row}: did it help`);
-      if (e.side_effects === null) outstanding.push(`${row}: any side effects`);
-    }
-    return outstanding.length === 0 ? OK : { complete: false, outstanding };
-  }
-
-  if (key === "procedures") {
-    for (const row of PROCEDURE_ROWS) {
-      const e = answers.procedures[row];
-      if (e.done === null) {
-        outstanding.push(`${row}: choose Yes or No`);
-        continue;
-      }
-      if (e.done === false) continue;
-      if (e.sessions === null) outstanding.push(`${row}: how many sessions`);
-      if (e.helped === null) outstanding.push(`${row}: did it help`);
-    }
-    return outstanding.length === 0 ? OK : { complete: false, outstanding };
-  }
-
-  return OK;
+/** The compact half of the message - "choose Yes or No", "how long", ... */
+function describeAsk(f: OutstandingField): string {
+  if (f.kind === "yesno") return "choose Yes or No";
+  if (f.kind === "text") return "add a short detail";
+  return "choose one";
 }
 
 /** Convenience wrapper kept for call sites that only need the boolean. */
@@ -239,6 +193,9 @@ export function isStepComplete(
 ): boolean {
   return validateStep(step, answers, meta, explicitNone).complete;
 }
+
+/** Re-exported so a component needs one import for both validation and follow-ups. */
+export { outstandingFieldsFor, type OutstandingField };
 
 export function stepIndexById(steps: Step[], id: string): number {
   const i = steps.findIndex((s) => s.id === id);

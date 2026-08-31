@@ -1,9 +1,9 @@
 /**
- * Browser smoke test — `node scripts/smoke-browser.mjs [baseURL]`
+ * Browser smoke test - `node scripts/smoke-browser.mjs [baseURL]`
  *
  * Written after shipping an infinite render loop that every other check missed:
  * typecheck passed, 75 unit tests passed, the production build passed, and `curl`
- * returned HTTP 200 — because the loop only happens in a real React client.
+ * returned HTTP 200 - because the loop only happens in a real React client.
  *
  * It drives a real browser at 380px, taps the entire intake as a female patient (the
  * path with the MOST steps, so Q6/Q7 gating is exercised), and fails on any console
@@ -11,7 +11,7 @@
  *
  * Locators are ROLE-based on purpose. The first draft used getByText("Saliva") and
  * silently clicked the *hint* ("Saliva mein sui nahi lagti"), which sits above the
- * options — so the test failed while the app was correct. Options are real radios and
+ * options - so the test failed while the app was correct. Options are real radios and
  * checkboxes (see OptionCard), so ask for those.
  *
  * Needs no API keys: every question is completed by tapping.
@@ -52,8 +52,12 @@ async function tap(locator, label) {
   try {
     await locator.waitFor({ state: "visible", timeout: 12_000 });
     await locator.click();
-  } catch {
-    throw new Error(`could not tap ${label} — screen was: ${where}`);
+  } catch (e) {
+    // Keep the original Playwright message: "disabled", "strict mode violation" and
+    // "intercepts pointer events" are three very different bugs and the wrapper used
+    // to flatten all of them into one useless line.
+    const why = String(e).split("\n").slice(0, 2).join(" | ");
+    throw new Error(`could not tap ${label} - screen was: ${where} - cause: ${why}`);
   }
   notes.push(`${String(where).slice(0, 44).padEnd(46)} tap ${label}`);
   // Auto-advance is a 180ms beat plus a ~220ms transition; wait past both.
@@ -68,83 +72,160 @@ try {
   // ---------- landing ----------
   await page.goto(BASE, { waitUntil: "networkidle" });
   notes.push(`page title: ${JSON.stringify(await page.title())}`);
-  await tapButton("Shuru karein");
+  await tapButton("Start");
   await page.waitForURL(/\/intake/, { timeout: 15_000 });
 
   // ---------- Q1 age (preset + explicit Next) ----------
   await tapButton(/^30s/);
-  await tapButton("Aage");
+  await tapButton("Next");
 
   // ---------- Q2 duration (auto-advance) ----------
   await tapOption("Over a year");
 
+  // Validation must actually BLOCK: Q3 starts with nothing selected, so Next is
+  // disabled and the reason is printed on screen.
+  const nextBtn = page.getByRole("button", { name: "Next" });
+  await nextBtn.waitFor({ state: "visible", timeout: 12_000 });
+  const blocked = await nextBtn.isDisabled();
+  const reason = await page.getByRole("status").innerText().catch(() => "");
+  notes.push(`Q3 Next disabled before answering? ${blocked}  reason shown: ${JSON.stringify(reason.replace(/\s+/g, " ").slice(0, 60))}`);
+  if (!blocked) throw new Error("Next was enabled on an unanswered multi-select");
+
   // ---------- Q3 family history (multi) ----------
   await tapCheck(/Father had hair loss/);
-  await tapButton("Aage");
+  await tapButton("Next");
 
-  // ---------- Q4 pattern (multi) ----------
-  await tapCheck(/Thinning at crown/);
-  await tapButton("Aage");
+  // ---------- Q4 pattern: the diagram picker ----------
+  const diagrams = await page.locator("main svg").count();
+  notes.push(`Q4 rendered ${diagrams} inline diagrams (6 patterns expected)`);
+  if (diagrams < 6) throw new Error(`expected 6 scalp diagrams, found ${diagrams}`);
+  await tapCheck("Thinning at crown");
+  await tapButton("Next");
 
   // ---------- sex gate: Female gives the longest path ----------
   await tapOption(/^Female/);
-  notes.push("chose Female — Q6 and Q7 must now appear");
+  notes.push("chose Female - Q6 and Q7 must now appear");
 
   // ---------- Q5 conditions (multi) ----------
   await tapCheck(/Thyroid disorder/);
-  await tapButton("Aage");
+  await tapButton("Next");
 
   // ---------- Q6 + Q7: exist ONLY because of the gate ----------
   await tapOption(/^Irregular/);
   await tapOption(/^Not applicable/);
-  notes.push("Q6 + Q7 rendered — live gating confirmed");
+  notes.push("Q6 + Q7 rendered - live gating confirmed");
 
   // ---------- Q8, Q9 yes/no ----------
-  await tapOption("Haan");
-  await tapOption("Nahi");
+  await tapOption("Yes");
+  await tapOption("No");
 
   // ---------- Q10 past 6 months (multi) ----------
   await tapCheck(/Recent surgery/);
-  await tapButton("Aage");
+  await tapButton("Next");
 
-  // ---------- Q11 habits: tap fallback, no voice ----------
-  // hair_wash_frequency is the one habits field with no safe default.
-  await tapOption("Alternate Days");
-  await tapButton("Aage");
-  notes.push("Q11 habits completed by tapping (voice never needed)");
+  // ---------- Q11 habits: EVERY row must be answered now ----------
+  const habitsBlocked = await page.getByRole("button", { name: "Next" }).isDisabled();
+  notes.push(`Q11 Next disabled with rows unanswered? ${habitsBlocked}`);
+  if (!habitsBlocked) throw new Error("habits step allowed Next with unanswered rows");
 
-  // ---------- Q12 products, Q13 procedures: leave every row off ----------
-  await tapButton("Aage");
-  await tapButton("Aage");
+  // Desktop affordance check: Tailwind v4's preflight sets buttons to cursor:default,
+  // which made every control feel dead under a mouse. Assert it is fixed.
+  const micCursor = await page
+    .getByRole("button", { name: /Answer by speaking/ })
+    .evaluate((el) => getComputedStyle(el).cursor);
+  notes.push(`mic button cursor: ${micCursor}  (must be "pointer")`);
+  if (micCursor !== "pointer") throw new Error(`mic cursor was ${micCursor}, expected pointer`);
+
+  // ---------- the guided follow-up flow ----------
+  // This is how layered questions get answered after a voice fill: one full-size
+  // question at a time, recomputed from the answers so new layers appear as they unlock.
+  await tapButton(/Answer the remaining/);
+  const flow = page.locator("section[aria-label='Remaining questions']");
+  await flow.waitFor({ state: "visible", timeout: 10_000 });
+  notes.push(`follow-up flow opened: ${(await flow.locator("p").first().innerText()).trim()}`);
+
+  // While the flow runs, the grid and the outstanding summary must both stand down - // otherwise the same question appears three times on one screen.
+  const gridVisible = await page
+    .getByText("Do you drink?")
+    .isVisible()
+    .catch(() => false);
+  const summaryVisible = await page
+    .getByRole("status")
+    .isVisible()
+    .catch(() => false);
+  notes.push(`during flow - grid hidden: ${!gridVisible}, summary hidden: ${!summaryVisible}`);
+  if (gridVisible || summaryVisible) throw new Error("flow is duplicated by the grid/summary");
+
+  // Answer "Yes" to smoking so a NEW layer (severity) unlocks mid-flow, then finish.
+  await tap(flow.getByRole("button", { name: "Yes" }), "flow: smoking = Yes");
+  // The layer must appear IMMEDIATELY after its trigger, not at the end of the queue.
+  const unlocked = await flow
+    .getByText(/How much do you smoke/)
+    .isVisible()
+    .catch(() => false);
+  notes.push(`"Yes" unlocked its deeper question right away: ${unlocked}`);
+  if (!unlocked) throw new Error("layered follow-up did not appear directly after its trigger");
+
+  for (let i = 0; i < 12; i++) {
+    if (!(await flow.isVisible().catch(() => false))) break;
+    const btn = flow.getByRole("button").filter({ hasNotText: /Use list|Save|Got it/ }).last();
+    if (!(await btn.isVisible().catch(() => false))) break;
+    const label = (await btn.innerText().catch(() => "?")).trim().slice(0, 22);
+    if (/^(Yes|No)$/.test(label) || label.length > 0) await tap(btn, `flow: ${label}`);
+    else break;
+    // The salon detail is free text; type it rather than tapping.
+    const textbox = flow.getByRole("textbox");
+    if (await textbox.isVisible().catch(() => false)) {
+      await textbox.fill("keratin, 6 months ago");
+      await tap(flow.getByRole("button", { name: "Save" }), "flow: save salon detail");
+    }
+  }
+  notes.push("follow-up flow completed every outstanding field");
+
+  const nextNowEnabled = await page.getByRole("button", { name: "Next" }).isEnabled();
+  notes.push(`Q11 Next enabled after the flow: ${nextNowEnabled}`);
+  if (!nextNowEnabled) throw new Error("flow finished but the step is still incomplete");
+  await tapButton("Next");
+
+  // ---------- Q12 products, Q13 procedures: answer every row via the grid ----------
+  for (const [label, count] of [["products", 5], ["procedures", 4]]) {
+    const stillBlocked = await page.getByRole("button", { name: "Next" }).isDisabled();
+    if (!stillBlocked) throw new Error(`${label} allowed Next with unanswered rows`);
+    for (let i = 0; i < Number(count); i++) {
+      await tap(page.getByRole("radio", { name: "No" }).nth(i), `${label} row ${i + 1} = No`);
+    }
+    await tapButton("Next");
+    notes.push(`Q${label === "products" ? 12 : 13} ${label}: all rows answered No`);
+  }
 
   // ---------- Q14 side effects: No (so no description is required) ----------
-  await tapOption("Nahi");
-  await tapButton("Aage");
+  await tapOption("No");
+  await tapButton("Next");
 
   // ---------- Q15 sample type ----------
   await tapOption(/^Saliva/);
 
   // ---------- Q16 consent: never pre-ticked ----------
   const consentPreselected = await page
-    .getByRole("radio", { name: /Haan, permission hai/ })
+    .getByRole("radio", { name: /Yes, I agree/ })
     .getAttribute("aria-checked");
   notes.push(`consent pre-selected on arrival? ${consentPreselected}  (must be "false")`);
   if (consentPreselected !== "false") throw new Error("consent was pre-selected");
-  await tapOption(/Haan, permission hai/);
-  await tapButton("Aage");
+  await tapOption(/Yes, I agree/);
+  await tapButton("Next");
 
   // ---------- review ----------
-  await page.getByText("Bas ho gaya!").waitFor({ state: "visible", timeout: 15_000 });
+  await page.getByText("All done").waitFor({ state: "visible", timeout: 15_000 });
   notes.push("reached the Review screen");
 
-  const dl = page.getByRole("button", { name: /JSON download karein/ });
+  const dl = page.getByRole("button", { name: /Download JSON/ });
   await dl.waitFor({ state: "visible", timeout: 10_000 });
   if (!(await dl.isEnabled()))
     throw new Error("form completed by tapping, but validate() still rejected it");
-  notes.push("download enabled — validate() says shape + all 16 keys are satisfied");
+  notes.push("download enabled - validate() says shape + all 16 keys are satisfied");
 
   // ---------- inspect the actual output object ----------
-  await page.getByRole("button", { name: /Raw JSON dekhein/ }).click();
+  await page.getByRole("button", { name: /View raw JSON/ }).click();
   await page.waitForTimeout(500);
   const parsed = JSON.parse(await page.locator("pre").first().innerText());
   const a = parsed.answers;
@@ -162,14 +243,14 @@ try {
   // ---------- gating in the other direction ----------
   // Go back to the gate, switch to Male, and confirm Q6/Q7 vanish AND their stored
   // answers are nulled rather than left stale.
-  await page.getByRole("button", { name: /menstrual_cycle|Periods kaise/ }).first().click();
+  await page.getByRole("button", { name: /menstrual_cycle|How are your periods/ }).first().click();
   await page.waitForTimeout(500);
-  // The gate is inserted before the FIRST section-B question, which is Q5 — so from
+  // The gate is inserted before the FIRST section-B question, which is Q5 - so from
   // Q6 it is two steps back (Q6 -> Q5 -> gate), not one.
-  await tapButton("Peeche");
-  await tapButton("Peeche");
+  await tapButton("Back");
+  await tapButton("Back");
   const atGate = await heading();
-  notes.push(`two Peeche taps from Q6 landed on: ${atGate}`);
+  notes.push(`two Back taps from Q6 landed on: ${atGate}`);
   await tapOption(/^Male/);
   notes.push("switched sex to Male");
 
@@ -200,6 +281,6 @@ if (errors.length === 0) console.log("  none");
 for (const e of errors) console.log(`  [${e.fatal ? "FATAL" : "warn "}] ${e.kind}: ${e.text}`);
 
 console.log(
-  `\n${fatal.length === 0 ? "PASS" : "FAIL"} — ${errors.length} error(s), ${fatal.length} fatal\n`,
+  `\n${fatal.length === 0 ? "PASS" : "FAIL"} - ${errors.length} error(s), ${fatal.length} fatal\n`,
 );
 process.exit(fatal.length === 0 ? 0 : 1);

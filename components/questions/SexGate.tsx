@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * The sex question — asked ONCE, immediately before section B, and only to gate Q6/Q7.
+ * The sex question - asked ONCE, immediately before section B, and only to gate Q6/Q7.
  *
  * Why it is a question and not an inference: Q9 ("excess body or facial hair") would
  * technically correlate, but inferring a patient's sex from a hirsutism answer is both

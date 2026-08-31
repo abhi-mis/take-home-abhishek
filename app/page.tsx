@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Landing screen. Deliberately one screen with one obvious button — the patient is
+ * Landing screen. Deliberately one screen with one obvious button - the patient is
  * usually standing in a clinic reception holding a phone in one hand.
  *
  * The "continue where you left off" button only appears if sessionStorage actually

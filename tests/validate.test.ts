@@ -16,7 +16,19 @@ import {
 const male: Meta = { patient_sex: "male" };
 const female: Meta = { patient_sex: "female" };
 
-/** A complete, valid male intake — the baseline every test mutates one field of. */
+/** Every row explicitly answered "not used" - the new default a patient must supply. */
+function allUnused() {
+  return Object.fromEntries(
+    PRODUCT_ROWS.map((r) => [r, { used: false, duration: null, helped: null, side_effects: null }]),
+  ) as Answers["products"];
+}
+function allNotDone() {
+  return Object.fromEntries(
+    PROCEDURE_ROWS.map((r) => [r, { done: false, sessions: null, helped: null }]),
+  ) as Answers["procedures"];
+}
+
+/** A complete, valid male intake - the baseline every test mutates one field of. */
 function completeMale(): Answers {
   return {
     ...structuredClone(EMPTY_ANSWERS),
@@ -41,11 +53,11 @@ function completeMale(): Answers {
       salon_treatment_detail: null,
     },
     products: {
-      ...structuredClone(EMPTY_ANSWERS.products),
+      ...allUnused(),
       "Topical Minoxidil": { used: true, duration: "3-6mo", helped: true, side_effects: false },
     },
     procedures: {
-      ...structuredClone(EMPTY_ANSWERS.procedures),
+      ...allNotDone(),
       "PRP/GFC/iPRF": { done: true, sessions: "1-3", helped: true },
     },
     past_treatment_side_effects: false,
@@ -55,7 +67,10 @@ function completeMale(): Answers {
   };
 }
 
-/** Every step the patient must have tapped past for full coverage. */
+/**
+ * Which "None of these" controls the patient chose. Coverage is otherwise derived from
+ * the answers themselves, so this is the only UI state validate() still needs.
+ */
 const ALL_TOUCHED: Record<string, true> = Object.fromEntries(
   QUESTIONS.map((q) => [q.key, true as const]),
 );
@@ -96,13 +111,30 @@ describe("coverage", () => {
     expect(r.missing).toHaveLength(TOTAL_QUESTIONS - 2);
   });
 
-  it("does not accept an untouched multi-select as answered", () => {
+  it("does not accept an empty multi-select unless None was actively chosen", () => {
     const a = { ...completeMale(), past_6_months: [] };
-    const touched = { ...ALL_TOUCHED };
-    delete (touched as Record<string, unknown>).past_6_months;
-    expect(validate(a, male, touched).missing).toContain("past_6_months");
-    // ...but once tapped past, an empty array IS the answer.
-    expect(validate(a, male, ALL_TOUCHED).valid).toBe(true);
+    // No explicit "None of these" -> still counted as unanswered.
+    expect(validate(a, male, {}).missing).toContain("past_6_months");
+    // Actively choosing "None of these" resolves it.
+    expect(validate(a, male, { past_6_months: true }).valid).toBe(true);
+  });
+
+  it("rejects an unanswered yes/no row anywhere in the tables", () => {
+    const a = completeMale();
+    a.products["Supplements"] = { used: null, duration: null, helped: null, side_effects: null };
+    const r = validate(a, male, ALL_TOUCHED);
+    expect(r.valid).toBe(false);
+    // Both gates fire: coverage flags the question, Zod rejects the null boolean.
+    expect(r.missing).toContain("products");
+    expect(r.issues.join(" ")).toMatch(/Supplements/);
+  });
+
+  it("rejects an unanswered habit row", () => {
+    const a = completeMale();
+    a.habits.alcohol = null;
+    const r = validate(a, male, ALL_TOUCHED);
+    expect(r.valid).toBe(false);
+    expect(r.missing).toContain("habits");
   });
 
   it("requires a wash frequency inside the habits table", () => {

@@ -7,8 +7,8 @@
  *
  * Each slice owns three things:
  *   jsonSchema - the shape shown to the model, built from lib/schema.ts option strings
- *   run()      - Zod-parses the model's JSON and converts it to a store patch
- *   unfilled   - fields the transcript did not mention, so the UI can ask for a tap
+ *   run() - Zod-parses the model's JSON and converts it to a store patch
+ *   unfilled - fields the transcript did not mention, so the UI can ask for a tap
  *
  * Anything off-schema is dropped rather than repaired: a wrong option string in a
  * medical intake is worse than a blank the patient taps in.
@@ -40,7 +40,7 @@ export function isVoiceKey(k: string): k is VoiceKey {
 
 export interface ExtractResult {
   patch: Partial<Answers>;
-  /** Dotted field paths the patient did not mention — the UI asks for these. */
+  /** Dotted field paths the patient did not mention - the UI asks for these. */
   unfilled: string[];
 }
 
@@ -128,7 +128,7 @@ function pushOnce(arr: string[], v: string) {
 }
 
 // ---------------------------------------------------------------------------
-// Q12 products / Q13 procedures — same shape, different columns
+// Q12 products / Q13 procedures - same shape, different columns
 // ---------------------------------------------------------------------------
 const ProductRaw = z.object({
   used: boolN(),

@@ -3,13 +3,13 @@
  *
  * `useIntake((s) => s.steps())` looked harmless. But Zustand compares each selector's
  * result with Object.is, and `steps()` built a fresh array on every call, so the result
- * never compared equal — React re-rendered until it threw "Maximum update depth
+ * never compared equal - React re-rendered until it threw "Maximum update depth
  * exceeded" (plus a "getServerSnapshot should be cached" warning on the SSR path).
  *
  * A type checker cannot catch this and neither can a unit test on the store, because
  * the bug lives in the *shape of the call site*. So this test reads the source.
  *
- * The rule it enforces: a `useIntake(...)` selector may only PROJECT state — read a
+ * The rule it enforces: a `useIntake(...)` selector may only PROJECT state - read a
  * field or a stable action reference. It may never CALL anything or CONSTRUCT an object
  * or array. Derive with `useMemo` at the call site instead.
  */
@@ -32,7 +32,7 @@ function walk(dir: string, out: string[] = []): string[] {
 const files = SEARCH_DIRS.flatMap((d) => walk(path.join(ROOT, d)));
 
 /**
- * Comments must be stripped before scanning — the doc block in store.ts quotes the
+ * Comments must be stripped before scanning - the doc block in store.ts quotes the
  * offending pattern on purpose to warn people off it, and a scanner that reads prose
  * would flag the warning itself.
  */
@@ -63,7 +63,7 @@ describe("Zustand selectors must be referentially stable", () => {
   });
 
   it("never calls a function inside a selector", () => {
-    // `s.steps()` — the exact bug. A trailing `()` means a new value every render.
+    // `s.steps()` - the exact bug. A trailing `()` means a new value every render.
     const offenders = found.filter((f) => /\w\s*\([^)]*\)\s*$/.test(f.body));
     expect(offenders).toEqual([]);
   });
@@ -76,7 +76,7 @@ describe("Zustand selectors must be referentially stable", () => {
 
   it("keeps every selector a plain property projection", () => {
     // Allow `s.answers`, `s.patch`, and primitive-returning reads like
-    // `Object.keys(s.touched).length` — reject anything else.
+    // `Object.keys(s.touched).length` - reject anything else.
     const allowed = /^\w+\.[\w.[\]"'-]+$/;
     const primitiveRead = /\.length$|^\w+\.\w+ [=!<>]/;
     const offenders = found.filter(

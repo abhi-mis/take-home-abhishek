@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Q14 — yes/no, and if yes, describe it.
+ * Q14 - yes/no, and if yes, describe it.
  *
  * The describe box is the one place in the form where free text is genuinely the
  * right answer (side effects are open-ended and clinically important), so it gets
@@ -9,7 +9,7 @@
  * the same field receives either.
  *
  * No auto-advance on the yes/no, because tapping "Yes" reveals a required field
- * directly below it — advancing would hide the thing the patient now has to fill.
+ * directly below it - advancing would hide the thing the patient now has to fill.
  */
 import { AnimatePresence, motion } from "framer-motion";
 import type { Answers } from "@/lib/types";
@@ -48,7 +48,7 @@ export function YesNoDescribe({
           >
             <div className="pt-1">
               <p className="mb-3 text-[14px] font-semibold text-ink">
-                Tell us a little more — you can speak it if you prefer.
+                Tell us a little more - you can speak it if you prefer.
               </p>
 
               <VoicePanel
@@ -65,11 +65,11 @@ export function YesNoDescribe({
                 onChange={(e) => patch({ past_treatment_describe: e.target.value || null })}
                 placeholder="e.g. minoxidil made my scalp itch and burn"
                 rows={4}
-                className="w-full rounded-2xl border border-line bg-card p-3.5 text-[15px] leading-snug text-ink placeholder:text-muted/70"
+                className="w-full rounded-2xl border border-line bg-card p-3.5 text-[15px] leading-snug text-ink transition-colors placeholder:text-muted/70 hover:border-brand/40 focus:border-brand focus:outline-none"
               />
               {!answers.past_treatment_describe ? (
                 <p className="mt-2 text-[12.5px] text-warn">
-                  This is required — it tells your doctor what to avoid.
+                  This is required - it tells your doctor what to avoid.
                 </p>
               ) : null}
             </div>

@@ -2,7 +2,7 @@
  * Zod mirror of the Answers type + a coverage check.
  *
  * Two separate questions get answered here:
- *   1. SHAPE    - is every value one of the schema's exact option strings, and are the
+ *   1. SHAPE - is every value one of the schema's exact option strings, and are the
  *                 conditional followups present exactly when their trigger is true?
  *   2. COVERAGE - have all 16 questions been resolved? A sex-gated null counts as
  *                 resolved; an untouched multi-select does not.
@@ -38,7 +38,7 @@ const optionOf = <T extends readonly string[]>(a: T) => z.enum(asTuple(a));
 
 /**
  * Note the asymmetry with lib/types.ts: while filling, every yes/no is `boolean | null`
- * so "unanswered" is representable. Here they must be real booleans — a null is exactly
+ * so "unanswered" is representable. Here they must be real booleans - a null is exactly
  * the unanswered case, and it must fail. That is how a nullable UI produces a
  * non-nullable output without a separate "final" type.
  */
@@ -147,7 +147,7 @@ export interface ValidationResult {
  * Coverage per question key, derived from the ANSWERS themselves rather than from which
  * screens were visited.
  *
- * This is the same rule set as validateStep() in lib/steps.ts — it reuses that function
+ * This is the same rule set as validateStep() in lib/steps.ts - it reuses that function
  * so the per-step gate and the final gate cannot drift apart. `explicitNone` covers the
  * one case answers alone cannot express: a deliberately empty Q4/Q10.
  */

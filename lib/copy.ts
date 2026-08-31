@@ -4,7 +4,7 @@
  * English throughout, written the way a good nurse actually speaks: short sentences,
  * no jargon, no instructions the UI should be conveying on its own. Where a schema
  * option is clinical shorthand, `gloss` adds a plain-English explanation underneath it
- * — the option label itself is never rewritten, because that exact string is what ends
+ *  - the option label itself is never rewritten, because that exact string is what ends
  * up in the doctor's output.
  *
  * Keeping every string here (rather than inline in components) means a translation is a
@@ -21,7 +21,7 @@ export interface QuestionCopy {
 export const COPY: Record<QuestionKey, QuestionCopy> = {
   age_hair_loss_began: {
     title: "At what age did your hair loss start?",
-    hint: "A rough age is fine — pick the closest range, then fine-tune.",
+    hint: "A rough age is fine - pick the closest range, then fine-tune.",
   },
   duration: {
     title: "How long has it been going on?",
@@ -103,11 +103,11 @@ export const COPY: Record<QuestionKey, QuestionCopy> = {
   },
   products: {
     title: "Which hair products do you use?",
-    hint: "Shampoos, oils, minoxidil, tablets — anything at all.",
+    hint: "Shampoos, oils, minoxidil, tablets - anything at all.",
   },
   procedures: {
     title: "Have you had any clinic treatments?",
-    hint: "PRP, exosomes, a transplant — or none of them.",
+    hint: "PRP, exosomes, a transplant - or none of them.",
   },
   past_treatment_side_effects: {
     title: "Did any past treatment cause side effects?",
@@ -117,7 +117,7 @@ export const COPY: Record<QuestionKey, QuestionCopy> = {
     title: "How would you prefer to give your sample?",
     hint: "Both give the same result. Saliva needs no needle.",
     gloss: {
-      Saliva: "A spit sample — no needle",
+      Saliva: "A spit sample - no needle",
       Blood: "A small blood draw",
       Either: "You decide at the clinic",
     },
@@ -131,7 +131,7 @@ export const UI_COPY = {
   landingTitle: "GenoRoot",
   landingKicker: "Hair & Scalp Intake",
   landingBody:
-    "Let us get started — this takes about two minutes. Sixteen short questions, and you can answer some of them just by talking.",
+    "Let us get started - this takes about two minutes. Sixteen short questions, and you can answer some of them just by talking.",
   landingCta: "Start",
   landingResume: "Continue where you left off",
   landingRestart: "Start over",
@@ -140,7 +140,7 @@ export const UI_COPY = {
   back: "Back",
   none: "None of these",
   notSure: "Not sure",
-  confirmHint: "Filled in below — tap anything to correct it.",
+  confirmHint: "Filled in below - tap anything to correct it.",
   yes: "Yes",
   no: "No",
   multiHint: "You can select more than one",
@@ -148,8 +148,8 @@ export const UI_COPY = {
   recordStop: "Done",
   recordListening: "Listening…",
   recordThinking: "Filling it in…",
-  recordFilled: "Filled in — please check below",
-  recordLanguages: "English, Hindi, or a mix — however you normally speak.",
+  recordFilled: "Filled in - please check below",
+  recordLanguages: "English, Hindi, or a mix - however you normally speak.",
   reviewTitle: "All done",
   reviewBody: "Here is your completed form. Tap any answer to change it.",
   reviewIncomplete: "Almost there",

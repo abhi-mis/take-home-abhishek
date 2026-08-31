@@ -16,7 +16,7 @@ export function downloadJson(filename: string, data: unknown) {
   URL.revokeObjectURL(url);
 }
 
-/** Short haptic tick on tap — makes a phone form feel physical. No-op on desktop. */
+/** Short haptic tick on tap - makes a phone form feel physical. No-op on desktop. */
 export function tick(ms = 8) {
   if (typeof navigator !== "undefined" && "vibrate" in navigator) {
     try {

@@ -2,7 +2,7 @@
 
 /**
  * Progress is computed from the VISIBLE step list, so a male patient sees 15 steps
- * and a female patient 17 (16 questions + the sex gate) — the bar never jumps
+ * and a female patient 17 (16 questions + the sex gate) - the bar never jumps
  * backwards when questions are gated away mid-form.
  */
 import { motion } from "framer-motion";

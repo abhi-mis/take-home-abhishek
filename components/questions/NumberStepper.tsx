@@ -3,7 +3,7 @@
 /**
  * Q1 age hair loss began.
  *
- * "At what age did it start?" is a memory question, not a data-entry question — most
+ * "At what age did it start?" is a memory question, not a data-entry question - most
  * patients know the decade, not the year. So the coarse control comes first (five
  * decade presets), and the fine control appears only after a preset is picked.
  * That turns a keyboard interaction into one tap plus an optional nudge, and it
@@ -56,7 +56,9 @@ export function NumberStepper({
               className={cn(
                 "flex min-h-[72px] flex-col items-center justify-center rounded-2xl border-2",
                 "transition-all duration-100 active:scale-[0.98]",
-                active ? "border-brand bg-brand-soft" : "border-line bg-card",
+                active
+                  ? "border-brand bg-brand-soft"
+                  : "border-line bg-card hover:border-brand/50 hover:bg-brand-soft/35",
               )}
             >
               <span
@@ -82,7 +84,7 @@ export function NumberStepper({
             </StepBtn>
             <div className="text-center">
               <span className="block text-[40px] font-bold leading-none tabular-nums text-brand-ink">
-                {value ?? "—"}
+                {value ?? " - "}
               </span>
               <span className="mt-1 block text-[12px] text-muted">years old</span>
             </div>
@@ -126,7 +128,7 @@ function StepBtn({
       type="button"
       aria-label={label}
       onClick={onClick}
-      className="grid size-14 shrink-0 place-items-center rounded-2xl border-2 border-line bg-paper text-2xl font-bold text-ink active:scale-95 active:border-brand/40"
+      className="grid size-14 shrink-0 place-items-center rounded-2xl border-2 border-line bg-paper text-2xl font-bold text-ink transition-colors hover:border-brand hover:bg-brand-soft hover:text-brand-ink active:scale-95"
     >
       {children}
     </button>
