@@ -6,16 +6,77 @@
   against its own background.
 */
 @theme {
-  --color-paper: #faf7f2;
-  --color-card: #ffffff;
-  --color-ink: #14211f;
-  --color-muted: #5d6b68;
-  --color-line: #e5e0d6;
-  --color-brand: #0d6b5f;
-  --color-brand-ink: #0a4f46;
-  --color-brand-soft: #e3f1ee;
-  --color-warn: #9a3412;
+  --color-paper: var(--paper);
+  --color-card: var(--card);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-line: var(--line);
+  --color-brand: var(--brand);
+  --color-brand-strong: var(--brand-strong);
+  --color-brand-ink: var(--brand-ink);
+  --color-brand-soft: var(--brand-soft);
+  --color-warn: var(--warn);
+  --color-code-bg: var(--code-bg);
+  --color-code-fg: var(--code-fg);
   --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+/*
+  Palette, defined twice.
+  `--brand-ink` is a TEXT colour (on soft backgrounds) and `--brand-strong` is the
+  button hover/active fill. They were the same token originally, which broke the moment
+  dark mode needed light text on soft but a darker fill on hover - so they are split.
+*/
+:root {
+  --paper: #faf7f2;
+  --card: #ffffff;
+  --ink: #14211f;
+  --muted: #5d6b68;
+  --line: #e5e0d6;
+  --brand: #0d6b5f;
+  --brand-strong: #0a4f46;
+  --brand-ink: #0a4f46;
+  --brand-soft: #e3f1ee;
+  --warn: #9a3412;
+  --code-bg: #14211f;
+  --code-fg: #faf7f2;
+  color-scheme: light;
+}
+
+/* An explicit choice always wins over the system preference. */
+:root[data-theme="dark"] {
+  --paper: #0e1513;
+  --card: #172220;
+  --ink: #edf2f0;
+  --muted: #93a49f;
+  --line: #2b3835;
+  --brand: #0f8f7c;
+  --brand-strong: #0b6f60;
+  --brand-ink: #74dcc9;
+  --brand-soft: #143029;
+  --warn: #ef9f7a;
+  --code-bg: #080d0c;
+  --code-fg: #d8e2df;
+  color-scheme: dark;
+}
+
+/* System dark, but only while the patient has not chosen light explicitly. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper: #0e1513;
+    --card: #172220;
+    --ink: #edf2f0;
+    --muted: #93a49f;
+    --line: #2b3835;
+    --brand: #0f8f7c;
+    --brand-strong: #0b6f60;
+    --brand-ink: #74dcc9;
+    --brand-soft: #143029;
+    --warn: #ef9f7a;
+    --code-bg: #080d0c;
+    --code-fg: #d8e2df;
+    color-scheme: dark;
+  }
 }
 
 html {
@@ -84,6 +145,23 @@ input[type="range"]:active {
 :focus-visible {
   outline: 3px solid var(--color-brand);
   outline-offset: 2px;
+}
+
+/*
+  Voice-fill highlight. Previously animated between two hardcoded hex colours in
+  Framer Motion, which looked wrong the instant a dark palette existed. Now it is an
+  overlay whose opacity fades, so it inherits whatever brand-soft currently is.
+*/
+@keyframes flash-fill {
+  from {
+    opacity: 0.85;
+  }
+  to {
+    opacity: 0;
+  }
+}
+.flash-fill {
+  animation: flash-fill 1.5s ease-out forwards;
 }
 
 .no-scrollbar::-webkit-scrollbar {

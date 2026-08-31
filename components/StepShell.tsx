@@ -14,6 +14,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { ProgressBar } from "./ProgressBar";
 import { Button } from "./ui/Button";
 import { UI_COPY } from "@/lib/copy";
+import { ThemeToggle } from "./ThemeToggle";
 import { cn } from "@/lib/utils";
 
 export function StepShell({
@@ -54,9 +55,12 @@ export function StepShell({
     <div className="mx-auto flex min-h-dvh w-full max-w-md flex-col">
       <header className="sticky top-0 z-30 bg-paper/95 px-5 pb-3 pt-4 backdrop-blur">
         <ProgressBar index={index} total={total} />
-        <p className="mt-2.5 truncate text-[11px] font-semibold uppercase tracking-[0.12em] text-muted">
-          {sectionTitle}
-        </p>
+        <div className="mt-2.5 flex items-center gap-3">
+          <p className="min-w-0 flex-1 truncate text-[11px] font-semibold uppercase tracking-[0.12em] text-muted">
+            {sectionTitle}
+          </p>
+          <ThemeToggle className="-my-1" />
+        </div>
       </header>
 
       <main className="flex-1 px-5 pb-40">

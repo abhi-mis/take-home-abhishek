@@ -111,6 +111,13 @@ export function HabitsGrid({
   );
 }
 
+/**
+ * A row that can flash to mark "the model just filled this".
+ *
+ * The flash used to animate between two hardcoded hex colours, which was wrong the
+ * moment a dark palette existed. It is now a brand-soft overlay whose opacity fades
+ * (see `.flash-fill` in globals.css), so it inherits whatever the current theme is.
+ */
 export function Row({
   children,
   highlighted,
@@ -119,18 +126,16 @@ export function Row({
   highlighted?: boolean;
 }) {
   return (
-    <motion.div
-      initial={false}
-      animate={
-        highlighted
-          ? { backgroundColor: ["#e3f1ee", "#ffffff"], borderColor: ["#0d6b5f", "#e5e0d6"] }
-          : {}
-      }
-      transition={{ duration: 1.4 }}
-      className="rounded-2xl border border-line bg-card p-3.5"
-    >
-      {children}
-    </motion.div>
+    <div className="relative overflow-hidden rounded-2xl border border-line bg-card p-3.5">
+      {highlighted ? (
+        <span
+          key="flash"
+          aria-hidden
+          className="flash-fill pointer-events-none absolute inset-0 rounded-2xl bg-brand-soft"
+        />
+      ) : null}
+      <div className="relative">{children}</div>
+    </div>
   );
 }
 

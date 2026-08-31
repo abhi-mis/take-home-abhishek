@@ -18,6 +18,7 @@ import { buildOutput, validate } from "@/lib/validate";
 import type { Answers, Meta } from "@/lib/types";
 import { Button, CheckIcon } from "./ui/Button";
 import { cn, downloadJson } from "@/lib/utils";
+import { ThemeToggle } from "./ThemeToggle";
 
 export function ReviewScreen({
   answers,
@@ -43,6 +44,9 @@ export function ReviewScreen({
 
   return (
     <div className="mx-auto w-full max-w-md px-5 pb-16 pt-8">
+      <div className="mb-5 flex justify-end">
+        <ThemeToggle />
+      </div>
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
         <div className="flex items-center gap-3">
           <span
@@ -145,7 +149,7 @@ export function ReviewScreen({
       </div>
 
       {showJson ? (
-        <pre className="mt-4 overflow-x-auto rounded-2xl border border-line bg-ink p-4 text-[11.5px] leading-relaxed text-paper">
+        <pre className="mt-4 overflow-x-auto rounded-2xl border border-line bg-code-bg p-4 text-[11.5px] leading-relaxed text-code-fg">
           {JSON.stringify(output, null, 2)}
         </pre>
       ) : null}

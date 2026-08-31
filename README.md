@@ -142,20 +142,41 @@ needle").
 
 ---
 
-## After the voice fill: layered questions
+## The voice question, end to end
 
-The three table questions unfold into more questions as rows are answered Yes. A voice
-fill therefore ends with a few blanks buried inside collapsed rows - so instead of
-listing them, each one is asked as its own full-size question, one at a time
-(`FollowUpFlow`). "Do you smoke? → Yes" is followed immediately by "How much?", and new
-layers unlock mid-flow because the queue is derived from the answers rather than
-precomputed. While it runs, the grid and the outstanding summary stand down, so exactly
-one question is on screen. A tap-first patient can open the same guided flow by hand.
+Q11/12/13 are a three-stage flow, not a grid with a mic on top.
+
+1. **Speak first.** The grid is hidden. You get a prompt naming every topic to cover, an
+   example sentence, the mic, and "I would rather answer by tapping". A grid on screen
+   invites tapping; a mic with no prompt gets you one field instead of six.
+2. **The result popup.** "Filled 6 of 6" - or "Filled 2 of 6, 4 still to go" with the
+   missed items named - plus an explicit **"Yes, these match"**. An LLM just filled six
+   medical fields from one sentence; taking silence as agreement is not confirmation.
+3. **The form.** For confirming, correcting, or answering by hand. Anyone who chose to
+   tap, or whose mic or key failed, lands here directly.
+
+**Layered questions get asked, not listed.** Rows unfold into more questions as they are
+answered Yes, so blanks end up buried in collapsed rows. Each one is instead asked as its
+own full-size question, one at a time (`FollowUpFlow`): "Do you smoke? Yes" is followed
+immediately by "How much?", and new layers unlock mid-flow because the queue is derived
+from the answers rather than precomputed.
 
 **The mic shows real levels.** The waveform comes from an `AnalyserNode` on the live
 stream, not a CSS animation - a fake animation looks identical whether the mic is live or
 muted, so a patient would get no warning they are not being heard until the transcript
-came back empty. Verified against Chromium's fake capture device.
+came back empty.
+
+**Verified with real speech,** not mocks: Windows TTS piped into Chromium's
+`--use-file-for-fake-audio-capture`, through the live Sarvam and NVIDIA routes. "I smoke
+about six a day... I had keratin at a salon last year" filled all six fields, mapped
+"about six a day" to `Moderate 5-10/day`, and extracted `keratin` as the salon detail.
+
+## Light and dark
+
+System-following by default, with a toggle that cycles system, light, dark, and an inline
+script that applies the stored choice before first paint. One set of semantic tokens
+defined twice; the scalp diagrams stay theme-independent because they only read as a set
+with dark hair on a light scalp.
 
 ---
 

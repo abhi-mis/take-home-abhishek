@@ -255,3 +255,89 @@ export function outstandingFieldsFor(
   if (questionKey === "procedures") return proceduresOutstanding(answers);
   return [];
 }
+
+/** One answered field, formatted for the post-voice confirmation summary. */
+export interface AnsweredField {
+  label: string;
+  value: string;
+}
+
+const yn = (v: unknown) => (v === true ? "Yes" : v === false ? "No" : "-");
+
+/**
+ * What IS answered, in display form.
+ *
+ * The mirror of outstandingFieldsFor(). After a voice fill the patient has to be able
+ * to check the model's work without reading a grid, so this produces a flat
+ * label/value list: "Smoking - Yes (Moderate 5-10/day)". Rows the patient said nothing
+ * about are simply absent, which is the honest rendering - they are not "No".
+ */
+export function answeredFieldsFor(
+  questionKey: string | null,
+  a: Answers,
+): AnsweredField[] {
+  const out: AnsweredField[] = [];
+
+  if (questionKey === "habits") {
+    const h = a.habits;
+    if (h.smoking !== null)
+      out.push({
+        label: "Smoking",
+        value: h.smoking ? `Yes${h.smoking_severity ? ` (${h.smoking_severity})` : ""}` : "No",
+      });
+    if (h.alcohol !== null) out.push({ label: "Alcohol", value: yn(h.alcohol) });
+    if (h.hard_water !== null) out.push({ label: "Hard water", value: yn(h.hard_water) });
+    if (h.hair_wash_frequency !== null)
+      out.push({ label: "Hair wash", value: h.hair_wash_frequency });
+    if (h.heating_tools_styling_chemicals !== null)
+      out.push({
+        label: "Heat / styling chemicals",
+        value: yn(h.heating_tools_styling_chemicals),
+      });
+    if (h.salon_treatments !== null)
+      out.push({
+        label: "Salon treatments",
+        value: h.salon_treatments
+          ? `Yes${h.salon_treatment_detail ? ` (${h.salon_treatment_detail})` : ""}`
+          : "No",
+      });
+    return out;
+  }
+
+  if (questionKey === "products") {
+    for (const row of PRODUCT_ROWS) {
+      const e = a.products[row];
+      if (e.used === null) continue;
+      if (!e.used) {
+        out.push({ label: row, value: "Not used" });
+        continue;
+      }
+      const bits = [
+        e.duration ?? "?",
+        e.helped === null ? "help unknown" : e.helped ? "helped" : "did not help",
+        e.side_effects === null ? "side effects unknown" : e.side_effects ? "side effects" : "no side effects",
+      ];
+      out.push({ label: row, value: `Used - ${bits.join(", ")}` });
+    }
+    return out;
+  }
+
+  if (questionKey === "procedures") {
+    for (const row of PROCEDURE_ROWS) {
+      const e = a.procedures[row];
+      if (e.done === null) continue;
+      if (!e.done) {
+        out.push({ label: row, value: "Not done" });
+        continue;
+      }
+      const bits = [
+        e.sessions ? `${e.sessions} sessions` : "sessions ?",
+        e.helped === null ? "help unknown" : e.helped ? "helped" : "did not help",
+      ];
+      out.push({ label: row, value: `Done - ${bits.join(", ")}` });
+    }
+    return out;
+  }
+
+  return out;
+}

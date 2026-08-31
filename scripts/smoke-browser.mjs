@@ -123,6 +123,23 @@ try {
   await tapCheck(/Recent surgery/);
   await tapButton("Next");
 
+  // ---------- Q11: voice questions open on the SPEAK screen, not the grid ----------
+  const speakPrompt = await page
+    .getByText(/Tell me about your daily habits/)
+    .isVisible()
+    .catch(() => false);
+  const gridHiddenAtFirst = !(await page
+    .getByText("Do you drink?")
+    .isVisible()
+    .catch(() => false));
+  notes.push(`Q11 opens on speak screen: prompt ${speakPrompt}, grid hidden ${gridHiddenAtFirst}`);
+  if (!speakPrompt || !gridHiddenAtFirst)
+    throw new Error("voice question did not default to the speak-first screen");
+
+  // No API keys are needed for the tap path, so take the documented escape hatch.
+  await tapButton(/I would rather answer by tapping/);
+  notes.push("chose to tap instead - the grid appears");
+
   // ---------- Q11 habits: EVERY row must be answered now ----------
   const habitsBlocked = await page.getByRole("button", { name: "Next" }).isDisabled();
   notes.push(`Q11 Next disabled with rows unanswered? ${habitsBlocked}`);
@@ -189,6 +206,7 @@ try {
 
   // ---------- Q12 products, Q13 procedures: answer every row via the grid ----------
   for (const [label, count] of [["products", 5], ["procedures", 4]]) {
+    await tapButton(/I would rather answer by tapping/);
     const stillBlocked = await page.getByRole("button", { name: "Next" }).isDisabled();
     if (!stillBlocked) throw new Error(`${label} allowed Next with unanswered rows`);
     for (let i = 0; i < Number(count); i++) {
@@ -217,6 +235,23 @@ try {
   // ---------- review ----------
   await page.getByText("All done").waitFor({ state: "visible", timeout: 15_000 });
   notes.push("reached the Review screen");
+
+  // ---------- theme toggle: system -> light -> dark ----------
+  const themeBtn = page.getByRole("button", { name: /Appearance/ }).first();
+  const seen = [];
+  for (let i = 0; i < 3; i++) {
+    seen.push(await page.evaluate(() => document.documentElement.dataset.theme ?? "system"));
+    await themeBtn.click();
+    await page.waitForTimeout(180);
+  }
+  notes.push(`theme cycle: ${seen.join(" -> ")}`);
+  if (new Set(seen).size < 3) throw new Error(`theme did not cycle: ${seen.join(",")}`);
+  const darkBg = await page.evaluate(() => {
+    document.documentElement.dataset.theme = "dark";
+    return getComputedStyle(document.body).backgroundColor;
+  });
+  notes.push(`dark body background: ${darkBg}`);
+  await page.evaluate(() => document.documentElement.removeAttribute("data-theme"));
 
   const dl = page.getByRole("button", { name: /Download JSON/ });
   await dl.waitFor({ state: "visible", timeout: 10_000 });

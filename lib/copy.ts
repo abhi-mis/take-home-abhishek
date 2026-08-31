@@ -127,6 +127,36 @@ export const COPY: Record<QuestionKey, QuestionCopy> = {
   },
 };
 
+/**
+ * What to say out loud, per voice question.
+ *
+ * A mic with no prompt is the worst version of voice input: the patient does not know
+ * how much to say or which topics count, so they say one thing and the form fills one
+ * field. Naming every topic in one sentence is what makes a single reply fill a whole
+ * table - and it doubles as the summary of the question, so the grid does not need to
+ * be on screen for the patient to know what is being asked.
+ */
+export const SPEAK_PROMPTS: Record<string, { ask: string; example: string }> = {
+  habits: {
+    ask: "Tell me about your daily habits - do you smoke or drink, is the water at home hard, how often do you wash your hair, do you use heat or styling chemicals, and have you had any salon treatments?",
+    example:
+      "I smoke about 6 a day, no alcohol. Water is hard. I wash my hair every other day, no dryer, and I had keratin last year.",
+  },
+  products: {
+    ask: "Which hair products do you use, how long have you used them, and did they help or cause any side effects? Medicated shampoos, oils or serums, minoxidil you apply, minoxidil tablets, and supplements.",
+    example:
+      "I have used topical minoxidil for four months, it helped a bit and no side effects. I also take biotin. Nothing else.",
+  },
+  procedures: {
+    ask: "Have you had any clinic treatments - PRP or GFC, stem cells or exosomes, a hair transplant, or anything else? If so, how many sessions and did they help?",
+    example: "I had PRP, about five sessions, it helped a little. No transplant.",
+  },
+  past_treatment_side_effects: {
+    ask: "Did any past hair treatment cause side effects? Tell me what happened.",
+    example: "Minoxidil made my scalp itch and burn, so I stopped.",
+  },
+};
+
 export const UI_COPY = {
   landingTitle: "GenoRoot",
   landingKicker: "Hair & Scalp Intake",
@@ -145,6 +175,18 @@ export const UI_COPY = {
   no: "No",
   multiHint: "You can select more than one",
   recordCta: "Answer by speaking",
+  speakTitle: "Just say it - we will fill the form",
+  speakTapInstead: "I would rather answer by tapping",
+  speakExampleLabel: "For example",
+  resultAllTitle: "Got everything",
+  resultSomeTitle: "Got most of it",
+  resultNoneTitle: "Could not catch that",
+  resultConfirmQuestion: "Do these details match what you said?",
+  resultConfirm: "Yes, these match",
+  resultEdit: "No, let me change something",
+  resultAnswerRest: "Answer the rest",
+  confirmedBanner: "Confirmed by you",
+  reviewFilled: "Filled from what you said - please check each one.",
   recordStop: "Done",
   recordListening: "Listening…",
   recordThinking: "Filling it in…",

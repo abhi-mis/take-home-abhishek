@@ -14,17 +14,20 @@
  * `justFilled` is derived by diffing the patch against what was there, so the
  * highlight marks what the model actually changed rather than everything it returned.
  */
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { INTAKE_SCHEMA } from "@/lib/schema";
 import { PRODUCT_DUR, PRODUCT_ROWS, PROCEDURE_ROWS, SESSIONS } from "@/lib/types";
 import type { Answers, Habits } from "@/lib/types";
 import type { ExtractResult } from "@/lib/extractPrompt";
 import { UI_COPY } from "@/lib/copy";
+import { CheckIcon } from "../ui/Button";
 import { VoicePanel } from "./VoicePanel";
 import { HabitsGrid } from "./HabitsGrid";
 import { TableGrid, type ColumnSpec } from "./TableGrid";
 import { FollowUpFlow } from "./FollowUpFlow";
-import { outstandingFieldsFor, type OutstandingField } from "@/lib/followups";
+import { SpeakFirst } from "./SpeakFirst";
+import { ResultDialog } from "./ResultDialog";
+import { answeredFieldsFor, outstandingFieldsFor, type OutstandingField } from "@/lib/followups";
 
 const PRODUCT_COLUMNS: ColumnSpec[] = [
   { key: "duration", label: "How long", kind: "options", options: PRODUCT_DUR },
@@ -56,22 +59,39 @@ export function VoiceMatrix({
   questionKey,
   answers,
   patch,
-  flowOpen,
-  setFlowOpen,
+  setFocusMode,
 }: {
   questionKey: "habits" | "products" | "procedures";
   answers: Answers;
   patch: (p: Partial<Answers>) => void;
   /**
-   * Whether the guided follow-up flow is showing. Owned by the page rather than here,
-   * because StepShell also needs to know: while the flow is running it hides its own
-   * "still needed" summary, which would otherwise repeat the very list the flow is
-   * walking the patient through.
+   * Reported UP to the page: "this step is presenting its own focused UI, so stand
+   * down the shared chrome". True on the speak screen and during the follow-up flow.
+   * StepShell then hides its outstanding-items summary, which would otherwise scold a
+   * patient who has not been given a chance to answer yet, or repeat the very list the
+   * flow is already walking them through.
    */
-  flowOpen: boolean;
-  setFlowOpen: (open: boolean) => void;
+  setFocusMode: (focused: boolean) => void;
 }) {
   const [justFilled, setJustFilled] = useState<string[]>([]);
+
+  /**
+   * Stage machine for the question.
+   *
+   *   "speak"  the default - mic plus the spoken prompt, no grid. Speaking is the
+   *            intended path on these three questions, and a grid on screen invites
+   *            tapping instead.
+   *   "result" the popup: how much was captured, and an explicit confirm.
+   *   "form"   the grid, for confirming, correcting, or answering by hand.
+   *
+   * A patient who chose to tap, or whose mic/API failed, goes straight to "form" and
+   * never sees the other two.
+   */
+  const [stage, setStage] = useState<"speak" | "result" | "form">("speak");
+  const [flowOpen, setFlowOpen] = useState(false);
+  const [transcript, setTranscript] = useState("");
+  /** Set once the patient says the auto-filled values are right. */
+  const [confirmed, setConfirmed] = useState(false);
 
   /**
    * Recomputed from the answers on every render, NOT from the model's `unfilled` list.
@@ -89,10 +109,13 @@ export function VoiceMatrix({
    * shallow spread over the existing value keeps earlier taps and lets the patient
    * record twice ("...and I also take biotin") without losing round one.
    */
-  function apply(result: ExtractResult) {
+  function apply(result: ExtractResult, spoken: string) {
     const p = result.patch;
-    // Whatever the model left blank becomes the follow-up queue.
-    setFlowOpen(true);
+    // Show the summary popup rather than dropping the patient into a filled grid with
+    // no explanation of what just happened.
+    setTranscript(spoken);
+    setConfirmed(false);
+    setStage("result");
 
     if (questionKey === "habits" && p.habits) {
       const incoming = p.habits as Partial<Habits>;
@@ -160,9 +183,54 @@ export function VoiceMatrix({
     );
   }
 
+  const answered = answeredFieldsFor(questionKey, answers);
+
+  // Keep the page in step with whichever focused surface is on screen.
+  useEffect(() => {
+    setFocusMode(stage === "speak" || flowOpen);
+  }, [stage, flowOpen, setFocusMode]);
+
+  // Stage 1: speak, or opt into tapping.
+  if (stage === "speak") {
+    return (
+      <SpeakFirst
+        questionKey={questionKey}
+        onResult={apply}
+        onTapInstead={() => setStage("form")}
+      />
+    );
+  }
+
   return (
     <div>
-      <VoicePanel questionKey={questionKey} onResult={apply} />
+      {/* Stage 2: the popup. Rendered over the form so dismissing it reveals the grid. */}
+      {stage === "result" ? (
+        <ResultDialog
+          transcript={transcript}
+          answered={answered}
+          outstanding={outstanding}
+          onConfirm={() => {
+            setConfirmed(true);
+            setStage("form");
+          }}
+          onAnswerRest={() => {
+            setStage("form");
+            setFlowOpen(true);
+          }}
+          onEdit={() => setStage("form")}
+        />
+      ) : null}
+
+      {/* The patient said the auto-filled values are right - shown until they edit. */}
+      {confirmed && !flowOpen ? (
+        <p className="mb-4 flex items-center gap-2 rounded-2xl border border-brand/35 bg-brand-soft/50 px-4 py-2.5 text-[13px] font-semibold text-brand-ink">
+          <CheckIcon className="size-4 shrink-0" />
+          {UI_COPY.confirmedBanner} - you can still change anything below.
+        </p>
+      ) : null}
+
+      {/* Re-record without leaving the question. */}
+      {!flowOpen ? <VoicePanel questionKey={questionKey} onResult={apply} /> : null}
 
       {/*
         The layered-question answer: rather than listing what is missing and leaving the
@@ -196,8 +264,8 @@ export function VoiceMatrix({
             →
           </span>
         </button>
-      ) : justFilled.length > 0 ? (
-        <p className="mb-3 text-[13px] font-medium text-brand-ink">{UI_COPY.confirmHint}</p>
+      ) : justFilled.length > 0 && !confirmed ? (
+        <p className="mb-3 text-[13px] font-medium text-brand-ink">{UI_COPY.reviewFilled}</p>
       ) : null}
 
       {/*

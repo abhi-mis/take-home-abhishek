@@ -53,21 +53,21 @@ export function TableGrid({
         const highlighted = justFilled.includes(row);
 
         return (
-          <motion.div
+          <div
             key={row}
-            initial={false}
-            animate={
-              highlighted
-                ? { borderColor: ["#0d6b5f", "#e5e0d6"], backgroundColor: ["#e3f1ee", "#ffffff"] }
-                : {}
-            }
-            transition={{ duration: 1.4 }}
             className={cn(
-              "rounded-2xl border p-3.5",
+              "relative overflow-hidden rounded-2xl border p-3.5",
               on ? "border-brand/35 bg-card" : "border-line bg-card",
             )}
           >
-            <div className="flex items-start gap-3">
+            {/* Theme-inheriting "just filled" flash - see globals.css .flash-fill. */}
+            {highlighted ? (
+              <span
+                aria-hidden
+                className="flash-fill pointer-events-none absolute inset-0 bg-brand-soft"
+              />
+            ) : null}
+            <div className="relative flex items-start gap-3">
               <div className="min-w-0 flex-1">
                 <p className="text-[14.5px] font-semibold leading-tight text-ink">{row}</p>
                 {rowGloss?.[row] ? (
@@ -102,7 +102,7 @@ export function TableGrid({
                   animate={{ opacity: 1, height: "auto" }}
                   exit={{ opacity: 0, height: 0 }}
                   transition={{ duration: 0.2 }}
-                  className="overflow-hidden"
+                  className="relative overflow-hidden"
                 >
                   <div className="mt-3 flex flex-col gap-3 border-t border-line pt-3">
                     {detailColumns.map((col) => {
@@ -138,7 +138,7 @@ export function TableGrid({
                 </motion.div>
               ) : null}
             </AnimatePresence>
-          </motion.div>
+          </div>
         );
       })}
     </div>

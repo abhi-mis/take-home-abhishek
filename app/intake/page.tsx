@@ -61,15 +61,32 @@ export default function IntakePage() {
   const prevIndex = useRef(0);
 
   /**
-   * "Focus mode" = the guided follow-up flow is open on a table question. It lives here
-   * rather than inside VoiceMatrix so StepShell can stand down its own outstanding-items
-   * summary while the flow is asking those very items one at a time.
+   * "Focus mode" = this step is presenting its own focused surface (the speak-first
+   * screen, or the guided follow-up flow), so StepShell stands down its outstanding-items
+   * summary rather than repeating or pre-empting it.
    */
   const [focusMode, setFocusMode] = useState(false);
+  // null, not currentStepId, so the derive below also runs on the FIRST render - a
+  // resumed session can land straight onto a table question.
+  const focusStepId = useRef<string | null>(null);
 
   const isReview = currentStepId === "review";
   const index = isReview ? steps.length : stepIndexById(steps, currentStepId);
   const step = isReview ? null : steps[index];
+
+  /**
+   * Reset focus mode DURING render, not in an effect.
+   *
+   * An effect runs after paint, so a table question rendered one frame with the summary
+   * visible before its speak screen suppressed it - a visible ghost of "STILL NEEDED (6)"
+   * flashing under the mic. Deriving it here means the correct value is on screen from
+   * the very first frame. Table questions open focused (they start on the speak screen);
+   * everything else opens with the summary available.
+   */
+  if (focusStepId.current !== currentStepId) {
+    focusStepId.current = currentStepId;
+    setFocusMode(step?.kind === "table");
+  }
 
   useEffect(() => {
     setDirection(index >= prevIndex.current ? 1 : -1);
@@ -77,10 +94,9 @@ export default function IntakePage() {
   }, [index]);
 
   // Scroll to top on every step change - otherwise a long grid leaves the next
-  // question's heading off-screen. Focus mode is per-question, so it resets too.
+  // question's heading off-screen.
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: "instant" });
-    setFocusMode(false);
   }, [currentStepId]);
 
   function goBack() {
@@ -137,7 +153,6 @@ export default function IntakePage() {
         chooseNone,
         explicitNone,
         sex: meta.patient_sex,
-        focusMode,
         setFocusMode,
       })}
     </StepShell>
@@ -155,8 +170,7 @@ interface RenderArgs {
   chooseNone: (key: string) => void;
   explicitNone: Record<string, true>;
   sex: string | null;
-  focusMode: boolean;
-  setFocusMode: (open: boolean) => void;
+  setFocusMode: (focused: boolean) => void;
 }
 
 function renderStep({
@@ -168,7 +182,6 @@ function renderStep({
   chooseNone,
   explicitNone,
   sex,
-  focusMode,
   setFocusMode,
 }: RenderArgs) {
   switch (step.kind) {
@@ -251,8 +264,7 @@ function renderStep({
           questionKey={step.key as "habits" | "products" | "procedures"}
           answers={answers}
           patch={patch}
-          flowOpen={focusMode}
-          setFlowOpen={setFocusMode}
+          setFocusMode={setFocusMode}
         />
       );
 

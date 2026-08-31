@@ -92,6 +92,44 @@ Each question picks the cheapest modality rather than sharing one control.
 
 ---
 
+## The voice question, end to end
+
+A voice question is a small stage machine, not a grid with a mic bolted on top.
+
+**1. Speak first (the default).** The grid is not shown. The screen is a prompt
+paragraph naming every topic to cover, one example sentence, the mic, and
+"I would rather answer by tapping".
+
+Two reasons the grid starts hidden. A grid on screen invites tapping, and the voice
+feature never gets used. And a mic with no prompt is the worst version of voice input:
+the patient does not know how much to say, answers one thing, and one field fills.
+Naming all six topics in a single sentence is what makes one reply fill a whole table -
+and it doubles as the plain-language summary of the question, so the grid does not need
+to be visible for the question to be clear.
+
+**2. The result popup.** After extraction, a modal answers the only two questions the
+patient actually has:
+
+- *How much did you get?* - "Filled 6 of 6", or "Filled 2 of 6 - 4 still to go",
+  itemised, with the transcript shown above it.
+- *Is it right?* - an explicit **"Yes, these match"**. An LLM just filled six medical
+  fields from one sentence; treating that as agreed because nobody objected is not
+  consent, it is silence. When something is missing, the primary action becomes
+  "Answer the rest (4)" instead, which opens the follow-up flow.
+
+**3. The form.** The grid, for confirming, correcting, or answering by hand. A patient
+who chose to tap, or whose mic or API key failed, lands here directly and never sees
+stages 1 and 2 - so there is exactly one fallback path to maintain.
+
+Verified end to end with real speech (Windows TTS piped into Chromium's
+`--use-file-for-fake-audio-capture`): *"I smoke about six a day. No alcohol. The water at
+home is hard. I wash my hair every other day. I do not use a dryer or any chemicals. I
+had keratin at a salon last year."* filled all six fields, mapped "about six a day" to
+`Moderate 5-10/day`, and pulled `keratin` out as the salon detail. A deliberately short
+reply produced "Filled 2 of 6" and named the four it had not heard.
+
+---
+
 ## Layered questions: what happens after a voice fill
 
 Q11/12/13 are tables whose rows unfold into more questions the moment a row is answered
@@ -150,6 +188,35 @@ Details that matter:
 
 Verified with Chromium's fake capture device: 28 bars, heights above the floor, and 4
 distinct frames out of 5 samples - the animation is provably following real audio.
+
+---
+
+## Light and dark
+
+Three states, not two: **system** is the default and follows the device, because a
+clinic tablet set to dark at 9pm should open dark without anyone touching a setting.
+Tapping the toggle cycles system -> light -> dark, and an explicit choice always beats
+the media query.
+
+The palette is one set of semantic tokens defined twice (`:root` and
+`:root[data-theme="dark"]`, plus a `prefers-color-scheme` block guarded by
+`:not([data-theme="light"])`). An inline script in `layout.tsx` applies the stored
+choice before first paint, so there is no white flash on a dark phone.
+
+Two things had to change to make it honest rather than merely dark:
+
+- **`--brand-ink` was doing two jobs.** It was text-on-soft *and* the button hover fill.
+  Those pull in opposite directions in dark mode (light text, darker fill), so it is now
+  split into `--brand-ink` (text) and `--brand-strong` (fill).
+- **Two components animated hardcoded hex.** The "voice just filled this" flash tweened
+  between `#e3f1ee` and `#ffffff` in Framer Motion, which is wrong the instant a second
+  palette exists. It is now a `brand-soft` overlay whose opacity fades, so it inherits
+  whatever the theme currently is.
+
+The scalp diagrams are deliberately **theme-independent**. They only read as a set if
+hair stays dark against a light scalp; wiring them to the tokens would flip hair to
+near-white on light beige and destroy the picture. They sit on the card like a printed
+illustration.
 
 ---
 

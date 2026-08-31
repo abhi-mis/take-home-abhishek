@@ -18,10 +18,18 @@
  * needs no legend. Inline SVG - no image files, no network, scales with the card.
  */
 
-const HAIR = "var(--color-ink)";
+/**
+ * Fixed colours, on purpose.
+ *
+ * These six drawings are one illustration set, and they only read if hair stays dark
+ * against a light scalp. Wiring them to the theme tokens would flip hair to near-white
+ * on a light beige scalp in dark mode and destroy the whole picture, so the plate is
+ * theme-independent - like a printed diagram sitting on the card.
+ */
+const HAIR = "#14211f";
 const SCALP = "#f0e6d8";
 const AFFECTED = "#c2683f";
-const OUTLINE = "var(--color-muted)";
+const OUTLINE = "#8e9a94";
 
 /** Shared top-down head: an egg shape with the nose notch at the top for orientation. */
 function TopHead({ children }: { children: React.ReactNode }) {

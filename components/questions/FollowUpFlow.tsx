@@ -147,7 +147,7 @@ export function FollowUpFlow({
                     onAnswer(current, draft.trim());
                     setDraft("");
                   }}
-                  className="min-h-[52px] cursor-pointer rounded-2xl bg-brand text-[15px] font-bold text-white transition-colors hover:bg-brand-ink disabled:cursor-not-allowed disabled:bg-line disabled:text-muted"
+                  className="min-h-[52px] cursor-pointer rounded-2xl bg-brand text-[15px] font-bold text-white transition-colors hover:bg-brand-strong disabled:cursor-not-allowed disabled:bg-line disabled:text-muted"
                 >
                   Save
                 </button>

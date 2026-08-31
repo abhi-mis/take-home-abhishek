@@ -14,6 +14,7 @@ import { UI_COPY } from "@/lib/copy";
 import { TOTAL_QUESTIONS } from "@/lib/schema";
 import { useIntake } from "@/lib/store";
 import { Button } from "@/components/ui/Button";
+import { ThemeToggle } from "@/components/ThemeToggle";
 
 export default function Home() {
   const answered = useIntake((s) => Object.keys(s.touched).length);
@@ -24,6 +25,9 @@ export default function Home() {
   return (
     <div className="mx-auto flex min-h-dvh w-full max-w-md flex-col justify-between px-6 py-10">
       <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}>
+        <div className="mb-6 flex justify-end">
+          <ThemeToggle />
+        </div>
         <div className="inline-flex items-center gap-2 rounded-full bg-brand-soft px-3 py-1.5">
           <span aria-hidden className="size-2 rounded-full bg-brand" />
           <span className="text-[11px] font-bold uppercase tracking-[0.14em] text-brand-ink">
