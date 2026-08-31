@@ -2,8 +2,8 @@
  * Extraction: system prompt + one schema SLICE per voice-enabled question.
  *
  * The model never sees the whole 16-question form. For each voice step we hand it
- * exactly one slice of the schema and one transcript, which keeps the output space
- * small enough that a 70B open model at temperature 0 is reliable.
+ * exactly one slice of the schema and one reply, which keeps the output space small
+ * enough to be reliable at temperature 0 - and small enough to review by eye.
  *
  * Each slice owns three things:
  *   jsonSchema - the shape shown to the model, built from lib/schema.ts option strings
@@ -484,6 +484,12 @@ Rules:
       that") -> set every item's used/done to false.
   (b) Otherwise -> include ONLY the items the patient actually named, and omit the
       rest entirely. Trailing phrases like "nothing else" do not name an item.
+- When an option encodes a NUMERIC RANGE (for example "<5/day", "5-10/day", ">10/day",
+  "<3mo", "3-6mo", ">6mo"), pick the range that actually CONTAINS the number the patient
+  said. Two rules, because both boundaries get read wrongly:
+    * never round down to a smaller range: 6 a day is "5-10/day", not "<5/day";
+    * a number that IS a range's bound belongs to that range, and "greater than" means
+      strictly greater: 10 a day is "5-10/day", not ">10/day"; 6 months is "3-6mo".
 - Never invent options or values. When unsure, null.
 - Map colloquial phrasing to the closest allowed option only when the meaning is
   unambiguous (e.g. "roz dhota hoon" -> "Daily"; "do din mein ek baar" -> "Alternate Days").
@@ -500,10 +506,10 @@ export function buildUserMessage(slice: Slice, transcript: string): string {
 }
 
 /**
- * The Anthropic path prefills the assistant turn with an opening brace, so its output is
- * already bare JSON - but NIM's open models are not guaranteed to be, and neither is a
- * proxy in between. Stripping fences and taking the outermost object costs nothing and
- * keeps one parser for both providers. Returns null rather than throwing.
+ * The prefilled opening brace means the output is already bare JSON - but a gateway in
+ * between, or a model update, could still wrap it. Stripping fences and taking the
+ * outermost object costs nothing, and a parser you only trust on the happy path is not a
+ * parser. Returns null rather than throwing.
  */
 export function parseModelJson(text: string): unknown {
   const cleaned = text

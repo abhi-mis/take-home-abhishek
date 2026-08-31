@@ -70,9 +70,9 @@ export function VoicePanel({
   }, [phase]);
 
   /**
-   * Count up while we wait on the two APIs. Measured round trip on the free NVIDIA
-   * tier is 8-19s depending on how many columns the slice has - long enough that a
-   * static "Filling it in…" reads as frozen. A ticking number reads as working, and
+   * Count up while we wait on the two APIs. Transcription plus extraction is a few
+   * seconds on a good connection and considerably longer on a bad one - long enough that
+   * a static "Filling it in…" reads as frozen. A ticking number reads as working, and
    * after 12s we say out loud that tapping is still an option.
    */
   useEffect(() => {

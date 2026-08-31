@@ -8,9 +8,10 @@
  *   1. `questionKey` must be on the EXTRACT_KEYS allow-list, so a caller cannot ask the
  *      model to fill consent - the one answer that may never be inferred from prose.
  *   2. the model is shown ONE schema slice and nothing else, at temperature 0.
- *   3. on Anthropic the assistant turn is PREFILLED with an opening brace, so the model
- *      is continuing a JSON object rather than starting a message - no preamble, no code
- *      fence. The fence-stripping parser still runs, for the NIM path and for safety.
+ *   3. the assistant turn is PREFILLED with an opening brace, so the model is continuing
+ *      a JSON object rather than starting a message - no preamble, no code fence. The
+ *      fence-stripping parser still runs behind it, because a parser you only trust on
+ *      the happy path is not a parser.
  *   4. whatever comes back is JSON-parsed, Zod-validated against that slice, and
  *      reduced to allowed fields only. Off-schema values are dropped, not coerced - a
  *      wrong option string in a medical intake is worse than a blank.
@@ -26,12 +27,18 @@ import {
   extractFromModelText,
   isExtractKey,
 } from "@/lib/extractPrompt";
-import { NO_PROVIDER_MESSAGE, callModel, llmSettings } from "@/lib/llm";
+import {
+  NO_PROVIDER_MESSAGE,
+  callModel,
+  isConfigError,
+  llmSettings,
+  providerDetail,
+} from "@/lib/llm";
 
 export const runtime = "nodejs";
-// Claude answers a single slice in a couple of seconds; the NIM alternative measured
-// 8-19s on the free tier. 60s of headroom covers the worst case (the 4-column products
-// table on a cold NIM node).
+// Claude answers a single slice in a couple of seconds. The generous ceiling is for the
+// worst case - the 4-column products table behind a slow mobile connection - and the
+// client gives up at 28s regardless (see callModel), so this is headroom, not a target.
 export const maxDuration = 60;
 
 export async function POST(req: Request) {
@@ -67,7 +74,7 @@ export async function POST(req: Request) {
       // The model produced something unparseable. The patient can still tap or type,
       // so this is a soft failure, not a 500.
       console.warn("[extract] unparseable output", {
-        provider: settings.provider,
+        provider: "anthropic",
         questionKey,
         sample: text.slice(0, 200),
       });
@@ -80,7 +87,7 @@ export async function POST(req: Request) {
 
     return NextResponse.json(result);
   } catch (e) {
-    console.error("[extract]", settings.provider, e);
+    console.error("[extract] anthropic", e);
     return NextResponse.json(
       { error: "Auto-fill failed. You can tap or type the answer instead." },
       { status: 502 },

@@ -41,10 +41,10 @@ The assistant's voice needs **no key at all** - it speaks through the browser's 
 `speechSynthesis` (see below).
 
 ```bash
-npm test              # 158 deterministic tests, no key needed
+npm test              # 152 deterministic tests, no key needed
 npm run smoke         # real-browser walkthrough of the FORM (start a dev server first)
 npm run smoke:chat    # real-browser walkthrough of the CONVERSATION, no keys needed
-npm run eval          # live extraction eval against the fixtures (needs an LLM key)
+npm run eval          # live extraction eval against the fixtures (needs ANTHROPIC_API_KEY)
 npm run build         # production build
 npm run typecheck
 ```
@@ -66,13 +66,11 @@ node scripts/smoke-chat.mjs    http://localhost:3130
 | `ANTHROPIC_MODEL` | - | `claude-sonnet-5` (default); `claude-haiku-4-5-20251001` for lower latency and cost |
 | `SARVAM_API_KEY` | [dashboard.sarvam.ai](https://dashboard.sarvam.ai) | Speech to text |
 | `SARVAM_MODEL` / `SARVAM_MODE` | - | `saaras:v3` / `codemix` |
-| `EXTRACT_PROVIDER` | - | `anthropic` (default when its key is set) or `nvidia` |
-| `NVIDIA_API_KEY` etc. | [build.nvidia.com](https://build.nvidia.com/settings/api-keys) | Optional alternative provider - free tier, no card |
 
-**Provider selection** lives in one file, [lib/llm.ts](lib/llm.ts): explicit
-`EXTRACT_PROVIDER` wins, else Anthropic if its key is present, else NVIDIA, else a 503
-with a message telling the patient to tap instead. `callModel()` is the only thing the
-route and the eval call, so neither knows which provider answered.
+Two keys, and the app is useful without either. [lib/llm.ts](lib/llm.ts) is the whole
+model boundary: `callModel()` is the only thing the route and the eval call, and if
+`ANTHROPIC_API_KEY` is absent it answers 503 with a message rather than throwing, so the
+patient taps or types instead.
 
 Keys are read **only inside server routes** (`app/api/*/route.ts`). Nothing is shipped
 to the client and nothing is committed - `.env.example` is the only env file in git.
@@ -92,7 +90,7 @@ gh repo create genoroot-intake --private --source=. --push
 | --- | --- | --- |
 | Framework | Next.js (App Router) + TS on Vercel | one-command live link; API routes hide keys with no separate backend |
 | STT | **Sarvam Saaras v3** | the locally-right pick. Patients here speak Hinglish and Indian-accented English, which is where western STT degrades first. `mode=codemix` returns mixed Hindi/English in Roman script - also the easiest thing for the extraction model to read. |
-| Extraction | **Anthropic** - `claude-sonnet-5`, temp 0, **JSON prefill** | reading loose Hinglish prose into a fixed schema is exactly where a stronger model earns its keep, and the prompts here are tiny (one schema slice plus one reply). Prefilling the assistant turn with `{` makes the model *continue* a JSON object rather than start a message, which removes preambles and code fences by construction. **NVIDIA NIM is kept as an alternative provider** - it speaks the OpenAI wire format, so the `openai` SDK covers it and switching is a config change. The NIM model choice was **measured, not assumed** - see below. |
+| Extraction | **Anthropic** - `claude-sonnet-5`, temp 0, **JSON prefill** | reading loose Hinglish prose into a fixed schema is exactly where a stronger model earns its keep, and the prompts here are tiny (one schema slice plus one reply). Prefilling the assistant turn with `{` makes the model *continue* a JSON object rather than start a message, which removes preambles and code fences by construction rather than by instruction. One provider, no adapter layer - see below for what I measured before settling here. |
 | Assistant voice | the **browser's** `speechSynthesis` | Anthropic has no text-to-speech endpoint, and adding a second vendor for one is not worth it here. This costs a more robotic voice and buys: no key, no network round trip, works offline, and no audio of a patient's medical answers is ever sent anywhere. The text is always on screen first, so speech is never the channel a question arrives through. |
 | Validation | **Zod** + a coverage check | one validator for shape *and* the conditional-null rules |
 | State | Zustand + sessionStorage | no server state. sessionStorage (not local) so an intake left open on a shared clinic phone isn't readable by the next patient. |
@@ -104,13 +102,16 @@ gh repo create genoroot-intake --private --source=. --push
 `file`/`model`/`mode`, response `{ request_id, transcript, language_code }`. The intake
 schema was downloaded from the URL in the brief and bundled verbatim.
 
-### Picking the NIM model (measured, on this account)
+### Why not the free NVIDIA endpoint (measured, then removed)
 
-The catalog moves fast, and the brief's suggested `meta/llama-3.1/3.3-70b-instruct` is
-**gone** - it now returns `410 Gone`, and the whole Llama 3.x 70B *text*-instruct line
-has been retired. `GET /v1/models` also over-reports: several listed IDs return
-`404 Function not found` because they aren't enabled for a free account. So I probed
-the survivors on a real fixture:
+An earlier revision ran extraction on NVIDIA's NIM build, which is free and needs no
+card. It is gone from the code now, but the measurements are why - and they are the
+reason this app pins one provider rather than shipping a pluggable adapter.
+
+The brief's suggested `meta/llama-3.1/3.3-70b-instruct` is **retired**: it returns
+`410 Gone`, and the whole Llama 3.x 70B *text*-instruct line went with it. `GET
+/v1/models` also over-reports, listing IDs that return `404 Function not found` because
+they are not enabled for a free account. So I probed the survivors on a real fixture:
 
 | Model | Latency | Result |
 | --- | --- | --- |
@@ -120,12 +121,17 @@ the survivors on a real fixture:
 | `nvidia/nemotron-3-nano-30b-a3b` | 6.3 s | correct but verbose - truncated at 800 tokens |
 | **`openai/gpt-oss-20b`** + `reasoning_effort: low` | **4.7 s** | correct, compact, bare JSON |
 
-Two things fell out of that. The catalog is now mostly **reasoning** models, whose
-default effort is fatal for a form (`gpt-oss-120b` at 94 s+). And extraction against a
-fixed 8-field schema needs no deliberation, so `reasoning_effort: low` costs nothing in
-accuracy and is the difference between a usable and an unusable step. Both live in
-`chatParams()` (`lib/llm.ts`), shared by the route and the eval so a
-benchmark can never run different settings than production.
+That endpoint scored **56-58/58 fields (97-100%)** on the fixture eval, so the *quality*
+was never the problem. What made it the wrong home for a patient-facing screen was
+everything around it: a catalog that retires model IDs from under you, per-model quirks
+that are hard 400s (reasoning models reject `temperature` and want
+`max_completion_tokens`), no reliable JSON mode, and free-tier throttling that turned a
+76-second eval run into 400 seconds on a bad afternoon. Claude removes all four, and the
+JSON prefill is a stronger guarantee than asking politely for JSON.
+
+**The eval figure above does not transfer.** It was measured on `gpt-oss-20b`, not on
+Claude, and I have not re-run it since the switch - so treat it as evidence about the
+extraction *design* (slices, prompt rules, tolerant scoring), not as this build's score.
 
 ---
 
@@ -249,9 +255,11 @@ muted, so a patient would get no warning they are not being heard until the tran
 came back empty.
 
 **Verified with real speech,** not mocks: Windows TTS piped into Chromium's
-`--use-file-for-fake-audio-capture`, through the live Sarvam and NVIDIA routes. "I smoke
-about six a day... I had keratin at a salon last year" filled all six fields, mapped
-"about six a day" to `Moderate 5-10/day`, and extracted `keratin` as the salon detail.
+`--use-file-for-fake-audio-capture`, through the live Sarvam and extraction routes. "I
+smoke about six a day... I had keratin at a salon last year" filled all six fields,
+mapped "about six a day" to `Moderate 5-10/day`, and extracted `keratin` as the salon
+detail. That run predates the move to Claude - the transcription half still stands, the
+extraction half has not been repeated since.
 
 ## Light and dark
 
@@ -292,7 +300,7 @@ solved problem where a hand-rolled version would be worse and slower.
 
 Two tiers, on purpose.
 
-**Deterministic (`npm test`, 158 tests, no key) - the dependable gate.** The
+**Deterministic (`npm test`, 152 tests, no key) - the dependable gate.** The
 conversation is tested by walking it: `tests/chatFlow.test.ts` answers whatever the
 assistant asks, turn by turn, with no knowledge of the question list, then runs the
 result through the same Zod validator the download button uses. One test
@@ -305,7 +313,7 @@ highest-value group: the extraction layer fed what a 70B open model actually ret
 trigger, non-existent rows, arrays where objects belong. Each must end in a legal patch
 or nothing at all.
 
-**Tolerant (`npm run eval`, needs a key) - a measurement, not a gate.** 12 made-up
+**Tolerant (`npm run eval`, needs `ANTHROPIC_API_KEY`) - a measurement, not a gate.** 12 made-up
 patient transcripts in `fixtures/patients/`. Only fields the transcript *mentions* are
 compared; unmentioned fields must appear in `unfilled`, and `unmentionedRows` asserts
 the model did **not** invent a `false` for a row nobody spoke about. Kept out of CI
@@ -406,7 +414,7 @@ lib/
   followups.ts     conditional questions, as answerable descriptors
   chatFlow.ts      the conversation driver - pure, no React, no fetch, no store
   apply.ts         the write rules (shared by both modes)
-  llm.ts           provider, model, one callModel() - the whole Anthropic/NIM difference
+  llm.ts           the model boundary: one callModel(), model + temp + JSON prefill
   speak.ts         browser speechSynthesis, with barge-in and a no-voice fallback
   store.ts         Zustand
   validate.ts      Zod + 16-key coverage
@@ -414,7 +422,7 @@ lib/
   audio.ts         in-browser 16kHz mono WAV encoding
   copy.ts          all microcopy, in one place
 fixtures/patients/ 12 transcripts (4 held out) + expected answers
-tests/             158 deterministic tests (incl. a full walk of the conversation)
+tests/             152 deterministic tests (incl. a full walk of the conversation)
 scripts/smoke-browser.mjs  Playwright walkthrough of the form
 scripts/smoke-chat.mjs     Playwright walkthrough of the conversation, keyless
 scripts/eval-fixtures.ts   live extraction eval

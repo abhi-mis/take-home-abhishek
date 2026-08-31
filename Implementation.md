@@ -317,18 +317,18 @@ re-encodes 16kHz mono WAV in the browser. One format reaches the server, speech 
 want 16kHz anyway, and the upload drops to ~32KB/s, which matters on clinic 4G.
 
 **Slices, not the whole form.** The model never sees 16 questions. Per voice step it
-gets one slice of the schema and one transcript. That small output space is why an open
-20B model at temperature 0 is reliable enough to trust here.
+gets one slice of the schema and one reply. That small output space is why temperature 0
+extraction is reliable enough to trust here - and small enough that a human can check the
+prompt by eye.
 
-**Model choice was measured, not assumed.** The brief's suggested
-`meta/llama-3.3-70b-instruct` returns **410 Gone** - retired from the catalog. What
-survives is mostly *reasoning* models, and their default effort is fatal on a form:
-`openai/gpt-oss-120b` took **94-120 s** per call. `openai/gpt-oss-20b` with
-`reasoning_effort: low` answered the same transcript identically in **4.7 s**.
-Extraction against a fixed 8-field schema needs no deliberation, so low effort costs
-nothing and is the whole difference between a usable and unusable step. Both settings
-live in `chatParams()` (`lib/llm.ts`), shared by the route and the eval - a benchmark that runs
-different settings than production is worthless.
+**Model choice was measured, not assumed.** An earlier revision ran on NVIDIA's free NIM
+build and scored 56-58/58 on the fixture eval, so quality was never the issue. What ruled
+it out for a patient-facing screen: the brief's own suggested
+`meta/llama-3.3-70b-instruct` returns **410 Gone**, `openai/gpt-oss-120b` took **94-120 s**
+per call, and the survivors each had their own request-shape quirks that are hard 400s.
+Extraction now runs on Claude, one provider, with the settings in `callModel()`
+(`lib/llm.ts`) shared by the route and the eval - a benchmark that runs different
+settings than production is worthless.
 
 **Latency is designed for, not wished away.** Measured 8-19 s per slice on the free
 tier. So the route allows 28 s (`maxDuration` 60), and the mic panel counts seconds
@@ -383,7 +383,7 @@ of the UI, so a bad extraction patch can't bypass the interface.
 
 ## What's tested, and what deliberately isn't
 
-**`npm test` - 158 deterministic tests, no API key needed.** These are the dependable
+**`npm test` - 152 deterministic tests, no API key needed.** These are the dependable
 checks: the step builder, sex gating in all four states, every conditional-followup
 rule in both directions, exclusive options, 16-key coverage, and - most of the value - the slice layer fed what a 70B model *actually* returns: markdown fences, prose
 wrappers, invented option strings, extra keys, followups with no trigger, rows that
@@ -590,20 +590,25 @@ sentence is at least pronounced plausibly. It is a preference, not a requirement
 
 ## Swapping the extraction provider
 
-Extraction runs on **Anthropic** - `claude-sonnet-5`, temperature 0. NVIDIA NIM is kept
-as an alternative because the brief named it and it costs almost nothing to keep: NIM
-speaks the OpenAI wire format, so the `openai` SDK covers it. [lib/llm.ts](lib/llm.ts) is
-the entire difference between the two, and nothing else in the app knows which one
-answered.
+Extraction runs on **Anthropic** - `claude-sonnet-5`, temperature 0 - and on nothing
+else. There is no provider abstraction, no adapter interface, no `EXTRACT_PROVIDER`
+switch. That is deliberate: an abstraction whose only job is to make a future swap easy
+is a cost you pay every day for a decision you make once. Keeping every model-specific
+detail inside [lib/llm.ts](lib/llm.ts) already makes the swap a one-file change, and the
+route and the eval only ever call `callModel()`.
+
+A missing key is not a crash and not a 500:
 
 ```
-resolveProvider()
-  EXTRACT_PROVIDER=anthropic|nvidia -> explicit always wins
-  ANTHROPIC_API_KEY present         -> anthropic
-  NVIDIA_API_KEY present            -> nvidia
-  neither                           -> null, and the route returns 503 with a message
-                                       telling the patient to tap instead
+llmSettings()
+  ANTHROPIC_API_KEY present -> settings
+  absent                    -> null, and the route answers 503 with a message telling
+                               the patient to tap or type instead
 ```
+
+That fallback is a complete path, not a degraded one: every question in both modes can be
+answered by tapping or typing, which is what `npm run smoke:chat` proves by finishing the
+whole intake with no keys at all.
 
 ### The JSON prefill
 
@@ -619,22 +624,12 @@ assistant: {
 The model is now physically continuing a JSON object rather than starting a message, so
 there is no "Here is the JSON:", no code fence, no apology. The brace is added back to
 the response before parsing, because the API returns only what was generated after the
-prefill. The fence-stripping parser still runs behind it - it costs nothing, it covers
-the NIM path, and a parser you only trust on the happy path is not a parser.
-
-### Two NIM traps, asserted rather than discovered
-
-Both are hard 400s in production and completely invisible without a test
-(`tests/llm.test.ts`):
-
-- **Reasoning models** (`o*`, `gpt-5*` style ids) reject `temperature` and want
-  `max_completion_tokens` instead of `max_tokens`. Detecting that from the model id is
-  ugly, but the id is the only signal available.
-- **`reasoning_effort`** is not universally accepted, so `NVIDIA_REASONING_EFFORT=none`
-  omits the field entirely rather than sending the string "none".
+prefill. The fence-stripping parser still runs behind it - it costs nothing, it covers a
+gateway or a model update that wraps the output anyway, and a parser you only trust on
+the happy path is not a parser.
 
 `callModel()` is shared by the route and `npm run eval`, so the benchmark cannot run a
-different provider, model, temperature or JSON strategy than production does.
+different model, temperature or JSON strategy than production does.
 
 Sarvam remains the transcriber: it is trained for Hinglish and Indian-accented English,
 which is where general-purpose STT degrades first for this audience. And the assistant's
@@ -656,10 +651,15 @@ voice needs no vendor at all - see above.
    pre-fills.** Reasoning above.
 4. **Q4 gets "Not sure" and Q10 gets "None of these"** as UI-only affordances writing
    `[]`. No schema option was invented.
-5. **`NVIDIA_MODEL` is `openai/gpt-oss-20b`, not a Llama 70B.** Not a preference - the
-   brief's suggestion is retired (410 Gone). Reasoning and latency notes above.
-6. **Not done by me:** the Vercel deploy, any git/GitHub step (you asked me not to
-   push - and this isn't a git repo, so nothing can be), and the 2-minute recording.
+5. **Extraction is Anthropic, not the NVIDIA NIM build the brief suggested.** The
+   brief's specific model is retired (410 Gone) and the free catalog's quirks are listed
+   above. The eval figure quoted in this document was measured on NIM and has **not**
+   been re-run on Claude.
+6. **The assistant's voice is the browser's, not a hosted TTS.** Anthropic has no
+   text-to-speech endpoint and a second vendor was not worth it here. Reasoning above.
+7. **Not done by me:** the Vercel deploy, any git/GitHub step (you asked me not to push,
+   and I have not staged, committed or pushed anything - note the project directory does
+   sit inside a git work tree), and the 2-minute recording.
 
 ---
 

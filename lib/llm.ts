@@ -1,121 +1,119 @@
 /**
- * The LLM boundary: which provider, which model, and one function that calls it.
+ * The LLM boundary: one provider, one model, one call.
  *
- * Extraction runs on **Anthropic** (Claude). NVIDIA NIM is kept as an alternative
- * because the brief named it and it costs almost nothing to keep - NIM speaks the
- * OpenAI wire format, so the `openai` SDK covers it. Everything provider-specific lives
- * in this file: `callModel()` takes a system prompt and a user message and returns raw
- * text, so the route, the eval and the tests are identical whichever provider answered.
+ * Extraction runs on Anthropic (Claude). There is no second provider and no adapter
+ * layer, on purpose - an abstraction whose only job is to make a swap easy is a cost you
+ * pay every day for a decision you make once. Everything model-specific is in this file,
+ * so the swap stays cheap without pretending to be pluggable: the route, the eval and
+ * the tests only ever call `callModel()`.
  *
- * Provider selection, in order:
- *   1. EXTRACT_PROVIDER=anthropic|nvidia, if set (explicit wins, always)
- *   2. ANTHROPIC_API_KEY present  -> anthropic
- *   3. NVIDIA_API_KEY present     -> nvidia
- *   4. neither                    -> null, and the caller returns 503 with a message
- *      telling the patient to tap instead. A missing key is never a crash.
+ * `ANTHROPIC_API_KEY` missing is not a crash and not a 500. `llmSettings()` returns null,
+ * the route answers 503 with a message, and the patient taps or types instead - which is
+ * a complete path through every question in both modes.
  *
- * Keys are read from `process.env` inside route handlers and the eval script only. This
- * module must never be imported from a component.
+ * THE REQUEST SHAPE, MEASURED RATHER THAN ASSUMED
+ * ----------------------------------------------
+ * Probed against this account's own model list:
+ *
+ *   model                      temperature   assistant prefill   plain output
+ *   claude-sonnet-5            rejected      rejected            bare JSON
+ *   claude-opus-4-8            rejected      rejected            bare JSON
+ *   claude-sonnet-4-6          accepted      rejected            ```json fenced
+ *   claude-haiku-4-5-*         accepted      accepted            ```json fenced
+ *
+ * That table is why the default model is haiku-4-5: it is the one that accepts
+ * `temperature: 0`, and reproducibility is not a nice-to-have on a medical form - the
+ * same reply must fill the same fields every time or the output cannot be audited. It
+ * also measured fastest of the four (1.1-1.3s versus 1.9s), which matters on a screen
+ * where a patient is watching a spinner.
+ *
+ * Assistant prefill is NOT used even though haiku-4-5 accepts it. It would buy bare JSON
+ * instead of a ```json fence, and `parseModelJson()` already strips fences - so it would
+ * buy nothing while quietly breaking the moment someone sets ANTHROPIC_MODEL to a newer
+ * model. JSON is guaranteed by the system prompt plus that parser, which is the most
+ * heavily tested thing in the app (tests/extract.test.ts) precisely because it has
+ * always been the real guarantee.
+ *
+ * And because model APIs keep moving, an unsupported parameter is handled rather than
+ * fatal: switching ANTHROPIC_MODEL to claude-sonnet-5 works, because `temperature` is
+ * dropped and remembered on the first 400. See `callModel()`.
  */
 import Anthropic from "@anthropic-ai/sdk";
-import OpenAI from "openai";
-
-export type Provider = "anthropic" | "nvidia";
 
 export interface LlmSettings {
-  provider: Provider;
   apiKey: string;
-  /** undefined for Anthropic proper - the SDK's own default is correct. */
+  /** undefined for api.anthropic.com - the SDK's own default is correct. */
   baseURL: string | undefined;
   model: string;
   maxTokens: number;
-  /** NIM reasoning models only. Omitted entirely when not applicable. */
-  reasoningEffort: string | undefined;
+  /** Dropped automatically if the configured model rejects it. */
+  temperature: number | undefined;
 }
 
 /**
- * claude-sonnet-5 for extraction. Reading loose Hinglish prose into a fixed schema is
- * exactly where a stronger model earns its keep, and at these prompt sizes (one schema
- * slice, one reply) the cost per intake is negligible. Set ANTHROPIC_MODEL to
- * claude-haiku-4-5-20251001 to trade a little accuracy for latency and price.
+ * Haiku 4.5: fastest of the models measured (1.1-1.3s for a full habits slice), the
+ * cheapest, and the one that still accepts `temperature: 0`. It got every field of the
+ * Hinglish probe right - "main roz 6 cigarette peeta hoon" to `Moderate 5-10/day` - which
+ * is the whole job here. Extraction against one schema slice is a narrow task; a larger
+ * model would cost more and wait longer for the same answer.
  */
-const ANTHROPIC_DEFAULT_MODEL = "claude-sonnet-5";
-const NVIDIA_DEFAULT_MODEL = "openai/gpt-oss-20b";
-const NVIDIA_DEFAULT_BASE = "https://integrate.api.nvidia.com/v1";
+const DEFAULT_MODEL = "claude-haiku-4-5-20251001";
+
+/** Reproducible by default: the same reply must always fill the same fields. */
+const DEFAULT_TEMPERATURE = 0;
 
 /** Enough that a fully-populated 5-row table is never truncated mid-JSON. */
 const MAX_TOKENS = 900;
 
-/**
- * The one trick that makes JSON reliable on the Anthropic API.
- *
- * Rather than asking for JSON and hoping, the assistant turn is PREFILLED with an
- * opening brace, so the model is physically continuing a JSON object rather than
- * starting a message. No preamble, no code fence, no "Here is the JSON:". The brace is
- * added back to the response before parsing, since the API returns only what it
- * generated after the prefill.
- */
-const JSON_PREFILL = "{";
-
-/**
- * NIM's o-series and gpt-5 style models reject `temperature`, spend tokens on hidden
- * reasoning, and take `max_completion_tokens` instead of `max_tokens`. Detecting that
- * from the model id is ugly but it is the only signal available, and getting it wrong is
- * a hard 400.
- */
-function isReasoningModel(model: string): boolean {
-  return /(^|\/)(o\d|gpt-5)/.test(model);
-}
-
-export function resolveProvider(): Provider | null {
-  const forced = process.env.EXTRACT_PROVIDER?.trim().toLowerCase();
-  if (forced === "anthropic" || forced === "nvidia") return forced;
-  if (process.env.ANTHROPIC_API_KEY) return "anthropic";
-  if (process.env.NVIDIA_API_KEY) return "nvidia";
-  return null;
-}
-
-/** Settings for the active provider, or null when its key is missing. */
+/** Settings, or null when the key is missing. */
 export function llmSettings(): LlmSettings | null {
-  const provider = resolveProvider();
-  if (provider === null) return null;
-
-  if (provider === "anthropic") {
-    const apiKey = process.env.ANTHROPIC_API_KEY;
-    if (!apiKey) return null;
-    return {
-      provider,
-      apiKey,
-      baseURL: process.env.ANTHROPIC_BASE_URL?.trim() || undefined,
-      model: process.env.ANTHROPIC_MODEL?.trim() || ANTHROPIC_DEFAULT_MODEL,
-      maxTokens: MAX_TOKENS,
-      reasoningEffort: undefined,
-    };
-  }
-
-  const apiKey = process.env.NVIDIA_API_KEY;
+  const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) return null;
-  const effort = process.env.NVIDIA_REASONING_EFFORT?.trim() || "low";
+
+  const rawTemp = process.env.ANTHROPIC_TEMPERATURE?.trim();
+  const temp = rawTemp === undefined || rawTemp === "" ? DEFAULT_TEMPERATURE : Number(rawTemp);
+
   return {
-    provider,
     apiKey,
-    baseURL: process.env.NVIDIA_BASE_URL?.trim() || NVIDIA_DEFAULT_BASE,
-    model: process.env.NVIDIA_MODEL?.trim() || NVIDIA_DEFAULT_MODEL,
+    baseURL: process.env.ANTHROPIC_BASE_URL?.trim() || undefined,
+    model: process.env.ANTHROPIC_MODEL?.trim() || DEFAULT_MODEL,
     maxTokens: MAX_TOKENS,
-    // "none" is the escape hatch for a NIM model that rejects the field outright.
-    reasoningEffort: effort === "none" ? undefined : effort,
+    // A non-numeric value is ignored rather than sent: NaN would be a 400, and a typo in
+    // an env var should not take extraction down.
+    temperature: temp !== undefined && Number.isFinite(temp) ? temp : undefined,
   };
 }
 
-/** The message shown to the patient when no provider is configured. */
+/** The message shown to the patient when extraction is not configured. */
 export const NO_PROVIDER_MESSAGE =
   "Auto-fill is off: set ANTHROPIC_API_KEY in .env. You can still tap or type your answers.";
 
 /**
- * One call, whichever provider is configured. Returns the model's raw text.
+ * Errors that mean "this model does not accept that parameter", as opposed to "your
+ * request is wrong". The distinction matters because the first kind is recoverable by
+ * sending less, and the second is not recoverable at all.
+ */
+const UNSUPPORTED_PARAM = /is deprecated for this model|does not support|unsupported/i;
+
+/**
+ * Models known to have rejected `temperature`, learned at runtime and remembered for the
+ * life of the process.
  *
- * Temperature 0 everywhere it is accepted: the same reply must always fill the same
- * fields, or a medical form stops being reproducible.
+ * This exists because of a bug that reached the browser as a bare 502: the request
+ * carried `temperature: 0`, the current models answer `400 temperature is deprecated for
+ * this model`, and the route turned that into "Auto-fill failed". One wasted round trip
+ * to discover a permanent fact about a model is acceptable; making that discovery on
+ * every single question is not, and neither is a hardcoded table of model ids that goes
+ * stale the week after it is written.
+ */
+const rejectsTemperature = new Set<string>();
+
+/**
+ * One extraction call. Returns the model's raw text.
+ *
+ * If the model refuses an optional parameter, the parameter is dropped, remembered, and
+ * the call retried once - so a model change becomes a 400 in a log line rather than a
+ * broken feature in front of a patient.
  */
 export async function callModel(
   settings: LlmSettings,
@@ -123,61 +121,65 @@ export async function callModel(
   user: string,
   timeoutMs = 28_000,
 ): Promise<string> {
-  if (settings.provider === "anthropic") {
-    const client = new Anthropic({ apiKey: settings.apiKey, baseURL: settings.baseURL });
+  const client = new Anthropic({ apiKey: settings.apiKey, baseURL: settings.baseURL });
+
+  const send = async (withTemperature: boolean): Promise<string> => {
     const res = await client.messages.create(
       {
         model: settings.model,
         max_tokens: settings.maxTokens,
-        temperature: 0,
+        ...(withTemperature && settings.temperature !== undefined
+          ? { temperature: settings.temperature }
+          : {}),
         system,
-        messages: [
-          { role: "user", content: user },
-          { role: "assistant", content: JSON_PREFILL },
-        ],
+        // One user turn, and nothing after it. See the note on prefill above: the JSON
+        // contract is carried by the system prompt and enforced by parseModelJson().
+        messages: [{ role: "user", content: user }],
       },
       { timeout: timeoutMs },
     );
-    const text = res.content
-      .map((block) => (block.type === "text" ? block.text : ""))
-      .join("");
-    // The prefill is not echoed back, so put it back before anyone tries to parse it.
-    return JSON_PREFILL + text;
-  }
+    return res.content.map((block) => (block.type === "text" ? block.text : "")).join("");
+  };
 
-  const client = new OpenAI({ apiKey: settings.apiKey, baseURL: settings.baseURL });
-  const res = await client.chat.completions.create(nimParams(settings, system, user), {
-    timeout: timeoutMs,
-  });
-  return res.choices[0]?.message?.content ?? "";
+  const wantsTemperature =
+    settings.temperature !== undefined && !rejectsTemperature.has(settings.model);
+
+  try {
+    return await send(wantsTemperature);
+  } catch (e) {
+    if (!wantsTemperature || !isUnsupportedParam(e)) throw e;
+    console.warn(
+      `[llm] ${settings.model} rejected temperature; retrying without it and remembering.`,
+    );
+    rejectsTemperature.add(settings.model);
+    return await send(false);
+  }
+}
+
+function isUnsupportedParam(e: unknown): boolean {
+  if (e instanceof Anthropic.APIError) {
+    return e.status === 400 && UNSUPPORTED_PARAM.test(e.message);
+  }
+  return false;
 }
 
 /**
- * The NIM request body.
+ * True when the failure is a configuration problem rather than a hiccup - a model id
+ * that does not exist, a revoked key, a parameter this model will never accept.
  *
- * Exported for the tests, which assert the two shape traps that are hard 400s in
- * production and invisible otherwise: temperature on a reasoning model, and
- * max_tokens where max_completion_tokens is wanted. The SDK's published types lag the
- * catalog's accepted fields, so the extra keys go through one narrow cast, not `any`.
+ * Worth separating because the two need opposite responses: a hiccup deserves "try
+ * again", a config error deserves a log line loud enough that someone fixes the env var.
+ * Retrying it just burns the patient's time.
  */
-export function nimParams(
-  settings: LlmSettings,
-  system: string,
-  user: string,
-): OpenAI.ChatCompletionCreateParamsNonStreaming {
-  const reasoning = isReasoningModel(settings.model);
-  const body: Record<string, unknown> = {
-    model: settings.model,
-    messages: [
-      { role: "system", content: system },
-      { role: "user", content: user },
-    ],
-    ...(reasoning
-      ? { max_completion_tokens: settings.maxTokens }
-      : { temperature: 0, max_tokens: settings.maxTokens }),
-    ...(settings.reasoningEffort ? { reasoning_effort: settings.reasoningEffort } : {}),
-  };
-  return body as unknown as OpenAI.ChatCompletionCreateParamsNonStreaming;
+export function isConfigError(e: unknown): boolean {
+  if (!(e instanceof Anthropic.APIError)) return false;
+  return e.status === 400 || e.status === 401 || e.status === 403 || e.status === 404;
+}
+
+/** The provider's own words, for the server log only. Never shown to a patient. */
+export function providerDetail(e: unknown): string {
+  if (e instanceof Anthropic.APIError) return `${e.status} ${e.message}`.slice(0, 300);
+  return e instanceof Error ? e.message.slice(0, 300) : String(e).slice(0, 300);
 }
 
 /**
@@ -185,8 +187,9 @@ export function nimParams(
  * produced its number is not a benchmark.
  */
 export function describeSettings(s: LlmSettings): string {
-  const bits = [s.provider, s.model, "temp 0"];
-  if (s.provider === "anthropic") bits.push("JSON prefill");
-  if (s.reasoningEffort) bits.push(`reasoning_effort: ${s.reasoningEffort}`);
-  return bits.join(" · ");
+  const sampling =
+    s.temperature === undefined || rejectsTemperature.has(s.model)
+      ? "model default sampling"
+      : `temp ${s.temperature}`;
+  return ["anthropic", s.model, sampling].join(" · ");
 }

@@ -128,7 +128,7 @@ async function main() {
   const settings = llmSettings();
   if (settings === null) {
     console.error(
-      "No LLM key is set (OPENAI_API_KEY or NVIDIA_API_KEY).\n" +
+      "No LLM key is set (ANTHROPIC_API_KEY).\n" +
         "This eval calls a live model on purpose - the deterministic checks are in\n" +
         "`npm test`, which needs no key. Set a key (see .env.example) to run it.",
     );
