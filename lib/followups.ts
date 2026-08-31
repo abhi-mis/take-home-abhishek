@@ -186,25 +186,25 @@ export function productsOutstanding(a: Answers): OutstandingField[] {
     a.products as unknown as Record<string, Record<string, unknown>>,
     {
       flag: "used",
-      flagQuestion: (row) => `Do you use ${lower(row)}?`,
+      flagQuestion: (row) => `Do you use ${row}?`,
       details: [
         {
           field: "duration",
           label: "how long",
-          question: (row) => `How long have you been using ${lower(row)}?`,
+          question: (row) => `How long have you been using ${row}?`,
           kind: "options",
           options: PRODUCT_DUR,
         },
         {
           field: "helped",
           label: "did it help",
-          question: (row) => `Did ${lower(row)} help?`,
+          question: (row) => `Did ${row} help?`,
           kind: "yesno",
         },
         {
           field: "side_effects",
           label: "side effects",
-          question: (row) => `Any side effects from ${lower(row)}?`,
+          question: (row) => `Any side effects from ${row}?`,
           kind: "yesno",
         },
       ],
@@ -218,31 +218,24 @@ export function proceduresOutstanding(a: Answers): OutstandingField[] {
     a.procedures as unknown as Record<string, Record<string, unknown>>,
     {
       flag: "done",
-      flagQuestion: (row) => `Have you had ${lower(row)}?`,
+      flagQuestion: (row) => `Have you had ${row}?`,
       details: [
         {
           field: "sessions",
           label: "how many sessions",
-          question: (row) => `How many sessions of ${lower(row)}?`,
+          question: (row) => `How many sessions of ${row}?`,
           kind: "options",
           options: SESSIONS,
         },
         {
           field: "helped",
           label: "did it help",
-          question: (row) => `Did ${lower(row)} help?`,
+          question: (row) => `Did ${row} help?`,
           kind: "yesno",
         },
       ],
     },
   );
-}
-
-/** Row names are Title Case in the schema; mid-sentence they read better lowered. */
-function lower(row: string): string {
-  // ...but not acronyms, which must stay as the clinic writes them.
-  if (/^[A-Z0-9/+]+$/.test(row.replace(/[\s/]/g, ""))) return row;
-  return row.charAt(0).toLowerCase() + row.slice(1);
 }
 
 /** All outstanding fields for one table question. */

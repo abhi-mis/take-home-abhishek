@@ -96,16 +96,27 @@ Each question picks the cheapest modality rather than sharing one control.
 
 A voice question is a small stage machine, not a grid with a mic bolted on top.
 
-**1. Speak first (the default).** The grid is not shown. The screen is a prompt
-paragraph naming every topic to cover, one example sentence, the mic, and
-"I would rather answer by tapping".
+**1. Speak first (the default).** The grid is not shown. The screen is a numbered
+checklist of every item to cover, the conditional detail questions, one example answer,
+the mic, and "I would rather answer by tapping".
 
 Two reasons the grid starts hidden. A grid on screen invites tapping, and the voice
 feature never gets used. And a mic with no prompt is the worst version of voice input:
 the patient does not know how much to say, answers one thing, and one field fills.
-Naming all six topics in a single sentence is what makes one reply fill a whole table -
-and it doubles as the plain-language summary of the question, so the grid does not need
-to be visible for the question to be clear.
+
+**The prompt enumerates; it does not summarise.** The first version was a prose
+paragraph, and it was wrong - it read smoothly but quietly dropped rows, so patients
+answered three of six items and the fill looked broken. A form has to enumerate. Every
+row is now its own numbered point, and the labels are interpolated from the schema
+constants rather than retyped, so a row added to the schema cannot silently go unasked.
+The conditional layer is stated up front in the same block ("for every product you do
+use, also say how long, whether it helped, and any side effects"), which is what lets a
+single reply complete a row instead of leaving three blanks behind.
+
+Row names appear verbatim - "OTC/Medicated Shampoos", not "oTC/Medicated Shampoos". An
+earlier helper lowercased the first letter to read better mid-sentence and mangled every
+acronym; on a clinical form the product name a patient sees must match the one the doctor
+reads, so the helper is gone.
 
 **2. The result popup.** After extraction, a modal answers the only two questions the
 patient actually has:
@@ -232,6 +243,32 @@ twenty components.
 The same pass added `hover:` states everywhere - the app previously had only `active:`,
 which is invisible on a desktop demo. Tailwind v4 scopes `hover:` behind
 `@media (hover: hover)`, so none of it sticks on touch.
+
+---
+
+## Conditional questions get asked, not revealed
+
+Answering "yes" to a product does not finish that row. It creates three more questions -
+how long, did it help, any side effects - and the same is true of smoking (how much) and
+salon treatments (which one). Previously those just appeared, collapsed, further down the
+grid, and it was on the patient to notice them.
+
+Now switching a row on immediately asks its conditional questions, one at a time, and
+**only** its questions. The follow-up flow takes an optional scope, so a patient tapping
+down the list gets a short detour for the row they just answered rather than being pulled
+into the whole outstanding queue:
+
+```
+Do you use OTC/Medicated Shampoos?  -> Yes
+   -> How long have you been using OTC/Medicated Shampoos?
+   -> Did OTC/Medicated Shampoos help?
+   -> Any side effects from OTC/Medicated Shampoos?
+   (flow closes, grid returns)
+```
+
+A scoped detour also **auto-closes** when it empties, instead of showing the "all done"
+card. Finishing eight questions is worth acknowledging; finishing a one-question detour
+is not, and an extra tap to dismiss a card is ceremony the patient did not ask for.
 
 ---
 

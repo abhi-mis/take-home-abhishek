@@ -124,17 +124,30 @@ try {
   await tapButton("Next");
 
   // ---------- Q11: voice questions open on the SPEAK screen, not the grid ----------
-  const speakPrompt = await page
-    .getByText(/Tell me about your daily habits/)
-    .isVisible()
-    .catch(() => false);
   const gridHiddenAtFirst = !(await page
     .getByText("Do you drink?")
     .isVisible()
     .catch(() => false));
-  notes.push(`Q11 opens on speak screen: prompt ${speakPrompt}, grid hidden ${gridHiddenAtFirst}`);
-  if (!speakPrompt || !gridHiddenAtFirst)
+
+  /*
+   * The spoken prompt must enumerate EVERY item, not summarise them in prose. A prose
+   * paragraph read well but quietly dropped rows, so patients answered three of six and
+   * the fill looked broken. This asserts one checklist entry per habit row, each naming
+   * its topic - the regression that actually happened.
+   */
+  const checklist = (await page.locator("ol li").allInnerTexts()).map((t) =>
+    t.replace(/\s+/g, " ").trim(),
+  );
+  const mustMention = ["Smoking", "Alcohol", "Hard water", "wash your hair", "chemicals", "Salon"];
+  const missingTopics = mustMention.filter((m) => !checklist.some((c) => c.includes(m)));
+  notes.push(`Q11 speak checklist: ${checklist.length} items, grid hidden ${gridHiddenAtFirst}`);
+  if (!gridHiddenAtFirst)
     throw new Error("voice question did not default to the speak-first screen");
+  if (checklist.length < 6 || missingTopics.length > 0)
+    throw new Error(`speak prompt does not cover every item; missing: ${missingTopics.join(", ")}`);
+  // The conditional layer has to be stated up front too, or one reply leaves blanks.
+  if (!checklist.some((c) => c.includes("how many per day")))
+    throw new Error("speak prompt omits the conditional detail (smoking amount)");
 
   // No API keys are needed for the tap path, so take the documented escape hatch.
   await tapButton(/I would rather answer by tapping/);
@@ -209,6 +222,35 @@ try {
     await tapButton(/I would rather answer by tapping/);
     const stillBlocked = await page.getByRole("button", { name: "Next" }).isDisabled();
     if (!stillBlocked) throw new Error(`${label} allowed Next with unanswered rows`);
+
+    if (label === "products") {
+      /*
+       * Answering "yes" to a row does not finish it - it unlocks three more questions.
+       * Those must be ASKED (scoped to that row), not silently revealed further down a
+       * collapsed grid. This walks the chain and then switches the row back off.
+       */
+      await tap(page.getByRole("radio", { name: "Yes" }).first(), "products row 1 = Yes");
+      const cond = page.locator("section[aria-label='Remaining questions']");
+      await cond.waitFor({ state: "visible", timeout: 10_000 });
+      const chain = [];
+      for (let i = 0; i < 4; i++) {
+        const q = await cond.locator("p").nth(1).innerText().catch(() => null);
+        if (!q) break;
+        chain.push(q.replace(/\s+/g, " ").trim());
+        const btn = cond.getByRole("button").filter({ hasNotText: /Use list|Save|Got it/ }).last();
+        if (!(await btn.isVisible().catch(() => false))) break;
+        await btn.click();
+        await page.waitForTimeout(430);
+        if (!(await cond.isVisible().catch(() => false))) break;
+      }
+      notes.push(`conditional chain on "yes": ${chain.join(" -> ")}`);
+      if (chain.length < 3)
+        throw new Error(`expected 3 conditional questions, got ${chain.length}`);
+      // Row labels must be verbatim - an earlier version mangled "OTC" into "oTC".
+      if (chain.some((q) => /oTC|pRP/.test(q)))
+        throw new Error(`row name was mangled in a conditional question: ${chain[0]}`);
+    }
+
     for (let i = 0; i < Number(count); i++) {
       await tap(page.getByRole("radio", { name: "No" }).nth(i), `${label} row ${i + 1} = No`);
     }

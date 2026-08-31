@@ -16,17 +16,34 @@
  * self-closes the moment the list empties.
  */
 import { AnimatePresence, motion } from "framer-motion";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { OutstandingField } from "@/lib/followups";
 import { cn, tick } from "@/lib/utils";
 import { CheckIcon } from "../ui/Button";
 
 export function FollowUpFlow({
   fields,
+  title,
+  autoCloseOnComplete = false,
   onAnswer,
   onClose,
 }: {
   fields: OutstandingField[];
+  /**
+   * Overrides the default "Just N to go" header. Used when the queue is the conditional
+   * questions a single "yes" just unlocked, where a countdown is less informative than
+   * saying what these questions are about.
+   */
+  title?: string;
+  /**
+   * Close silently when the queue empties instead of showing the completion card.
+   *
+   * Used for a scoped conditional (one "yes" unlocked one or three questions): the
+   * patient is mid-grid and answered a small detour, so a full-width "all done, got it"
+   * card and an extra tap to dismiss it is ceremony they did not ask for. The unscoped
+   * queue keeps the card, because finishing eight questions is worth acknowledging.
+   */
+  autoCloseOnComplete?: boolean;
   onAnswer: (field: OutstandingField, value: boolean | string) => void;
   onClose: () => void;
 }) {
@@ -36,9 +53,16 @@ export function FollowUpFlow({
   const [draft, setDraft] = useState("");
   const current = fields[0];
   const done = total - fields.length;
+  const finished = current === undefined;
+
+  useEffect(() => {
+    if (finished && autoCloseOnComplete) onClose();
+  }, [finished, autoCloseOnComplete, onClose]);
 
   // Everything answered: a brief confirmation, then get out of the way.
-  if (!current) return <Complete total={total} onClose={onClose} />;
+  if (finished) {
+    return autoCloseOnComplete ? null : <Complete total={total} onClose={onClose} />;
+  }
 
   return (
     <motion.section
@@ -53,7 +77,7 @@ export function FollowUpFlow({
         </span>
         <div className="min-w-0 flex-1">
           <p className="text-[13px] font-bold uppercase tracking-wide text-brand-ink">
-            Just {fields.length} to go
+            {title ?? `Just ${fields.length} to go`}
           </p>
           <div className="mt-1.5 flex gap-1" aria-hidden>
             {Array.from({ length: total }).map((_, i) => (

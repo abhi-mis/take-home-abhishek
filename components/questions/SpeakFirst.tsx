@@ -41,7 +41,35 @@ export function SpeakFirst({
           <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-brand-ink">
             {UI_COPY.speakTitle}
           </p>
-          <p className="mt-2 text-[15px] leading-relaxed text-ink">{prompt.ask}</p>
+          <p className="mt-2 text-[15px] font-semibold leading-snug text-ink">{prompt.intro}</p>
+
+          {/*
+            An enumerated checklist, not a paragraph. Prose read more naturally but
+            quietly dropped rows, so patients answered three of six items and the fill
+            looked incomplete. A medical form has to enumerate.
+          */}
+          <ol className="mt-3 flex flex-col gap-2">
+            {prompt.points.map((point, i) => (
+              <li key={point} className="flex gap-2.5">
+                <span
+                  aria-hidden
+                  className="mt-[1px] grid size-[18px] shrink-0 place-items-center rounded-full bg-brand/15 text-[10px] font-bold tabular-nums text-brand-ink"
+                >
+                  {i + 1}
+                </span>
+                <span className="text-[14px] leading-snug text-ink">{point}</span>
+              </li>
+            ))}
+          </ol>
+
+          {/* The conditional layer, stated up front so one reply can complete a row. */}
+          {prompt.detailNote ? (
+            <p className="mt-3 rounded-xl border border-brand/20 bg-card/60 px-3 py-2.5 text-[13px] leading-snug text-ink">
+              <span className="font-semibold text-brand-ink">{UI_COPY.speakDetailLabel}:</span>{" "}
+              {prompt.detailNote}
+            </p>
+          ) : null}
+
           <p className="mt-3 border-t border-brand/20 pt-3 text-[13px] leading-snug text-muted">
             <span className="font-semibold text-brand-ink">{UI_COPY.speakExampleLabel}:</span>{" "}
             <span className="italic">&ldquo;{prompt.example}&rdquo;</span>

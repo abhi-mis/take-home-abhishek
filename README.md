@@ -146,20 +146,28 @@ needle").
 
 Q11/12/13 are a three-stage flow, not a grid with a mic on top.
 
-1. **Speak first.** The grid is hidden. You get a prompt naming every topic to cover, an
-   example sentence, the mic, and "I would rather answer by tapping". A grid on screen
-   invites tapping; a mic with no prompt gets you one field instead of six.
+1. **Speak first.** The grid is hidden. You get a numbered checklist of every item to
+   cover plus its conditional details, an example answer, the mic, and "I would rather
+   answer by tapping". The checklist enumerates rather than summarising - a prose prompt
+   read better but quietly dropped rows, so patients answered three of six. Labels are
+   interpolated from the schema, so a new row cannot go unasked.
 2. **The result popup.** "Filled 6 of 6" - or "Filled 2 of 6, 4 still to go" with the
    missed items named - plus an explicit **"Yes, these match"**. An LLM just filled six
    medical fields from one sentence; taking silence as agreement is not confirmation.
 3. **The form.** For confirming, correcting, or answering by hand. Anyone who chose to
    tap, or whose mic or key failed, lands here directly.
 
-**Layered questions get asked, not listed.** Rows unfold into more questions as they are
-answered Yes, so blanks end up buried in collapsed rows. Each one is instead asked as its
-own full-size question, one at a time (`FollowUpFlow`): "Do you smoke? Yes" is followed
-immediately by "How much?", and new layers unlock mid-flow because the queue is derived
-from the answers rather than precomputed.
+**Conditional questions get asked, not revealed.** Answering "yes" to a product does not
+finish that row - it creates three more (how long, did it help, side effects). Switching a
+row on now asks exactly those, one at a time, and closes itself when they are done:
+
+```
+Do you use OTC/Medicated Shampoos? -> Yes
+  -> How long have you been using it? -> Did it help? -> Any side effects?
+```
+
+The same applies to smoking (how much) and salon treatments (which one). New layers
+appear mid-flow because the queue is derived from the answers rather than precomputed.
 
 **The mic shows real levels.** The waveform comes from an `AnalyserNode` on the live
 stream, not a CSS animation - a fake animation looks identical whether the mic is live or

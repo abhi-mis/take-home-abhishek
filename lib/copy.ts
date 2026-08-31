@@ -11,6 +11,14 @@
  * second map, not a rewrite of the UI.
  */
 import type { QuestionKey } from "./schema";
+import {
+  PRODUCT_DUR,
+  PRODUCT_ROWS,
+  PROCEDURE_ROWS,
+  SESSIONS,
+  SMOKING_SEV,
+  WASH,
+} from "./types";
 
 export interface QuestionCopy {
   title: string;
@@ -98,20 +106,20 @@ export const COPY: Record<QuestionKey, QuestionCopy> = {
     },
   },
   habits: {
-    title: "A few everyday habits",
-    hint: "You can say it all out loud and we will fill this in, or just tap.",
+    title: "Lifestyle and hair care habits",
+    hint: "Each of these can affect hair loss. Please answer every item.",
   },
   products: {
-    title: "Which hair products do you use?",
-    hint: "Shampoos, oils, minoxidil, tablets - anything at all.",
+    title: "Hair products you use",
+    hint: "Include anything you use now or stopped recently. Answer for all five.",
   },
   procedures: {
-    title: "Have you had any clinic treatments?",
-    hint: "PRP, exosomes, a transplant - or none of them.",
+    title: "Clinic treatments you have had",
+    hint: "Include treatments done at any clinic. Answer for all four.",
   },
   past_treatment_side_effects: {
-    title: "Did any past treatment cause side effects?",
-    hint: "For example itching, headaches, dizziness, or more shedding.",
+    title: "Side effects from past treatment",
+    hint: "For example itching, burning, headaches, dizziness, or more shedding.",
   },
   sample_type: {
     title: "How would you prefer to give your sample?",
@@ -136,24 +144,64 @@ export const COPY: Record<QuestionKey, QuestionCopy> = {
  * table - and it doubles as the summary of the question, so the grid does not need to
  * be on screen for the patient to know what is being asked.
  */
-export const SPEAK_PROMPTS: Record<string, { ask: string; example: string }> = {
+export interface SpeakPrompt {
+  intro: string;
+  /** Every row of the question, so nothing can be left uncovered. */
+  points: string[];
+  /** The conditional detail questions that unlock for each item answered "yes". */
+  detailNote?: string;
+  example: string;
+}
+
+/**
+ * The spoken checklist for each voice question.
+ *
+ * A prose paragraph was the first attempt and it was wrong: it read smoothly but it
+ * quietly dropped rows, so patients answered three of six items and the model was
+ * blamed for an incomplete fill. A form has to enumerate. So each item is its own
+ * bullet, and the row labels are interpolated from the schema constants rather than
+ * retyped - if a row is ever added to the schema, it cannot silently go unasked here.
+ *
+ * `detailNote` carries the conditional layer: the "how long / did it help / any side
+ * effects" questions that only exist for items answered yes. Saying them up front is
+ * what lets one reply fill a row completely instead of leaving three blanks behind.
+ */
+export const SPEAK_PROMPTS: Record<string, SpeakPrompt> = {
   habits: {
-    ask: "Tell me about your daily habits - do you smoke or drink, is the water at home hard, how often do you wash your hair, do you use heat or styling chemicals, and have you had any salon treatments?",
+    intro: "Please tell us about each of the following:",
+    points: [
+      "Smoking - yes or no" + `, and roughly how many per day (${SMOKING_SEV.join(" / ")})`,
+      "Alcohol - yes or no",
+      "Hard water at home - yes or no",
+      `How often you wash your hair - ${WASH.join(", ")}`,
+      "Heat or styling chemicals (dryer, straightener, hair colour) - yes or no",
+      "Salon treatments (keratin, smoothening) - yes or no, and which treatment",
+    ],
     example:
-      "I smoke about 6 a day, no alcohol. Water is hard. I wash my hair every other day, no dryer, and I had keratin last year.",
+      "I smoke about 6 a day. No alcohol. The water at home is hard. I wash my hair on alternate days. I do not use a dryer or chemicals. I had keratin at a salon last year.",
   },
   products: {
-    ask: "Which hair products do you use, how long have you used them, and did they help or cause any side effects? Medicated shampoos, oils or serums, minoxidil you apply, minoxidil tablets, and supplements.",
+    intro: "Please say yes or no for each of these five products:",
+    points: [...PRODUCT_ROWS],
+    detailNote: `For every product you do use, also say how long you have used it (${PRODUCT_DUR.join(", ")}), whether it helped, and whether it caused any side effects.`,
     example:
-      "I have used topical minoxidil for four months, it helped a bit and no side effects. I also take biotin. Nothing else.",
+      "I use topical minoxidil, about 4 months, it helped a little and no side effects. I take biotin supplements, over 6 months, no change and no side effects. No medicated shampoo, no hair oils, and no minoxidil tablets.",
   },
   procedures: {
-    ask: "Have you had any clinic treatments - PRP or GFC, stem cells or exosomes, a hair transplant, or anything else? If so, how many sessions and did they help?",
-    example: "I had PRP, about five sessions, it helped a little. No transplant.",
+    intro: "Please say yes or no for each of these treatments:",
+    points: [...PROCEDURE_ROWS],
+    detailNote: `For every treatment you have had, also say how many sessions (${SESSIONS.join(", ")}) and whether it helped.`,
+    example:
+      "I had PRP, about 5 sessions, it helped a little. No stem cells or exosomes, no hair transplant, and nothing else.",
   },
   past_treatment_side_effects: {
-    ask: "Did any past hair treatment cause side effects? Tell me what happened.",
-    example: "Minoxidil made my scalp itch and burn, so I stopped.",
+    intro: "Please describe any side effect a past hair treatment caused:",
+    points: [
+      "Which treatment or product caused it",
+      "What you experienced (itching, burning, headache, dizziness, more shedding)",
+      "Whether you stopped the treatment",
+    ],
+    example: "Minoxidil made my scalp itch and burn, so I stopped using it.",
   },
 };
 
@@ -175,17 +223,20 @@ export const UI_COPY = {
   no: "No",
   multiHint: "You can select more than one",
   recordCta: "Answer by speaking",
-  speakTitle: "Just say it - we will fill the form",
+  speakTitle: "Answer in your own words",
+  speakCoverLabel: "Please cover all of these",
+  speakDetailLabel: "Also, for each one",
   speakTapInstead: "I would rather answer by tapping",
-  speakExampleLabel: "For example",
-  resultAllTitle: "Got everything",
-  resultSomeTitle: "Got most of it",
-  resultNoneTitle: "Could not catch that",
-  resultConfirmQuestion: "Do these details match what you said?",
-  resultConfirm: "Yes, these match",
-  resultEdit: "No, let me change something",
+  speakExampleLabel: "Example answer",
+  resultAllTitle: "All answers recorded",
+  resultSomeTitle: "Some answers are missing",
+  resultNoneTitle: "Nothing was recorded",
+  resultConfirmQuestion: "Please confirm these details are correct",
+  resultConfirm: "Yes, these are correct",
+  resultEdit: "No, I need to correct something",
   resultAnswerRest: "Answer the rest",
   confirmedBanner: "Confirmed by you",
+  followUpConditional: "A few more details about what you just answered",
   reviewFilled: "Filled from what you said - please check each one.",
   recordStop: "Done",
   recordListening: "Listening…",

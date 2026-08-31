@@ -89,6 +89,16 @@ export function VoiceMatrix({
    */
   const [stage, setStage] = useState<"speak" | "result" | "form">("speak");
   const [flowOpen, setFlowOpen] = useState(false);
+  /**
+   * When set, the follow-up flow is limited to ONE item: the row (or habit field) whose
+   * conditional questions just unlocked.
+   *
+   * Answering "yes" to a product does not finish that row - it creates three more
+   * questions (how long, did it help, side effects) that previously just appeared,
+   * collapsed, further down the grid. Now they are asked immediately and only they, so
+   * a patient tapping down the list is not yanked into the whole outstanding queue.
+   */
+  const [flowScope, setFlowScope] = useState<string | null>(null);
   const [transcript, setTranscript] = useState("");
   /** Set once the patient says the auto-filled values are right. */
   const [confirmed, setConfirmed] = useState(false);
@@ -183,7 +193,24 @@ export function VoiceMatrix({
     );
   }
 
+  /** Ask the conditional questions a "yes" just unlocked, and nothing else. */
+  function askConditional(scope: string) {
+    setFlowScope(scope);
+    setFlowOpen(true);
+  }
+
+  function closeFlow() {
+    setFlowOpen(false);
+    setFlowScope(null);
+  }
+
   const answered = answeredFieldsFor(questionKey, answers);
+
+  // A scope narrows the queue to the item the patient just switched on; without one the
+  // flow walks everything still outstanding.
+  const flowFields = flowScope
+    ? outstanding.filter((f) => f.row === flowScope || f.field === flowScope)
+    : outstanding;
 
   // Keep the page in step with whichever focused surface is on screen.
   useEffect(() => {
@@ -215,6 +242,7 @@ export function VoiceMatrix({
           }}
           onAnswerRest={() => {
             setStage("form");
+            setFlowScope(null);
             setFlowOpen(true);
           }}
           onEdit={() => setStage("form")}
@@ -239,14 +267,22 @@ export function VoiceMatrix({
       */}
       {flowOpen ? (
         <FollowUpFlow
-          fields={outstanding}
+          // Remount on scope change so the progress total restarts for the new queue.
+          key={flowScope ?? "all"}
+          fields={flowFields}
+          title={flowScope ? UI_COPY.followUpConditional : undefined}
+          // A one-item detour should hand the grid straight back.
+          autoCloseOnComplete={flowScope !== null}
           onAnswer={answerField}
-          onClose={() => setFlowOpen(false)}
+          onClose={closeFlow}
         />
       ) : outstanding.length > 0 ? (
         <button
           type="button"
-          onClick={() => setFlowOpen(true)}
+          onClick={() => {
+            setFlowScope(null);
+            setFlowOpen(true);
+          }}
           className="mb-4 flex w-full items-center gap-3 rounded-2xl border border-brand/35 bg-brand-soft/50 px-4 py-3 text-left transition-colors hover:bg-brand-soft"
         >
           <span className="grid size-8 shrink-0 place-items-center rounded-full bg-brand text-[13px] font-bold text-white tabular-nums">
@@ -279,7 +315,11 @@ export function VoiceMatrix({
         <HabitsGrid
           value={answers.habits}
           justFilled={justFilled}
-          onChange={(p) => patch({ habits: { ...answers.habits, ...p } })}
+          onChange={(p) => {
+            patch({ habits: { ...answers.habits, ...p } });
+            if (p.smoking === true) askConditional("smoking_severity");
+            else if (p.salon_treatments === true) askConditional("salon_treatment_detail");
+          }}
         />
       ) : questionKey === "products" ? (
         <TableGrid
@@ -290,14 +330,15 @@ export function VoiceMatrix({
           rowGloss={PRODUCT_GLOSS}
           justFilled={justFilled}
           value={answers.products as unknown as Record<string, Record<string, unknown>>}
-          onChangeRow={(row, p) =>
+          onChangeRow={(row, p) => {
             patch({
               products: {
                 ...answers.products,
                 [row]: { ...answers.products[row as keyof Answers["products"]], ...p },
               } as Answers["products"],
-            })
-          }
+            });
+            if (p.used === true) askConditional(row);
+          }}
         />
       ) : (
         <TableGrid
@@ -308,14 +349,15 @@ export function VoiceMatrix({
           rowGloss={PROCEDURE_GLOSS}
           justFilled={justFilled}
           value={answers.procedures as unknown as Record<string, Record<string, unknown>>}
-          onChangeRow={(row, p) =>
+          onChangeRow={(row, p) => {
             patch({
               procedures: {
                 ...answers.procedures,
                 [row]: { ...answers.procedures[row as keyof Answers["procedures"]], ...p },
               } as Answers["procedures"],
-            })
-          }
+            });
+            if (p.done === true) askConditional(row);
+          }}
         />
       )}
 
