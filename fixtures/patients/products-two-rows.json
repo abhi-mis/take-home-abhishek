@@ -1,0 +1,18 @@
+{
+  "id": "products-two-rows",
+  "questionKey": "products",
+  "note": "Two rows used, three unmentioned. Unmentioned rows must NOT be set to used:false.",
+  "transcript": "Main topical minoxidil lagata hoon, 5 percent, chaar mahine se. Thoda fayda hua hai, koi side effect nahi. Aur biotin ki tablet bhi leta hoon ek saal se, usse pata nahi fayda hua ya nahi.",
+  "expected": {
+    "products": {
+      "Topical Minoxidil": {
+        "used": true,
+        "duration": "3-6mo",
+        "helped": true,
+        "side_effects": false
+      },
+      "Supplements": { "used": true, "duration": ">6mo" }
+    }
+  },
+  "unmentionedRows": ["OTC/Medicated Shampoos", "Hair Oils/Serums", "Oral Minoxidil"]
+}

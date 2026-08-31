@@ -1,0 +1,11 @@
+{
+  "id": "side-effects-no",
+  "questionKey": "past_treatment_side_effects",
+  "note": "No. describe must be null, never an empty string or a restatement.",
+  "transcript": "Nahi, kabhi koi side effect nahi hua. Sab theek chala.",
+  "expected": {
+    "past_treatment_side_effects": false,
+    "past_treatment_describe": null
+  },
+  "expectUnfilled": []
+}

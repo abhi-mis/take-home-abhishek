@@ -1,0 +1,13 @@
+{
+  "id": "heldout-products-mixed",
+  "questionKey": "products",
+  "note": "HELD OUT. Mixes an explicit yes, an explicit no, and silence. All three must be handled differently.",
+  "transcript": "Tel to main roz lagata hoon, bachpan se, koi side effect nahi hua aur baal thode acche lagte hain. Minoxidil kabhi try nahi kiya, doctor ne mana kiya tha. Tablets ke baare mein kuch nahi bolunga.",
+  "expected": {
+    "products": {
+      "Hair Oils/Serums": { "used": true, "duration": ">6mo", "helped": true, "side_effects": false },
+      "Topical Minoxidil": { "used": false }
+    }
+  },
+  "unmentionedRows": ["OTC/Medicated Shampoos"]
+}

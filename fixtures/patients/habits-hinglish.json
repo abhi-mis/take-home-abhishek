@@ -1,0 +1,17 @@
+{
+  "id": "habits-hinglish",
+  "questionKey": "habits",
+  "note": "Code-mixed reply covering 5 of 6 rows; hard_water never mentioned.",
+  "transcript": "Haan main cigarette peeta hoon, din mein 6-7 ho jaati hai. Drink nahi karta bilkul. Baal main alternate day dhota hoon. Dryer straightener kuch use nahi karta. Salon mein pichle saal keratin karwaya tha.",
+  "expected": {
+    "habits": {
+      "smoking": true,
+      "smoking_severity": "Moderate 5-10/day",
+      "alcohol": false,
+      "hair_wash_frequency": "Alternate Days",
+      "heating_tools_styling_chemicals": false,
+      "salon_treatments": true
+    }
+  },
+  "expectUnfilled": ["habits.hard_water"]
+}

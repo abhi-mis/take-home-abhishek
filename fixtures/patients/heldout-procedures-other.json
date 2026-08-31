@@ -1,0 +1,13 @@
+{
+  "id": "heldout-procedures-other",
+  "questionKey": "procedures",
+  "note": "HELD OUT. Only the vague 'Other' row applies. Tests that it is not force-mapped onto PRP.",
+  "transcript": "Ek ayurvedic clinic mein kuch therapy karwayi thi, teen baar gaya tha. Fayda nahi hua. PRP wagera kuch nahi karwaya.",
+  "expected": {
+    "procedures": {
+      "Other": { "done": true, "sessions": "1-3", "helped": false },
+      "PRP/GFC/iPRF": { "done": false }
+    }
+  },
+  "unmentionedRows": ["Hair Transplant"]
+}

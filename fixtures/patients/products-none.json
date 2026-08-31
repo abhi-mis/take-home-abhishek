@@ -1,0 +1,16 @@
+{
+  "id": "products-none",
+  "questionKey": "products",
+  "note": "Blanket denial. All five rows should come back used:false.",
+  "transcript": "Nahi, main koi bhi product use nahi karta. Na shampoo medicated, na tel, na koi tablet, kuch bhi nahi.",
+  "expected": {
+    "products": {
+      "OTC/Medicated Shampoos": { "used": false },
+      "Hair Oils/Serums": { "used": false },
+      "Topical Minoxidil": { "used": false },
+      "Oral Minoxidil": { "used": false },
+      "Supplements": { "used": false }
+    }
+  },
+  "expectUnfilled": []
+}

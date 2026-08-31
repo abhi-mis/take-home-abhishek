@@ -1,0 +1,15 @@
+{
+  "id": "heldout-habits-sparse",
+  "questionKey": "habits",
+  "note": "HELD OUT (written after prompt tuning). Mentions only 2 of 6 rows. Tests that a short reply fills a little and flags a lot.",
+  "transcript": "Paani bohot hard hai yahan ka, uske liye main filter laga raha hoon. Aur haftay mein ek baar hi baal dhota hoon.",
+  "expected": {
+    "habits": { "hard_water": true, "hair_wash_frequency": "Weekly" }
+  },
+  "expectUnfilled": [
+    "habits.smoking",
+    "habits.alcohol",
+    "habits.heating_tools_styling_chemicals",
+    "habits.salon_treatments"
+  ]
+}

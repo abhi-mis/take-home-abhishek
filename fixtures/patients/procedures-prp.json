@@ -1,0 +1,14 @@
+{
+  "id": "procedures-prp",
+  "questionKey": "procedures",
+  "note": "One procedure done with a session count; transplant explicitly denied.",
+  "transcript": "Maine PRP karwaya tha, paanch sessions hue the. Thoda fayda laga tha shuru mein. Transplant nahi karwaya, aur stem cell wala kuch nahi.",
+  "expected": {
+    "procedures": {
+      "PRP/GFC/iPRF": { "done": true, "sessions": "4-6", "helped": true },
+      "Hair Transplant": { "done": false },
+      "Stem Cells/Exosomes": { "done": false }
+    }
+  },
+  "unmentionedRows": ["Other"]
+}

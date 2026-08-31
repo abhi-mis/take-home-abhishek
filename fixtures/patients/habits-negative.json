@@ -1,0 +1,17 @@
+{
+  "id": "habits-negative",
+  "questionKey": "habits",
+  "note": "Clear no to everything. Tests that explicit denials become false, not null.",
+  "transcript": "No smoking, no alcohol. Water at home is fine, we have a softener. I wash my hair daily. No dryer, no chemicals, and I never go to a salon for treatments.",
+  "expected": {
+    "habits": {
+      "smoking": false,
+      "alcohol": false,
+      "hard_water": false,
+      "hair_wash_frequency": "Daily",
+      "heating_tools_styling_chemicals": false,
+      "salon_treatments": false
+    }
+  },
+  "expectUnfilled": []
+}

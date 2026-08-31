@@ -1,0 +1,19 @@
+node_modules
+.next
+out
+build
+.DS_Store
+*.pem
+npm-debug.log*
+.env
+.env*.local
+.vercel
+*.tsbuildinfo
+next-env.d.ts
+coverage
+
+# local test artifacts
+test-speech.wav
+server*.log
+.next-smoke
+smoke-failure.png

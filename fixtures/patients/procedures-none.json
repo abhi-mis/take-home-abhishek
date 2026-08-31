@@ -1,0 +1,13 @@
+{
+  "id": "procedures-none",
+  "questionKey": "procedures",
+  "note": "English, clinic-naive patient. Nothing done.",
+  "transcript": "No, I have never done any of that. No PRP, no transplant, nothing like that. This is my first time seeing a hair doctor.",
+  "expected": {
+    "procedures": {
+      "PRP/GFC/iPRF": { "done": false },
+      "Hair Transplant": { "done": false }
+    }
+  },
+  "expectUnfilled": []
+}

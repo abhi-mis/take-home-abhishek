@@ -1,0 +1,8 @@
+{
+  "id": "heldout-side-effects-vague",
+  "questionKey": "past_treatment_side_effects",
+  "note": "HELD OUT. Yes expressed indirectly, no word like 'side effect' used.",
+  "transcript": "Shuru ke do mahine mein baal aur zyada jhadne lage the, aur sar pe dane bhi ho gaye the. Main dar gaya tha.",
+  "expected": { "past_treatment_side_effects": true },
+  "describeMustMention": ["jhad"]
+}

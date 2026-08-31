@@ -1,0 +1,8 @@
+{
+  "id": "side-effects-yes",
+  "questionKey": "past_treatment_side_effects",
+  "note": "Yes plus a free-text description that must be preserved, not normalised away.",
+  "transcript": "Haan, minoxidil lagane se sar mein bohot khujli hoti thi aur thodi jalan bhi. Doctor ne band karwa diya.",
+  "expected": { "past_treatment_side_effects": true },
+  "describeMustMention": ["khujli"]
+}
