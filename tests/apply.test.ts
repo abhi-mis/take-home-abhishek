@@ -23,9 +23,9 @@ const fresh = (): Answers => structuredClone(EMPTY_ANSWERS);
 /** The descriptor the UI would be showing when the patient answers. */
 function field(answers: Answers, path: string) {
   const all = [
-    ...outstandingFieldsFor("habits", answers),
-    ...outstandingFieldsFor("products", answers),
-    ...outstandingFieldsFor("procedures", answers),
+    ...outstandingFieldsFor("habits", answers, "en"),
+    ...outstandingFieldsFor("products", answers, "en"),
+    ...outstandingFieldsFor("procedures", answers, "en"),
   ];
   const f = all.find((x) => x.path === path);
   if (!f) throw new Error(`no outstanding field at ${path}`);

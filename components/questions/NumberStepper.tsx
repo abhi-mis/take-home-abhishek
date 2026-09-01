@@ -12,13 +12,18 @@
  */
 import { useState } from "react";
 import { cn, tick } from "@/lib/utils";
+import { t, type Lang } from "@/lib/i18n";
 
+/**
+ * `low` is the first age in the band, and it is what decides whether the card is
+ * available: a 25-year-old cannot have started losing hair in their 30s.
+ */
 const PRESETS = [
-  { label: "Teens", hint: "13-19", value: 16 },
-  { label: "20s", hint: "20-29", value: 25 },
-  { label: "30s", hint: "30-39", value: 35 },
-  { label: "40s", hint: "40-49", value: 45 },
-  { label: "50+", hint: "50 or later", value: 55 },
+  { label: "onsetTeens", hint: "onsetTeensHint", value: 16, low: 13 },
+  { label: "onset20s", hint: "onset20sHint", value: 25, low: 20 },
+  { label: "onset30s", hint: "onset30sHint", value: 35, low: 30 },
+  { label: "onset40s", hint: "onset40sHint", value: 45, low: 40 },
+  { label: "onset50s", hint: "onset50sHint", value: 55, low: 50 },
 ] as const;
 
 const MIN = 5;
@@ -26,16 +31,23 @@ const DEFAULT_MAX = 90;
 
 export function NumberStepper({
   value,
+  lang,
   max = DEFAULT_MAX,
   onChange,
 }: {
+  lang: Lang;
   value: number | null;
   /**
    * Upper bound, which is the patient's own age once they have given it.
    *
    * Not cosmetic: without it a 45-year-old can slide this to 60 and the doctor receives
-   * "hair loss began at 60" as a fact. The presets above the slider are filtered by it
-   * too, so an impossible decade is never offered in the first place.
+   * "hair loss began at 60" as a fact.
+   *
+   * The decade cards obey it too, and until recently they did not - the comment here
+   * claimed they were filtered when in truth tapping "50+" at 25 clamped silently to 25,
+   * which looks exactly like the app ignoring the tap. They are now shown, greyed and
+   * unpressable, with one line underneath saying why. Shown rather than removed so the
+   * grid does not reshuffle under the patient's thumb as their age changes.
    */
   max?: number;
   onChange: (v: number) => void;
@@ -50,54 +62,77 @@ export function NumberStepper({
 
   return (
     <div className="flex flex-col gap-5">
-      <div className="grid grid-cols-3 gap-2.5">
-        {PRESETS.map((p) => {
-          const active = value !== null && nearest(value) === p.value;
-          return (
-            <button
-              key={p.label}
-              type="button"
-              aria-pressed={active}
-              onClick={() => {
-                set(p.value);
-                setFine(true);
-              }}
-              className={cn(
-                "flex min-h-[72px] flex-col items-center justify-center rounded-2xl border-2",
-                "transition-all duration-100 active:scale-[0.98]",
-                active
-                  ? "border-brand bg-brand-soft"
-                  : "border-line bg-card hover:border-brand/50 hover:bg-brand-soft/35",
-              )}
-            >
-              <span
+      <div>
+        <div className="grid grid-cols-3 gap-2.5">
+          {PRESETS.map((p) => {
+            const active = value !== null && nearest(value, max) === p.value;
+            const label = t(p.label, lang);
+            // A band the patient cannot have lived through yet.
+            const blocked = p.low > max;
+            return (
+              <button
+                key={p.label}
+                type="button"
+                aria-pressed={active}
+                aria-disabled={blocked}
+                aria-describedby={blocked ? "onset-bound" : undefined}
+                onClick={
+                  blocked
+                    ? undefined
+                    : () => {
+                        set(p.value);
+                        setFine(true);
+                      }
+                }
                 className={cn(
-                  "text-[15px] font-bold",
-                  active ? "text-brand-ink" : "text-ink",
+                  "flex min-h-[72px] flex-col items-center justify-center rounded-2xl border-2",
+                  "transition-all duration-100",
+                  blocked
+                    ? "cursor-not-allowed border-dashed border-line bg-card/50"
+                    : active
+                      ? "border-brand bg-brand-soft active:scale-[0.98]"
+                      : "border-line bg-card hover:border-brand/50 hover:bg-brand-soft/35 active:scale-[0.98]",
                 )}
               >
-                {p.label}
-              </span>
-              <span className="mt-0.5 text-[11px] text-muted">{p.hint}</span>
-            </button>
-          );
-        })}
+                <span
+                  className={cn(
+                    "text-[15px] font-bold",
+                    blocked ? "text-muted/70" : active ? "text-brand-ink" : "text-ink",
+                  )}
+                >
+                  {label}
+                </span>
+                <span
+                  className={cn("mt-0.5 text-[11px]", blocked ? "text-muted/60" : "text-muted")}
+                >
+                  {blocked ? t("onsetClosed", lang) : t(p.hint, lang)}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+        {/* One explanation for the whole grid, rather than five repetitions of it. */}
+        {PRESETS.some((p) => p.low > max) ? (
+          <p id="onset-bound" className="mt-2.5 text-[12.5px] leading-snug text-muted">
+            {t("onsetBound", lang, { age: max })}
+          </p>
+        ) : null}
       </div>
 
       {fine ? (
         <div className="rounded-2xl border border-line bg-card p-4">
-          <p className="text-center text-[13px] text-muted">Fine-tune it</p>
+          <p className="text-center text-[13px] text-muted">{t("onsetFine", lang)}</p>
           <div className="mt-3 flex items-center justify-between gap-3">
-            <StepBtn label="Decrease age" onClick={() => set((value ?? 25) - 1)}>
+            <StepBtn label={t("onsetDown", lang)} onClick={() => set((value ?? 25) - 1)}>
               −
             </StepBtn>
             <div className="text-center">
               <span className="block text-[40px] font-bold leading-none tabular-nums text-brand-ink">
                 {value ?? " - "}
               </span>
-              <span className="mt-1 block text-[12px] text-muted">years old</span>
+              <span className="mt-1 block text-[12px] text-muted">{t("onsetYears", lang)}</span>
             </div>
-            <StepBtn label="Increase age" onClick={() => set((value ?? 25) + 1)}>
+            <StepBtn label={t("onsetUp", lang)} onClick={() => set((value ?? 25) + 1)}>
               +
             </StepBtn>
           </div>
@@ -107,7 +142,7 @@ export function NumberStepper({
             min={MIN}
             max={max}
             value={value ?? 25}
-            aria-label="Age hair loss began"
+            aria-label={t("onsetAria", lang)}
             onChange={(e) => onChange(Number(e.target.value))}
             className="mt-4 h-11 w-full accent-[var(--color-brand)]"
           />
@@ -117,8 +152,16 @@ export function NumberStepper({
   );
 }
 
-function nearest(v: number): number {
-  return PRESETS.reduce((best, p) =>
+/**
+ * Which card to highlight for a value - considering only cards the patient can pick.
+ *
+ * Without the bound, a 25-year-old whose answer is 25 could light up a card that is
+ * greyed out, which reads as the form contradicting itself.
+ */
+function nearest(v: number, max: number): number {
+  const usable = PRESETS.filter((p) => p.low <= max);
+  const pool = usable.length > 0 ? usable : PRESETS;
+  return pool.reduce((best, p) =>
     Math.abs(p.value - v) < Math.abs(best.value - v) ? p : best,
   ).value;
 }

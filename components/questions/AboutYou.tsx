@@ -23,24 +23,25 @@
  */
 import { useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { UI_COPY } from "@/lib/copy";
+import { t, ui, type Lang } from "@/lib/i18n";
 import {
   AGE_MAX,
   AGE_MIN,
-  COMFORT_LABEL,
   cleanFirstName,
+  comfortName,
   nameAck,
   suggestedComfort,
   type Comfort,
 } from "@/lib/patient";
 import type { PatientSex } from "@/lib/types";
+import type { TextKey } from "@/lib/copy.hi";
 import { cn, tick } from "@/lib/utils";
 import { CheckIcon } from "../ui/Button";
 
-const SEX_OPTIONS: { value: PatientSex; label: string; gloss: string }[] = [
-  { value: "female", label: "Female", gloss: "Two extra questions apply to you" },
-  { value: "male", label: "Male", gloss: "Those two are skipped" },
-  { value: "prefer_not", label: "Prefer not to say", gloss: "Those two are skipped" },
+const SEX_OPTIONS: { value: PatientSex; label: TextKey; gloss: TextKey }[] = [
+  { value: "female", label: "aboutSexFemale", gloss: "aboutSexTwoApply" },
+  { value: "male", label: "aboutSexMale", gloss: "aboutSexTwoSkipped" },
+  { value: "prefer_not", label: "aboutSexPreferNot", gloss: "aboutSexTwoSkipped" },
 ];
 
 const AGE_BANDS = [
@@ -58,10 +59,12 @@ export function AboutYou({
   age,
   comfort,
   comfortAsked,
+  lang,
   onFirstName,
   onSex,
   onAge,
 }: {
+  lang: Lang;
   firstName: string | null;
   sex: PatientSex | null;
   age: number | null;
@@ -95,9 +98,9 @@ export function AboutYou({
   const suggested = suggestedComfort(age);
   const scaleNote =
     comfort !== "standard"
-      ? `${COMFORT_LABEL[comfort]} is on for the rest of the form.`
+      ? t("aboutScaleOn", lang, { label: comfortName(comfort, lang) })
       : comfortAsked && suggested !== "standard"
-        ? "Text size is unchanged, as you asked."
+        ? t("aboutScaleUnchanged", lang)
         : null;
   useEffect(() => {
     lastAnnounced.current = comfort;
@@ -107,15 +110,15 @@ export function AboutYou({
     <div className="flex flex-col gap-7">
       {/* ---------------- name ---------------- */}
       <section>
-        <Label text="What should we call you?" optional />
+        <Label text={t("aboutNameLabel", lang)} optional optionalText={t("aboutNameOptional", lang)} />
         <input
           type="text"
           inputMode="text"
           autoComplete="given-name"
           value={draftName}
           onChange={(e) => setDraftName(e.target.value)}
-          placeholder="First name"
-          aria-label="First name, optional"
+          placeholder={t("aboutNamePlaceholder", lang)}
+          aria-label={t("aboutNameAria", lang)}
           className={cn(
             "min-h-[56px] w-full rounded-2xl border-2 border-line bg-card px-4",
             "text-[17px] text-ink transition-colors placeholder:text-muted/60",
@@ -141,16 +144,18 @@ export function AboutYou({
               : "text-[12.5px] font-medium text-brand-ink",
           )}
         >
-          {firstName === null
-            ? "Optional, and it is not part of the form your doctor receives."
-            : nameAck(firstName)}
+          {firstName === null ? t("aboutNameNote", lang) : nameAck(firstName, lang)}
         </p>
       </section>
 
       {/* ---------------- sex ---------------- */}
       <section>
-        <Label text="Which applies to you?" />
-        <div role="radiogroup" aria-label="Sex" className="flex flex-col gap-2.5">
+        <Label text={t("aboutSexLabel", lang)} />
+        <div
+          role="radiogroup"
+          aria-label={t("aboutSexAria", lang)}
+          className="flex flex-col gap-2.5"
+        >
           {SEX_OPTIONS.map((o) => {
             const selected = sex === o.value;
             return (
@@ -178,10 +183,10 @@ export function AboutYou({
                       selected ? "text-brand-ink" : "text-ink",
                     )}
                   >
-                    {o.label}
+                    {t(o.label, lang)}
                   </span>
                   <span className="mt-0.5 block text-[12.5px] leading-snug text-muted">
-                    {o.gloss}
+                    {t(o.gloss, lang)}
                   </span>
                 </span>
                 <span
@@ -201,7 +206,7 @@ export function AboutYou({
 
       {/* ---------------- age ---------------- */}
       <section>
-        <Label text="How old are you?" />
+        <Label text={t("aboutAgeLabel", lang)} />
         <div className="grid grid-cols-3 gap-2.5">
           {AGE_BANDS.map((b) => {
             const active = age !== null && nearestBand(age) === b.value;
@@ -238,13 +243,15 @@ export function AboutYou({
             >
               <div className="mt-4 rounded-2xl border border-line bg-card p-4">
                 <div className="flex items-center justify-between">
-                  <span className="text-[13px] font-semibold text-muted">Exact age</span>
+                  <span className="text-[13px] font-semibold text-muted">
+                    {t("aboutAgeExact", lang)}
+                  </span>
                   <span className="text-[26px] font-bold tabular-nums leading-none text-brand">
                     {age}
                   </span>
                 </div>
                 <div className="mt-3 flex items-center gap-3">
-                  <Nudge label="Younger by one year" onClick={() => onAge(clamp(age - 1))}>
+                  <Nudge label={t("aboutAgeYounger", lang)} onClick={() => onAge(clamp(age - 1))}>
                     &minus;
                   </Nudge>
                   <input
@@ -253,11 +260,11 @@ export function AboutYou({
                     max={AGE_MAX}
                     step={1}
                     value={age}
-                    aria-label="Your age"
+                    aria-label={t("aboutAgeAria", lang)}
                     onChange={(e) => onAge(clamp(Number(e.target.value)))}
                     className="h-2 flex-1 cursor-grab appearance-none rounded-full bg-line accent-brand"
                   />
-                  <Nudge label="Older by one year" onClick={() => onAge(clamp(age + 1))}>
+                  <Nudge label={t("aboutAgeOlder", lang)} onClick={() => onAge(clamp(age + 1))}>
                     +
                   </Nudge>
                 </div>
@@ -283,26 +290,33 @@ export function AboutYou({
                 Aa
               </span>
               <span>
-                <span className="font-bold">{scaleNote}</span> Change it any time with the{" "}
-                <span className="font-bold">Aa</span> button at the top.
+                <span className="font-bold">{scaleNote}</span> {t("aboutScaleChange", lang)}
               </span>
             </motion.p>
           ) : null}
         </AnimatePresence>
       </section>
 
-      <p className="text-[12px] leading-snug text-muted">{UI_COPY.aboutFooter}</p>
+      <p className="text-[12px] leading-snug text-muted">{ui(lang).aboutFooter}</p>
     </div>
   );
 }
 
-function Label({ text, optional = false }: { text: string; optional?: boolean }) {
+function Label({
+  text,
+  optional = false,
+  optionalText,
+}: {
+  text: string;
+  optional?: boolean;
+  optionalText?: string;
+}) {
   return (
     <p className="mb-2.5 flex items-baseline gap-2">
       <span className="text-[15px] font-bold text-ink">{text}</span>
       {optional ? (
         <span className="text-[11.5px] font-semibold uppercase tracking-wide text-muted">
-          optional
+          {optionalText}
         </span>
       ) : null}
     </p>

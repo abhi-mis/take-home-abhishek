@@ -23,12 +23,15 @@
 import { OptionCard } from "../ui/Button";
 import { OptionIcon, hasOptionIcon } from "./OptionIcons";
 import { cn, tick } from "@/lib/utils";
+import { optionLabel, type Lang } from "@/lib/i18n";
 
 export function MultiChoice({
   options,
   values,
   exclusive,
   gloss,
+  unavailable,
+  lang,
   noneLabel,
   noneChosen = false,
   withIcons = false,
@@ -39,6 +42,12 @@ export function MultiChoice({
   values: string[];
   exclusive?: string;
   gloss?: Record<string, string>;
+  /**
+   * option -> why this patient cannot pick it. Rendered greyed and unpressable rather
+   * than removed, so the form is visibly reasoning rather than quietly editing itself.
+   */
+  unavailable?: Record<string, string>;
+  lang: Lang;
   /** When set, renders the UI-only "none of these" affordance described above. */
   noneLabel?: string;
   noneChosen?: boolean;
@@ -47,6 +56,7 @@ export function MultiChoice({
   onChooseNone?: () => void;
 }) {
   function toggle(opt: string) {
+    if (unavailable?.[opt] !== undefined) return;
     tick();
     if (exclusive && opt === exclusive) {
       onChange(values.includes(opt) ? [] : [opt]);
@@ -66,10 +76,11 @@ export function MultiChoice({
         <OptionCard
           key={opt}
           multi
-          label={opt}
+          label={optionLabel(opt, lang)}
           gloss={gloss?.[opt]}
           icon={withIcons && hasOptionIcon(opt) ? <OptionIcon option={opt} /> : undefined}
           selected={values.includes(opt)}
+          unavailable={unavailable?.[opt]}
           onSelect={() => toggle(opt)}
         />
       ))}

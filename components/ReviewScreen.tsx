@@ -13,13 +13,14 @@
 import { useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { INTAKE_SCHEMA, QUESTIONS } from "@/lib/schema";
-import { COPY, UI_COPY } from "@/lib/copy";
+import { optionLabel, questionCopy, sectionLabel, t, ui, type Lang } from "@/lib/i18n";
 import { buildOutput, validate } from "@/lib/validate";
 import type { Answers, Meta } from "@/lib/types";
 import { Button, CheckIcon } from "./ui/Button";
 import { cn, downloadJson } from "@/lib/utils";
 import { ThemeToggle } from "./ThemeToggle";
 import { ComfortToggle } from "./ComfortToggle";
+import { LangToggle } from "./LangToggle";
 import { useIntake } from "@/lib/store";
 import { doneTitle } from "@/lib/patient";
 
@@ -40,6 +41,10 @@ export function ReviewScreen({
   // One field per selector: a selector that builds a value re-renders forever.
   const comfort = useIntake((st) => st.comfort);
   const setComfort = useIntake((st) => st.setComfort);
+  const lang = useIntake((st) => st.lang);
+  const setLang = useIntake((st) => st.setLang);
+  const UI = ui(lang);
+  const COPY_L = questionCopy(lang);
 
   const result = useMemo(
     () => validate(answers, meta, explicitNone),
@@ -47,12 +52,13 @@ export function ReviewScreen({
   );
   const output = useMemo(() => buildOutput(answers, meta), [answers, meta]);
 
-  if (answers.consent === false) return <Declined onJump={onJump} />;
+  if (answers.consent === false) return <Declined lang={lang} onJump={onJump} />;
 
   return (
     <div className="mx-auto w-full max-w-md px-5 pb-16 pt-8">
       <div className="mb-5 flex justify-end">
-        <ComfortToggle comfort={comfort} onChange={setComfort} />
+        <ComfortToggle comfort={comfort} onChange={setComfort} lang={lang} />
+        <LangToggle lang={lang} onChange={setLang} />
         <ThemeToggle />
       </div>
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
@@ -68,11 +74,11 @@ export function ReviewScreen({
           <div>
             <h1 className="font-display text-[23px] font-bold leading-tight text-ink">
               {/* "All done, Anjali" - the last of the three places the name appears. */}
-              {doneTitle(meta, result.valid ? UI_COPY.reviewTitle : UI_COPY.reviewIncomplete)}
+              {doneTitle(meta, result.valid ? UI.reviewTitle : UI.reviewIncomplete, lang)}
             </h1>
             <p className="text-[13.5px] text-muted">
               {result.valid
-                ? UI_COPY.reviewBody
+                ? UI.reviewBody
                 : `${result.missing.length + result.issues.length} item(s) still need attention.`}
             </p>
           </div>
@@ -90,7 +96,7 @@ export function ReviewScreen({
                   onClick={() => onJump(key)}
                   className="min-h-[44px] text-left text-[14px] font-semibold text-warn underline decoration-warn/40 underline-offset-2 transition-colors hover:decoration-warn"
                 >
-                  {COPY[key as keyof typeof COPY]?.title ?? key} →
+                  {COPY_L[key as keyof typeof COPY_L]?.title ?? key} →
                 </button>
               </li>
             ))}
@@ -107,7 +113,7 @@ export function ReviewScreen({
         {INTAKE_SCHEMA.sections.map((section) => (
           <section key={section.id}>
             <h2 className="mb-2 text-[11px] font-bold uppercase tracking-[0.12em] text-muted">
-              {section.id} · {section.title}
+              {section.id} · {sectionLabel(lang)[section.id] ?? section.title}
             </h2>
             <div className="overflow-hidden rounded-2xl border border-line bg-card">
               {section.questions.map((q, i) => (
@@ -132,10 +138,10 @@ export function ReviewScreen({
                       key is still exactly what goes into the JSON below.
                     */}
                     <span className="block text-[12.5px] font-medium leading-snug text-muted">
-                      {COPY[q.key as keyof typeof COPY]?.title ?? q.key}
+                      {COPY_L[q.key as keyof typeof COPY_L]?.title ?? q.key}
                     </span>
                     <span className="mt-0.5 block text-[14px] font-semibold leading-snug text-ink">
-                      {renderAnswer(q.key, answers, meta)}
+                      {renderAnswer(q.key, answers, meta, lang)}
                     </span>
                   </span>
                   <span aria-hidden className="pt-1 text-muted">
@@ -154,13 +160,13 @@ export function ReviewScreen({
           disabled={!result.valid}
           onClick={() => downloadJson("genoroot-intake.json", output)}
         >
-          {result.valid ? UI_COPY.download : UI_COPY.downloadBlocked}
+          {result.valid ? UI.download : UI.downloadBlocked}
         </Button>
         <Button variant="secondary" size="lg" onClick={() => setShowJson((s) => !s)}>
-          {showJson ? UI_COPY.hideJson : UI_COPY.showJson}
+          {showJson ? UI.hideJson : UI.showJson}
         </Button>
         <Button variant="ghost" onClick={onRestart}>
-          {UI_COPY.restart}
+          {UI.restart}
         </Button>
       </div>
 
@@ -171,20 +177,28 @@ export function ReviewScreen({
       ) : null}
 
       <p className="mt-6 text-center text-[11.5px] leading-relaxed text-muted">
-        {QUESTIONS.length} questions · shape and coverage checked before download.
+        {t("reviewNote", lang, { n: QUESTIONS.length })}
       </p>
     </div>
   );
 }
 
 /** Human-readable rendering of one answer, including WHY a null is a valid null. */
-function renderAnswer(key: string, a: Answers, meta: Meta): React.ReactNode {
+/**
+ * The answer, as the patient should read it back.
+ *
+ * Note what is translated and what is not: the option NAMES go through `optionLabel`,
+ * and the connecting words come from the dictionary, but the patient's own free text
+ * (the salon treatment, the side-effect description) is never touched. Translating what
+ * someone typed would be putting words in their mouth. The raw JSON below this list is
+ * always the English schema strings either way.
+ */
+function renderAnswer(key: string, a: Answers, meta: Meta, lang: Lang): React.ReactNode {
+  const opt = (v: string) => optionLabel(v, lang);
   const gatedOut =
     (key === "menstrual_cycle" || key === "pregnancy_related") && meta.patient_sex !== "female";
   if (gatedOut)
-    return (
-      <span className="font-normal italic text-muted">null - skipped, never asked</span>
-    );
+    return <span className="font-normal italic text-muted">{t("rvSkipped", lang)}</span>;
 
   switch (key) {
     case "habits": {
@@ -194,27 +208,32 @@ function renderAnswer(key: string, a: Answers, meta: Meta): React.ReactNode {
       const yn = (v: boolean | null, yes: string, no: string) =>
         v === null ? "? " + yes : v ? yes : no;
       const bits = [
-        h.smoking === true ? `smoking: ${h.smoking_severity ?? "?"}` : yn(h.smoking, "smoking", "no smoking"),
-        yn(h.alcohol, "alcohol", "no alcohol"),
-        yn(h.hard_water, "hard water", "no hard water"),
-        `wash: ${h.hair_wash_frequency ?? " - "}`,
-        yn(h.heating_tools_styling_chemicals, "heat/chemicals", "no heat"),
+        h.smoking === true
+          ? `${t("rvSmoking", lang)}: ${h.smoking_severity === null ? "?" : opt(h.smoking_severity)}`
+          : yn(h.smoking, t("rvSmoking", lang), t("rvNoSmoking", lang)),
+        yn(h.alcohol, t("rvAlcohol", lang), t("rvNoAlcohol", lang)),
+        yn(h.hard_water, t("rvHardWater", lang), t("rvNoHardWater", lang)),
+        `${t("rvWash", lang)}: ${h.hair_wash_frequency === null ? " - " : opt(h.hair_wash_frequency)}`,
+        yn(h.heating_tools_styling_chemicals, t("rvHeat", lang), t("rvNoHeat", lang)),
         h.salon_treatments === true
-          ? `salon: ${h.salon_treatment_detail ?? "?"}`
-          : yn(h.salon_treatments, "salon", "no salon"),
+          ? `${t("rvSalon", lang)}: ${h.salon_treatment_detail ?? "?"}`
+          : yn(h.salon_treatments, t("rvSalon", lang), t("rvNoSalon", lang)),
       ];
       return <span className="font-normal">{bits.join(" · ")}</span>;
     }
     case "products": {
       const used = Object.entries(a.products).filter(([, v]) => v.used === true);
       const unanswered = Object.values(a.products).some((v) => v.used === null);
-      if (unanswered) return <Missing />;
-      if (used.length === 0) return <Empty label="no products used" />;
+      if (unanswered) return <Missing lang={lang} />;
+      if (used.length === 0) return <Empty label={t("rvNoProducts", lang)} />;
       return (
         <span className="font-normal">
           {used
             .map(
-              ([row, v]) => `${row} (${v.duration ?? "?"}, ${v.helped ? "helped" : "no help"})`,
+              ([row, v]) =>
+                `${opt(row)} (${v.duration === null ? "?" : opt(v.duration)}, ${
+                  v.helped ? t("rvHelped", lang) : t("rvNoHelp", lang)
+                })`,
             )
             .join(" · ")}
         </span>
@@ -223,32 +242,38 @@ function renderAnswer(key: string, a: Answers, meta: Meta): React.ReactNode {
     case "procedures": {
       const done = Object.entries(a.procedures).filter(([, v]) => v.done === true);
       const pending = Object.values(a.procedures).some((v) => v.done === null);
-      if (pending) return <Missing />;
-      if (done.length === 0) return <Empty label="no procedures done" />;
+      if (pending) return <Missing lang={lang} />;
+      if (done.length === 0) return <Empty label={t("rvNoProcedures", lang)} />;
       return (
         <span className="font-normal">
-          {done.map(([row, v]) => `${row} (${v.sessions ?? "?"})`).join(" · ")}
+          {done
+            .map(([row, v]) => `${opt(row)} (${v.sessions === null ? "?" : opt(v.sessions)})`)
+            .join(" · ")}
         </span>
       );
     }
     case "past_treatment_side_effects":
-      if (a.past_treatment_side_effects === null) return <Missing />;
+      if (a.past_treatment_side_effects === null) return <Missing lang={lang} />;
       return (
         <span className="font-normal">
-          {a.past_treatment_side_effects ? `Yes - ${a.past_treatment_describe ?? "?"}` : "No"}
+          {a.past_treatment_side_effects
+            ? `${ui(lang).yes} - ${a.past_treatment_describe ?? "?"}`
+            : ui(lang).no}
         </span>
       );
     default: {
       const v = a[key as "duration"];
       if (Array.isArray(v))
         return v.length === 0 ? (
-          <Empty label="none selected" />
+          <Empty label={t("rvNoneSelected", lang)} />
         ) : (
-          <span className="font-normal">{v.join(" · ")}</span>
+          <span className="font-normal">{v.map(opt).join(" · ")}</span>
         );
-      if (v === null) return <Missing />;
-      if (typeof v === "boolean") return <span className="font-normal">{v ? "Yes" : "No"}</span>;
-      return <span className="font-normal">{String(v)}</span>;
+      if (v === null) return <Missing lang={lang} />;
+      if (typeof v === "boolean")
+        return <span className="font-normal">{v ? ui(lang).yes : ui(lang).no}</span>;
+      // A number (the onset age) needs no translation; a string is a schema option.
+      return <span className="font-normal">{typeof v === "string" ? opt(v) : String(v)}</span>;
     }
   }
 }
@@ -256,27 +281,20 @@ function renderAnswer(key: string, a: Answers, meta: Meta): React.ReactNode {
 function Empty({ label }: { label: string }) {
   return <span className="font-normal italic text-muted">[] - {label}</span>;
 }
-function Missing() {
-  return <span className="font-normal italic text-warn">not answered yet</span>;
+function Missing({ lang }: { lang: Lang }) {
+  return <span className="font-normal italic text-warn">{t("rvNotAnswered", lang)}</span>;
 }
 
-function Declined({ onJump }: { onJump: (id: string) => void }) {
+function Declined({ lang, onJump }: { lang: Lang; onJump: (id: string) => void }) {
   return (
     <div className="mx-auto w-full max-w-md px-5 pt-16">
       <h1 className="font-display text-[23px] font-bold leading-tight text-ink">
-        Understood - no genetic test.
+        {t("declinedTitle", lang)}
       </h1>
-      <p className="mt-3 text-[15px] leading-relaxed text-muted">
-        You have not given permission, so we will not collect a sample and no genetic
-        analysis will happen. You can still share your other answers with your doctor and
-        continue with a normal consultation.
-      </p>
-      <p className="mt-3 text-[13px] leading-relaxed text-muted">
-        No JSON is produced on this path: without consent, this app does not hand the
-        intake on.
-      </p>
+      <p className="mt-3 text-[15px] leading-relaxed text-muted">{t("declinedBody", lang)}</p>
+      <p className="mt-3 text-[13px] leading-relaxed text-muted">{t("declinedNote", lang)}</p>
       <Button className="mt-7 w-full" size="lg" variant="secondary" onClick={() => onJump("consent")}>
-        Review the consent screen
+        {t("declinedBack", lang)}
       </Button>
     </div>
   );

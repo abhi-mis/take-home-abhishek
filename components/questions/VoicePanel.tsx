@@ -18,7 +18,7 @@ import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { MAX_RECORDING_MS, micSupported, startRecording, type Recorder } from "@/lib/audio";
 import type { ExtractResult } from "@/lib/extractPrompt";
-import { UI_COPY } from "@/lib/copy";
+import { t, ui, type Lang } from "@/lib/i18n";
 import { cn, tick } from "@/lib/utils";
 
 type Phase = "idle" | "recording" | "transcribing" | "extracting" | "done" | "error";
@@ -28,11 +28,14 @@ const BARS = 28;
 
 export function VoicePanel({
   questionKey,
+  lang,
   onResult,
 }: {
   questionKey: string;
+  lang: Lang;
   onResult: (r: ExtractResult, transcript: string) => void;
 }) {
+  const UI = ui(lang);
   const [phase, setPhase] = useState<Phase>("idle");
   const [transcript, setTranscript] = useState<string>("");
   const [error, setError] = useState<string>("");
@@ -94,7 +97,7 @@ export function VoicePanel({
       recorderRef.current = await startRecording();
       setPhase("recording");
     } catch {
-      setError("Microphone permission was denied. You can fill this in by tapping below.");
+      setError(t("voiceDenied", lang));
       setPhase("error");
     }
   }
@@ -115,7 +118,7 @@ export function VoicePanel({
       const { transcript: text } = (await tRes.json()) as { transcript: string };
 
       if (!text?.trim()) {
-        setError("Nothing was picked up. Try again, or tap the answers below.");
+        setError(t("voiceEmpty", lang));
         setPhase("error");
         return;
       }
@@ -163,7 +166,7 @@ export function VoicePanel({
           type="button"
           onClick={recording ? stop : begin}
           disabled={busy}
-          aria-label={recording ? UI_COPY.recordStop : UI_COPY.recordCta}
+          aria-label={recording ? UI.recordStop : UI.recordCta}
           className={cn(
             "group relative grid size-[68px] shrink-0 cursor-pointer place-items-center rounded-full",
             "text-white transition-[transform,background-color,box-shadow] duration-150",
@@ -198,12 +201,12 @@ export function VoicePanel({
         <div className="min-w-0 flex-1">
           <p className="text-[15.5px] font-bold leading-snug text-ink">
             {recording
-              ? UI_COPY.recordListening
+              ? UI.recordListening
               : busy
-                ? UI_COPY.recordThinking
+                ? UI.recordThinking
                 : phase === "done"
-                  ? UI_COPY.recordFilled
-                  : UI_COPY.recordCta}
+                  ? UI.recordFilled
+                  : UI.recordCta}
           </p>
 
           {/* While recording, the live waveform replaces the subtitle. */}
@@ -211,7 +214,7 @@ export function VoicePanel({
             <div className="mt-2">
               <Waveform levels={levels} />
               <p className="mt-1.5 text-[12px] font-medium tabular-nums text-warn">
-                {(elapsed / 1000).toFixed(0)}s · tap to stop
+                {(elapsed / 1000).toFixed(0)}s · {t("voiceTapStop", lang)}
               </p>
             </div>
           ) : (
@@ -219,12 +222,12 @@ export function VoicePanel({
               {busy ? (
                 <span className="tabular-nums">
                   {(elapsed / 1000).toFixed(0)}s
-                  {elapsed > 12_000 ? " · taking a while - you can also tap below" : ""}
+                  {elapsed > 12_000 ? " · " + t("voiceSlow", lang) : ""}
                 </span>
               ) : phase === "error" ? (
                 <span className="text-warn">{error}</span>
               ) : (
-                UI_COPY.recordLanguages
+                UI.recordLanguages
               )}
             </p>
           )}

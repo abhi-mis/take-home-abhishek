@@ -17,7 +17,8 @@
  * and does nothing for someone whose hands shake.
  */
 import { useEffect } from "react";
-import { COMFORT_LABEL, type Comfort } from "@/lib/patient";
+import { comfortName, type Comfort } from "@/lib/patient";
+import { t, type Lang } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 import { tick } from "@/lib/utils";
 
@@ -26,10 +27,12 @@ const ORDER: Comfort[] = ["standard", "large", "xl"];
 export function ComfortToggle({
   comfort,
   onChange,
+  lang,
   className,
 }: {
   comfort: Comfort;
   onChange: (c: Comfort) => void;
+  lang: Lang;
   className?: string;
 }) {
   // The store is the source of truth; the DOM attribute is a projection of it. Written in
@@ -49,8 +52,11 @@ export function ComfortToggle({
         tick();
         onChange(next);
       }}
-      aria-label={`${COMFORT_LABEL[comfort]}. Switch to ${COMFORT_LABEL[next].toLowerCase()}.`}
-      title={COMFORT_LABEL[comfort]}
+      aria-label={t("comfortToggleAria", lang, {
+        current: comfortName(comfort, lang),
+        next: comfortName(next, lang),
+      })}
+      title={comfortName(comfort, lang)}
       className={cn(
         "grid h-9 shrink-0 place-items-center rounded-full border px-2.5 transition-colors",
         comfort === "standard"

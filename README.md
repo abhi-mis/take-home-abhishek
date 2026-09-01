@@ -35,7 +35,7 @@ two accelerators:
 Read-aloud needs **no key at all** - it uses the browser's own `speechSynthesis`.
 
 ```bash
-npm test              # 129 deterministic tests, no key needed
+npm test              # 152 deterministic tests, no key needed
 npm run smoke         # real-browser walkthrough of the whole intake (needs a dev server)
 npm run eval          # live extraction eval against the fixtures (needs ANTHROPIC_API_KEY)
 npm run build         # production build
@@ -77,6 +77,49 @@ gh repo create genoroot-intake --private --source=. --push
 
 ---
 
+## Bilingual: English or Hindi, one language at a time
+
+A switch in the header, labelled in each language's own script (**EN** / **हिं**), so a
+patient who reads no English can find their half without parsing the word "Language". It
+changes everything: the sixteen questions, every option, the hints, the validation
+messages, the guided follow-up questions, the voice prompts, the review summary, and the
+voice the read-aloud button uses (`hi-IN` instead of `en-IN`).
+
+**One language at a time, never both.** No bracketed English after each Hindi label. A
+form that says everything twice is harder to read in both languages than one that commits.
+
+**The invariant that matters more than the translation.** Language is presentation. Every
+answer stored, validated and downloaded is the exact English schema string, so the JSON
+handed to the doctor is identical whichever language the form was filled in. A patient taps
+`अनियमित हैं` and the output records `"Irregular"`. `optionLabel()` maps English to Hindi
+for display and is never applied in reverse; nothing in `lib/i18n.ts` touches `Answers`.
+The smoke test asserts both halves: no Latin text left on a Hindi screen, and no Devanagari
+anywhere in the stored answers.
+
+```
+lib/copy.ts        English: questions, hints, option glosses, UI strings
+lib/copy.hi.ts     Hindi: the same shapes, typed against the English ones
+lib/i18n.ts        the resolver - one language per render, plus {placeholder} filling
+components/LangToggle.tsx   the switch, and the <html lang> it writes for screen readers
+```
+
+Two things carry the weight. Each Hindi dictionary is typed as
+`Record<keyof typeof ENGLISH, string>`, so **forgetting a translation fails `tsc`** rather
+than shipping a half-Hindi screen. And `tests/i18n.test.ts` covers what types cannot: every
+schema option has a label, no Hindi value was copied from the English, every `{placeholder}`
+survives translation, and Hindi titles are actually in Devanagari.
+
+Placeholders are named, not positional, because word order differs: `Question {n} of
+{total}` becomes `{total} में से सवाल {n}`.
+
+**What is deliberately NOT translated:** the patient's own free text (a side-effect
+description, a salon treatment name) - translating what someone typed puts words in their
+mouth - and the extraction prompt, which stays English because the model maps a Hindi
+transcript onto English schema options. That part already worked: Sarvam transcribes
+Hindi/codemix speech, and Claude was always mapping it to English labels.
+
+---
+
 ## Fitted to the patient
 
 The first screen asks three things - a first name (optional), sex, and age - and every one
@@ -89,6 +132,8 @@ of them changes the rest of the form. That is the whole reason it is allowed to 
 | **age 52+** | Q6 offers *Menopausal*; 50+ offers *Not applicable* on Q7. Offers, rendered as a prompt the patient has to accept - never a pre-filled answer. |
 | **sex: female** | Q6 and Q7 appear. Q9 is reframed as a hirsutism screen ("on the chin, upper lip, chest or stomach") because that is what it is asking a female patient. |
 | **sex: male / not stated** | Q6 and Q7 are skipped, and any stored answers are nulled rather than left stale. |
+| **sex: male** | Q5 still SHOWS PCOS/PCOD, greyed and unpressable, with "a condition of the ovaries, so it does not apply to you" underneath. If it was already recorded before the sex was corrected, it is removed from the answers. |
+| **age, on Q1** | decade cards later than the patient's own age are shown closed ("after your age") with one line explaining why, instead of being silently clamped to the maximum. |
 | **a name** | it is shown back three times: echoed under the field as it is typed ("Thank you, Asha"), carried into question 1 as a welcome, and used to close the review ("All done, Asha"). The read-aloud button speaks the welcome too, so the ear and the eye get the same form. It is deliberately **not** in the downloaded JSON - a warmer form is not a reason to put a patient's name in a clinical file. `patient_sex` and `patient_age` are, because both make the answers interpretable. |
 
 The header shows what was customised (`Female · 60`) beside a highlighted **Aa** button, so
@@ -289,7 +334,7 @@ solved problem where a hand-rolled version would be worse and slower.
 
 Two tiers, on purpose.
 
-**Deterministic (`npm test`, 129 tests, no key) - the dependable gate.** One test
+**Deterministic (`npm test`, 152 tests, no key) - the dependable gate.** One test
 diffs `lib/schema.ts` against the schema as downloaded from the URL in the brief, so
 "verbatim copy" is proven rather than claimed · step builder and
 schema coverage · sex gating across all four states, including that switching away from
@@ -390,6 +435,7 @@ components/
   QuestionSpeaker.tsx        the read-aloud button, on every question
   ComfortToggle.tsx          text-size control (Aa), and the DOM projection of it
   ComfortPrompt.tsx          "would you like larger text?", asked once, previews both
+  LangToggle.tsx             EN / हिं, and the <html lang> it writes
   questions/     SingleChoice MultiChoice YesNo NumberStepper AboutYou PatternPicker
                  Consent YesNoDescribe VoiceMatrix VoicePanel SpeakFirst ResultDialog
                  FollowUpFlow HabitsGrid TableGrid ScalpDiagram
@@ -401,6 +447,8 @@ lib/
   apply.ts         the write rules (grid, follow-up flow and voice fill share them)
   questionSpeech.ts what the speaker button reads out, derived from the schema
   patient.ts       personalisation: comfort scale, onset cap, age-aware suggestions
+  i18n.ts          the language resolver: one language per render, placeholder filling
+  copy.hi.ts       Hindi for every question, option and UI string
   llm.ts           the model boundary: one callModel(), and the parameter negotiation
   speak.ts         browser speechSynthesis, with barge-in and a no-voice fallback
   store.ts         Zustand
@@ -409,7 +457,7 @@ lib/
   audio.ts         in-browser 16kHz mono WAV encoding
   copy.ts          all microcopy, in one place
 fixtures/patients/ 12 transcripts (4 held out) + expected answers
-tests/             129 deterministic tests (incl. a selector-stability source scan)
+tests/             152 deterministic tests (incl. a selector-stability source scan)
 scripts/smoke-browser.mjs  Playwright walkthrough of the full intake
 scripts/eval-fixtures.ts   live extraction eval
 ```

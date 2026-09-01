@@ -19,9 +19,11 @@ import {
   maxOnsetAge,
   personalNote,
   personalSummary,
+  optionUnavailable,
   shouldOfferComfort,
   suggestedComfort,
   suggestionFor,
+  unavailableOptions,
   welcomeLine,
 } from "@/lib/patient";
 import { EMPTY_ANSWERS, EMPTY_META, type Meta } from "@/lib/types";
@@ -63,10 +65,10 @@ describe("comfort scale", () => {
   });
 
   it("names the bands for copy", () => {
-    expect(ageBand(null)).toBe("");
-    expect(ageBand(19)).toBe("under 25");
-    expect(ageBand(58)).toBe("55 to 69");
-    expect(ageBand(75)).toBe("70 or older");
+    expect(ageBand(null, "en")).toBe("");
+    expect(ageBand(19, "en")).toBe("under 25");
+    expect(ageBand(58, "en")).toBe("55 to 69");
+    expect(ageBand(75, "en")).toBe("70 or older");
   });
 });
 
@@ -89,55 +91,94 @@ describe("the onset-age ceiling", () => {
 
 describe("suggestions are offers, not answers", () => {
   it("offers Menopausal to an older patient, and says why", () => {
-    const s = suggestionFor("menstrual_cycle", EMPTY_ANSWERS, meta({ patient_age: 58 }));
+    const s = suggestionFor("menstrual_cycle", EMPTY_ANSWERS, meta({ patient_age: 58 }), "en");
     expect(s?.value).toBe("Menopausal");
     expect(s?.reason).toContain("58");
   });
 
   it("suggests nothing to a younger patient", () => {
-    expect(suggestionFor("menstrual_cycle", EMPTY_ANSWERS, meta({ patient_age: 29 }))).toBeUndefined();
-    expect(suggestionFor("pregnancy_related", EMPTY_ANSWERS, meta({ patient_age: 29 }))).toBeUndefined();
+    expect(suggestionFor("menstrual_cycle", EMPTY_ANSWERS, meta({ patient_age: 29 }), "en")).toBeUndefined();
+    expect(suggestionFor("pregnancy_related", EMPTY_ANSWERS, meta({ patient_age: 29 }), "en")).toBeUndefined();
   });
 
   it("suggests nothing once the question is answered", () => {
     const answered = { ...EMPTY_ANSWERS, menstrual_cycle: "Regular" as const };
-    expect(suggestionFor("menstrual_cycle", answered, meta({ patient_age: 58 }))).toBeUndefined();
+    expect(suggestionFor("menstrual_cycle", answered, meta({ patient_age: 58 }), "en")).toBeUndefined();
   });
 
   it("suggests nothing at all without an age", () => {
-    expect(suggestionFor("menstrual_cycle", EMPTY_ANSWERS, meta())).toBeUndefined();
+    expect(suggestionFor("menstrual_cycle", EMPTY_ANSWERS, meta(), "en")).toBeUndefined();
   });
 
   it("does not touch the answers", () => {
     const before = structuredClone(EMPTY_ANSWERS);
-    suggestionFor("menstrual_cycle", before, meta({ patient_age: 61 }));
-    suggestionFor("pregnancy_related", before, meta({ patient_age: 61 }));
+    suggestionFor("menstrual_cycle", before, meta({ patient_age: 61 }), "en");
+    suggestionFor("pregnancy_related", before, meta({ patient_age: 61 }), "en");
     // A suggestion the patient has to accept is help; one that fills itself in is a
     // fabricated medical record.
     expect(before).toEqual(EMPTY_ANSWERS);
   });
 
   it("offers Not applicable for pregnancy to an older patient", () => {
-    const s = suggestionFor("pregnancy_related", EMPTY_ANSWERS, meta({ patient_age: 61 }));
+    const s = suggestionFor("pregnancy_related", EMPTY_ANSWERS, meta({ patient_age: 61 }), "en");
     expect(s?.value).toBe("Not applicable");
+  });
+});
+
+describe("options this patient cannot truthfully pick", () => {
+  it("closes PCOS/PCOD for a male patient", () => {
+    expect(optionUnavailable("diagnosed_conditions", "PCOS/PCOD", meta({ patient_sex: "male" }), "en"))
+      .toBeDefined();
+  });
+
+  it("leaves it open when the sex is female or was not given", () => {
+    // "Prefer not to say" means we do not know, and a guess is not a reason to close an
+    // option a patient may need.
+    expect(optionUnavailable("diagnosed_conditions", "PCOS/PCOD", meta({ patient_sex: "female" }), "en"))
+      .toBeUndefined();
+    expect(optionUnavailable("diagnosed_conditions", "PCOS/PCOD", meta({ patient_sex: "prefer_not" }), "en"))
+      .toBeUndefined();
+    expect(optionUnavailable("diagnosed_conditions", "PCOS/PCOD", meta(), "en")).toBeUndefined();
+  });
+
+  it("closes nothing else on the same question", () => {
+    const male = meta({ patient_sex: "male" });
+    for (const o of ["Thyroid disorder", "Autoimmune disease", "Anemia", "None"]) {
+      expect(optionUnavailable("diagnosed_conditions", o, male, "en")).toBeUndefined();
+    }
+  });
+
+  it("never closes Menopausal, at any age", () => {
+    // Premature ovarian insufficiency is real. A form that refuses to record it because
+    // the patient is 29 has decided it knows her body better than she does.
+    expect(optionUnavailable("menstrual_cycle", "Menopausal", meta({ patient_age: 24 }), "en"))
+      .toBeUndefined();
+  });
+
+  it("maps a whole option list in one call", () => {
+    const options = ["PCOS/PCOD", "Thyroid disorder", "Anemia"];
+    const blocked = unavailableOptions("diagnosed_conditions", options, meta({ patient_sex: "male" }), "en");
+    expect(Object.keys(blocked)).toEqual(["PCOS/PCOD"]);
+    expect(unavailableOptions("diagnosed_conditions", options, meta({ patient_sex: "female" }), "en"))
+      .toEqual({});
   });
 });
 
 describe("personalised notes", () => {
   it("reframes the hirsutism question for a female patient", () => {
-    expect(personalNote("excess_body_facial_hair", meta({ patient_sex: "female" }))).toMatch(
+    expect(personalNote("excess_body_facial_hair", meta({ patient_sex: "female" }), "en")).toMatch(
       /chin|upper lip/i,
     );
-    expect(personalNote("excess_body_facial_hair", meta({ patient_sex: "male" }))).toBeUndefined();
+    expect(personalNote("excess_body_facial_hair", meta({ patient_sex: "male" }), "en")).toBeUndefined();
   });
 
   it("states the onset range using the age just given", () => {
-    expect(personalNote("age_hair_loss_began", meta({ patient_age: 44 }))).toContain("44");
+    expect(personalNote("age_hair_loss_began", meta({ patient_age: 44 }), "en")).toContain("44");
   });
 
   it("adds nothing when there is nothing useful to add", () => {
-    expect(personalNote("duration", meta({ patient_age: 44 }))).toBeUndefined();
-    expect(personalNote("menstrual_cycle", meta({ patient_age: 30 }))).toBeUndefined();
+    expect(personalNote("duration", meta({ patient_age: 44 }), "en")).toBeUndefined();
+    expect(personalNote("menstrual_cycle", meta({ patient_age: 30 }), "en")).toBeUndefined();
   });
 });
 
@@ -162,19 +203,19 @@ describe("first name handling", () => {
 
   it("shows the name back to the patient once it is given", () => {
     // A name that is asked for and never shown is a field taking something for nothing.
-    expect(welcomeLine(meta({ first_name: "Asha" }))).toBe("Welcome, Asha");
-    expect(doneTitle(meta({ first_name: "Asha" }), "All done")).toBe("All done, Asha");
+    expect(welcomeLine(meta({ first_name: "Asha" }), "en")).toBe("Welcome, Asha");
+    expect(doneTitle(meta({ first_name: "Asha" }), "All done", "en")).toBe("All done, Asha");
   });
 
   it("reads correctly when the patient skipped the name", () => {
-    expect(welcomeLine(meta())).toBeNull();
-    expect(doneTitle(meta(), "All done")).toBe("All done");
+    expect(welcomeLine(meta(), "en")).toBeNull();
+    expect(doneTitle(meta(), "All done", "en")).toBe("All done");
   });
 });
 
 describe("the header summary", () => {
   it("says what was customised", () => {
-    const line = personalSummary(meta({ patient_sex: "female", patient_age: 58 }));
+    const line = personalSummary(meta({ patient_sex: "female", patient_age: 58 }), "en");
     expect(line).toContain("Female");
     expect(line).toContain("58");
   });
@@ -182,10 +223,10 @@ describe("the header summary", () => {
   it("leaves the text scale to the Aa button, which cannot truncate", () => {
     // It used to read "Female · 70 · largest text", which is exactly the string that
     // truncated in a one-line header at the largest scale.
-    expect(personalSummary(meta({ patient_sex: "male", patient_age: 30 }))).toBe("Male · 30");
+    expect(personalSummary(meta({ patient_sex: "male", patient_age: 30 }), "en")).toBe("Male · 30");
   });
 
   it("is empty before anything is known", () => {
-    expect(personalSummary(meta())).toBe("");
+    expect(personalSummary(meta(), "en")).toBe("");
   });
 });

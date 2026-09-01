@@ -18,6 +18,7 @@ import {
   type PatientSex,
 } from "./types";
 import { suggestedComfort, type Comfort } from "./patient";
+import type { Lang } from "./i18n";
 import { ALL_STEPS, isStepVisible, visibleSteps } from "./steps";
 
 interface IntakeState {
@@ -36,6 +37,12 @@ interface IntakeState {
    * frozen the moment they touch the control themselves - an automatic default that
    * keeps overriding a deliberate choice is just a bug with good intentions.
    */
+  /**
+    * Display language. Presentation only - see lib/i18n.ts: answers are always stored as
+    * the English schema strings, so the downloaded JSON is identical either way.
+    */
+  lang: Lang;
+
   comfort: Comfort;
   comfortChosen: boolean;
   /**
@@ -51,6 +58,7 @@ interface IntakeState {
   setSex: (sex: PatientSex) => void;
   setAge: (age: number) => void;
   setFirstName: (name: string | null) => void;
+  setLang: (l: Lang) => void;
   setComfort: (c: Comfort) => void;
   /** Answers the text-size prompt: yes, scale it up to the size their age suggests. */
   acceptComfort: () => void;
@@ -79,7 +87,19 @@ interface IntakeState {
  */
 function applySexGate(answers: Answers, sex: PatientSex): Answers {
   if (sex === "female") return answers;
-  return { ...answers, menstrual_cycle: null, pregnancy_related: null };
+  const gated: Answers = { ...answers, menstrual_cycle: null, pregnancy_related: null };
+  if (sex !== "male") return gated;
+  /*
+    A male patient cannot have PCOS/PCOD, so an answer recorded before the sex was
+    corrected has to go with it - the same reasoning as clampOnsetAge below. Leaving it
+    would put a diagnosis in the output that the form itself now refuses to offer, and an
+    impossible diagnosis reaching a doctor is worse than an answer the patient has to
+    give again.
+  */
+  return {
+    ...gated,
+    diagnosed_conditions: gated.diagnosed_conditions.filter((c) => c !== "PCOS/PCOD"),
+  };
 }
 
 /**
@@ -102,6 +122,7 @@ export const useIntake = create<IntakeState>()(
       currentStepId: ALL_STEPS[0]!.id,
       touched: {},
       explicitNone: {},
+      lang: "en",
       comfort: "standard",
       comfortChosen: false,
       comfortAsked: false,
@@ -137,6 +158,8 @@ export const useIntake = create<IntakeState>()(
         })),
 
       setFirstName: (name) => set((s) => ({ meta: { ...s.meta, first_name: name } })),
+
+      setLang: (l) => set({ lang: l }),
 
       // Using the Aa button is itself an answer to the question, so it closes the prompt.
       setComfort: (c) => set({ comfort: c, comfortChosen: true, comfortAsked: true }),
@@ -188,6 +211,8 @@ export const useIntake = create<IntakeState>()(
           comfort: "standard",
           comfortChosen: false,
           comfortAsked: false,
+          // Language is NOT reset: someone who chose Hindi wants Hindi for the next form
+          // too, and unlike the comfort scale it is not derived from a patient's own age.
         }),
 
     }),
@@ -203,6 +228,7 @@ export const useIntake = create<IntakeState>()(
         // Persisted with the answers rather than in localStorage: comfort is derived
         // from THIS patient's age, so the next person on a shared clinic phone must not
         // inherit it. sessionStorage forgetting it is the correct behaviour.
+        lang: s.lang,
         comfort: s.comfort,
         comfortChosen: s.comfortChosen,
         comfortAsked: s.comfortAsked,

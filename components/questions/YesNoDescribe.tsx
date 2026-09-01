@@ -15,19 +15,23 @@ import { AnimatePresence, motion } from "framer-motion";
 import type { Answers } from "@/lib/types";
 import { VoicePanel } from "./VoicePanel";
 import { YesNo } from "./YesNo";
+import { t, type Lang } from "@/lib/i18n";
 
 export function YesNoDescribe({
   answers,
   patch,
+  lang,
 }: {
   answers: Answers;
   patch: (p: Partial<Answers>) => void;
+  lang: Lang;
 }) {
   const had = answers.past_treatment_side_effects;
 
   return (
     <div className="flex flex-col gap-4">
       <YesNo
+        lang={lang}
         value={had}
         onChange={(v) =>
           patch({
@@ -48,10 +52,11 @@ export function YesNoDescribe({
           >
             <div className="pt-1">
               <p className="mb-3 text-[14px] font-semibold text-ink">
-                Tell us a little more - you can speak it if you prefer.
+                {t("sideEffectMore", lang)}
               </p>
 
               <VoicePanel
+                lang={lang}
                 questionKey="past_treatment_side_effects"
                 onResult={(r) => {
                   // The slice may also correct the yes/no if the patient said no.
@@ -63,14 +68,12 @@ export function YesNoDescribe({
               <textarea
                 value={answers.past_treatment_describe ?? ""}
                 onChange={(e) => patch({ past_treatment_describe: e.target.value || null })}
-                placeholder="e.g. minoxidil made my scalp itch and burn"
+                placeholder={t("sideEffectPlaceholder", lang)}
                 rows={4}
                 className="w-full rounded-2xl border border-line bg-card p-3.5 text-[15px] leading-snug text-ink transition-colors placeholder:text-muted/70 hover:border-brand/40 focus:border-brand focus:outline-none"
               />
               {!answers.past_treatment_describe ? (
-                <p className="mt-2 text-[12.5px] text-warn">
-                  This is required - it tells your doctor what to avoid.
-                </p>
+                <p className="mt-2 text-[12.5px] text-warn">{t("sideEffectRequired", lang)}</p>
               ) : null}
             </div>
           </motion.div>

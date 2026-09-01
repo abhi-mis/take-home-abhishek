@@ -272,6 +272,72 @@ is not, and an extra tap to dismiss a card is ceremony the patient did not ask f
 
 ---
 
+## Bilingual, without a second app
+
+The form is English or Hindi, chosen with a header switch, and the whole screen commits to
+one language. That decision came first and everything else follows from it: no bracketed
+second language after each label, because a form that says everything twice is harder to
+read in both languages than one that picks a side.
+
+### Presentation, not data
+
+The rule the whole implementation exists to keep: **no answer is ever translated.**
+
+`lib/schema.ts` is the contract with the doctor, so a patient who taps `अनियमित हैं` stores
+`"Irregular"` and the downloaded JSON is byte-identical whichever language was used.
+`optionLabel(option, lang)` maps English to Hindi for display and is never applied in
+reverse - the Hindi label is not a key, so nothing can round-trip Devanagari back into the
+answers - and nothing in `lib/i18n.ts` imports or touches `Answers`.
+
+The smoke test asserts both halves of that on the review screen: no Latin words left
+(allowlisting PCOS, PRP, the product name), and no Devanagari in `sessionStorage`.
+
+### How a missing translation fails
+
+The real failure mode of a bilingual form is not a clumsy sentence, it is one English
+sentence surviving on an otherwise Hindi screen - which is precisely the sentence the
+patient needed. Two mechanisms catch it:
+
+- **The type system.** Every Hindi dictionary is `Record<keyof typeof ENGLISH, string>`, so
+  adding a question, an option or a UI string and forgetting the Hindi is a compile error.
+  This is why component strings moved out of the components: a string that stays inline is
+  a string that stays English.
+- **`tests/i18n.test.ts`**, for what types cannot see: a schema option with no entry, a
+  Hindi value copy-pasted from the English, a dropped `{placeholder}`, a "Hindi" title with
+  no Devanagari in it, and a schema walk that would silently pass if it stopped matching
+  (it asserts it found more than 45 options).
+
+That last one matters more than it looks. The first version of the walk found zero strings
+because of a quoting difference in the schema file, and every "no missing translations"
+assertion passed perfectly.
+
+### The parts that are not just strings
+
+- **Named placeholders, not positional.** `Question {n} of {total}` becomes
+  `{total} में से सवाल {n}` - Hindi puts the total first, so `fill()` substitutes by name.
+- **The voice follows the language.** `lib/speak.ts` asks for `hi-IN` and tries the
+  language family (`hi-`) before any fallback, because reading Devanagari with an English
+  voice is worse than not reading it at all. `<html lang>` is set too, which is what a
+  screen reader uses to pick its own voice.
+- **Two things stay English on purpose.** The patient's free text is never touched -
+  translating what someone typed is putting words in their mouth - and the extraction
+  prompt stays English, because the model's job is to map a Hindi transcript onto English
+  schema options. That path already worked: Sarvam transcribes Hindi and codemix, and the
+  model was always producing English labels.
+- **Clinical words patients say in English stay in English.** मिनॉक्सिडिल, थायरॉइड, PRP.
+  Replacing them with unfamiliar Sanskritised coinages would make the form harder to read,
+  which is the same call the English copy makes about jargon.
+
+### One thing found by testing rather than reading
+
+The language switch is a `radiogroup`, so a smoke-test locator looking for the first
+`role="radio"` on the page clicked **EN** instead of an answer and quietly reverted the
+form to English mid-walk. The fix was in the test (scope answer lookups to `<main>`), but
+it is worth recording: the header now holds controls that look exactly like answers to
+anything selecting by role alone.
+
+---
+
 ## Personalisation: the form learns who it is talking to
 
 A form that treats a 22-year-old and a 68-year-old identically has quietly optimised for
@@ -371,6 +437,38 @@ skipped-name paths, and the smoke asserts all three appearances.
 slider mistake. Lowering the age afterwards also pulls an already-recorded onset age down
 (`clampOnsetAge` in the store), because the alternative is a stale answer that is now past
 its own validation bound.
+
+### Closed options, and the one that must stay open
+
+Some options cannot be true for the patient in front of us, and there are two of them:
+
+- **PCOS/PCOD for a male patient.** A disorder of the ovaries. This is not untidiness,
+  it is a route to a diagnosis in the output that cannot be true.
+- **An onset decade later than the patient's current age.** Arithmetically impossible.
+  The slider was already bounded by `maxOnsetAge`; the decade cards above it were not, and
+  the comment in `NumberStepper` claimed they were. Tapping "50+" at 25 clamped silently to
+  25, which is indistinguishable from the app ignoring the tap.
+
+Both are now **shown, greyed, and unpressable, with the reason stated** - not removed.
+Removing them is the tempting version and it is worse: a patient who came in believing they
+have PCOS needs to see that the form considered it and why it is closed, rather than find
+the option missing and wonder whether they answered something wrong earlier. On Q1 it also
+means the grid does not reshuffle under a thumb as the age changes.
+
+`aria-disabled` rather than `disabled`, because a `disabled` button is skipped by screen
+readers entirely - which would hide the option *and* the explanation. The block is enforced
+in three places: the rule (`optionUnavailable`, pure and tested), the card (no handler), and
+`MultiChoice.toggle` (an early return, in case a future caller forgets to pass the map).
+
+Correcting the sex afterwards also **strips a stored PCOS/PCOD answer**, the same reasoning
+as `clampOnsetAge`: an answer the form now refuses to offer must not survive in the output.
+The smoke test walks that whole chain - PCOS open for a female patient, recorded, then gone
+from `sessionStorage` the moment the sex switches to male.
+
+One option is deliberately left open at every age: **"Menopausal" on Q6.** Premature ovarian
+insufficiency is real, and a form that refuses to record it because the patient is 29 has
+decided it knows more about her body than she does. The test says so, so nobody "fixes" it
+later.
 
 ### Suggestions, and the line they must not cross
 
@@ -535,7 +633,7 @@ of the UI, so a bad extraction patch can't bypass the interface.
 
 ## What's tested, and what deliberately isn't
 
-**`npm test` - 129 deterministic tests, no API key needed.** These are the dependable
+**`npm test` - 152 deterministic tests, no API key needed.** These are the dependable
 checks: the step builder, sex gating in all four states, every conditional-followup
 rule in both directions, exclusive options, 16-key coverage, the personalisation rules
 (comfort thresholds, the onset-age ceiling, and that a suggestion never writes an answer),

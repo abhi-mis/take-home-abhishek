@@ -19,16 +19,19 @@ import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useState } from "react";
 import type { OutstandingField } from "@/lib/followups";
 import { cn, tick } from "@/lib/utils";
+import { optionLabel, t, ui, type Lang } from "@/lib/i18n";
 import { CheckIcon } from "../ui/Button";
 
 export function FollowUpFlow({
   fields,
+  lang,
   title,
   autoCloseOnComplete = false,
   onAnswer,
   onClose,
 }: {
   fields: OutstandingField[];
+  lang: Lang;
   /**
    * Overrides the default "Just N to go" header. Used when the queue is the conditional
    * questions a single "yes" just unlocked, where a countdown is less informative than
@@ -61,7 +64,9 @@ export function FollowUpFlow({
 
   // Everything answered: a brief confirmation, then get out of the way.
   if (finished) {
-    return autoCloseOnComplete ? null : <Complete total={total} onClose={onClose} />;
+    return autoCloseOnComplete ? null : (
+      <Complete total={total} lang={lang} onClose={onClose} />
+    );
   }
 
   return (
@@ -69,7 +74,7 @@ export function FollowUpFlow({
       initial={{ opacity: 0, y: -8 }}
       animate={{ opacity: 1, y: 0 }}
       className="mb-5 overflow-hidden rounded-3xl border-2 border-brand/30 bg-card shadow-[0_2px_16px_rgba(13,107,95,0.08)]"
-      aria-label="Remaining questions"
+      aria-label={t("followUpAria", lang)}
     >
       <header className="flex items-center gap-3 border-b border-line bg-brand-soft/60 px-4 py-3">
         <span className="grid size-7 shrink-0 place-items-center rounded-full bg-brand text-[12px] font-bold text-white tabular-nums">
@@ -77,7 +82,7 @@ export function FollowUpFlow({
         </span>
         <div className="min-w-0 flex-1">
           <p className="text-[13px] font-bold uppercase leading-snug tracking-wide text-brand-ink">
-            {title ?? `Just ${fields.length} to go`}
+            {title ?? t("followUpToGo", lang, { n: fields.length })}
           </p>
           <div className="mt-1.5 flex gap-1" aria-hidden>
             {Array.from({ length: total }).map((_, i) => (
@@ -94,10 +99,10 @@ export function FollowUpFlow({
         <button
           type="button"
           onClick={onClose}
-          aria-label="Close these questions and use the full list instead"
+          aria-label={t("followUpUseListAria", lang)}
           className="shrink-0 cursor-pointer rounded-lg px-2 py-1 text-[12px] font-semibold text-muted transition-colors hover:bg-line/60 hover:text-ink"
         >
-          Use list
+          {t("followUpUseList", lang)}
         </button>
       </header>
 
@@ -116,8 +121,8 @@ export function FollowUpFlow({
             {current.kind === "yesno" ? (
               <div className="grid grid-cols-2 gap-3">
                 {[
-                  { v: true, label: "Yes" },
-                  { v: false, label: "No" },
+                  { v: true, label: ui(lang).yes },
+                  { v: false, label: ui(lang).no },
                 ].map((o) => (
                   <button
                     key={o.label}
@@ -144,7 +149,7 @@ export function FollowUpFlow({
                     }}
                     className="min-h-[54px] cursor-pointer rounded-2xl border-2 border-line bg-paper px-4 text-left text-[15px] font-semibold text-ink transition-all duration-100 hover:border-brand hover:bg-brand-soft hover:text-brand-ink active:scale-[0.99]"
                   >
-                    {opt}
+                    {optionLabel(opt, lang)}
                   </button>
                 ))}
               </div>
@@ -173,7 +178,7 @@ export function FollowUpFlow({
                   }}
                   className="min-h-[52px] cursor-pointer rounded-2xl bg-brand text-[15px] font-bold text-white transition-colors hover:bg-brand-strong disabled:cursor-not-allowed disabled:bg-line disabled:text-muted"
                 >
-                  Save
+                  {t("followUpSave", lang)}
                 </button>
               </div>
             )}
@@ -182,7 +187,8 @@ export function FollowUpFlow({
           {/* Context, so a bare "Did it help?" is never ambiguous about which row. */}
           {current.row ? (
             <p className="mt-3 text-[12px] text-muted">
-              About: <span className="font-semibold text-ink">{current.row}</span>
+              {t("followUpAbout", lang)}{" "}
+              <span className="font-semibold text-ink">{optionLabel(current.row, lang)}</span>
             </p>
           ) : null}
         </motion.div>
@@ -191,7 +197,15 @@ export function FollowUpFlow({
   );
 }
 
-function Complete({ total, onClose }: { total: number; onClose: () => void }) {
+function Complete({
+  total,
+  lang,
+  onClose,
+}: {
+  total: number;
+  lang: Lang;
+  onClose: () => void;
+}) {
   return (
     <motion.section
       initial={{ opacity: 0, scale: 0.97 }}
@@ -207,15 +221,15 @@ function Complete({ total, onClose }: { total: number; onClose: () => void }) {
         <CheckIcon className="size-5" />
       </motion.span>
       <p className="min-w-0 flex-1 text-[14.5px] font-semibold leading-snug text-brand-ink">
-        All {total} filled in. Check the answers below, then continue.
+        {t("followUpAllFilled", lang, { n: total })}
       </p>
       <button
         type="button"
         onClick={onClose}
-        aria-label="Dismiss"
+        aria-label={t("followUpDismiss", lang)}
         className="shrink-0 cursor-pointer rounded-lg px-2 py-1 text-[12px] font-semibold text-brand-ink/70 transition-colors hover:bg-brand/10"
       >
-        Got it
+        {t("followUpGotIt", lang)}
       </button>
     </motion.section>
   );

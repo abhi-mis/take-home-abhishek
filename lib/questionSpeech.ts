@@ -14,7 +14,7 @@
  * Pure, so it is trivially testable and safe to import anywhere.
  */
 import { getQuestion, type QuestionKey } from "./schema";
-import { COPY, SPEAK_PROMPTS, UI_COPY } from "./copy";
+import { optionLabel, questionCopy, speakPrompts, t, ui, type Lang } from "./i18n";
 import { hasNoneEscape, type Meta } from "./types";
 import { personalNote, welcomeLine } from "./patient";
 import type { Step } from "./steps";
@@ -35,40 +35,45 @@ const SPOKEN_HINT: Partial<Record<QuestionKey, string>> = {
   procedures: "Answer for all four.",
 };
 
-/** Joins the option list the way a person reads a list aloud. */
-function readList(options: readonly string[]): string {
+/**
+ * Joins the option list the way a person reads a list aloud.
+ *
+ * The conjunction is a translated word rather than a hardcoded "or", because a spoken
+ * list is the one place where a stray English word is most jarring: it lands in the
+ * middle of a Hindi sentence in a different voice model.
+ */
+function readList(options: readonly string[], lang: Lang): string {
   if (options.length === 0) return "";
   if (options.length === 1) return options[0] ?? "";
-  return `${options.slice(0, -1).join(", ")}, or ${options[options.length - 1]}`;
+  const last = options[options.length - 1];
+  return `${options.slice(0, -1).join(", ")}, ${t("speechOr", lang)} ${last}`;
 }
 
-export function questionSpeech(step: Step, meta: Meta): string {
+export function questionSpeech(step: Step, meta: Meta, lang: Lang): string {
+  const UI = ui(lang);
+  const COPY_L = questionCopy(lang);
   if (step.kind === "about") {
-    return [
-      UI_COPY.aboutTitle,
-      UI_COPY.aboutBody,
-      "Your name is optional. Then choose female, male, or prefer not to say, and set your age.",
-    ]
-      .join(" ")
-      .replace(/\s+/g, " ");
+    return [UI.aboutTitle, UI.aboutBody, UI.aboutFooter].join(" ").replace(/\s+/g, " ");
   }
 
   const key = step.key;
   if (key === null) return "";
-  const copy = COPY[key];
+  const copy = COPY_L[key];
   const parts: string[] = [];
   // Question 1 prints a welcome, so question 1 speaks it. The button reads the screen; if
   // the two ever diverge, a patient who cannot see the screen is getting a different form.
   if (step.n === 1) {
-    const hello = welcomeLine(meta);
+    const hello = welcomeLine(meta, lang);
     if (hello !== null) parts.push(`${hello}.`);
   }
   parts.push(copy?.title ?? key);
 
-  const hint = SPOKEN_HINT[key] ?? copy?.hint;
+  // The eye-only hints ("tap the pictures") are rewritten for the ear, but only in
+  // English: the Hindi hints were written to be read aloud in the first place.
+  const hint = (lang === "en" ? SPOKEN_HINT[key] : undefined) ?? copy?.hint;
   if (hint) parts.push(hint);
   // The same personalised note the screen shows, so the ear and the eye get one question.
-  const note = personalNote(key, meta);
+  const note = personalNote(key, meta, lang);
   if (note) parts.push(note);
 
   switch (step.kind) {
@@ -77,9 +82,9 @@ export function questionSpeech(step: Step, meta: Meta): string {
       const q = getQuestion(key);
       const options = "options" in q ? q.options : [];
       if (options.length > 0) {
-        parts.push(`The choices are: ${readList(options)}.`);
+        parts.push(`${t("speechChoices", lang)} ${readList(options.map((o) => optionLabel(o, lang)), lang)}.`);
       }
-      if (hasNoneEscape(key)) parts.push(`Or, ${UI_COPY.none.toLowerCase()}.`);
+      if (hasNoneEscape(key)) parts.push(`${UI.none}.`);
       break;
     }
 
@@ -100,7 +105,7 @@ export function questionSpeech(step: Step, meta: Meta): string {
       // The tables already have a spoken script: the enumerated checklist the voice
       // panel prints. Reusing it means the button and the microphone prompt cannot
       // disagree about what a complete answer covers.
-      const prompt = SPEAK_PROMPTS[key];
+      const prompt = speakPrompts(lang)[key];
       if (prompt) {
         parts.push(prompt.intro, ...prompt.points.map((p, i) => `${i + 1}. ${p}.`));
         if (prompt.detailNote) parts.push(prompt.detailNote);

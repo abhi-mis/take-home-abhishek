@@ -24,19 +24,19 @@
  */
 import { useEffect, useRef } from "react";
 import { motion } from "framer-motion";
-import { COMFORT_LABEL, COMFORT_ZOOM, type Comfort } from "@/lib/patient";
+import { COMFORT_ZOOM, type Comfort } from "@/lib/patient";
+import { t, type Lang } from "@/lib/i18n";
 import { Button } from "./ui/Button";
 import { tick } from "@/lib/utils";
-
-/** The sentence used for the preview: a real question, not lorem ipsum. */
-const SAMPLE = "How long has it been going on?";
 
 export function ComfortPrompt({
   age,
   target,
+  lang,
   onAccept,
   onDecline,
 }: {
+  lang: Lang;
   /** Shown back to the patient, so the offer has a stated reason. */
   age: number;
   /** The scale being offered - "large" from 55, "xl" from 70. */
@@ -90,6 +90,9 @@ export function ComfortPrompt({
   }, [onDecline]);
 
   const ratio = COMFORT_ZOOM[target];
+  // A real question from the form, in the patient's language, so the preview shows the
+  // script it will actually have to render.
+  const sample = t("comfortSample", lang);
 
   return (
     <div
@@ -98,7 +101,7 @@ export function ComfortPrompt({
     >
       <motion.button
         type="button"
-        aria-label="Keep the text size as it is"
+        aria-label={t("comfortDismissAria", lang)}
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         onClick={onDecline}
@@ -131,11 +134,10 @@ export function ComfortPrompt({
               id="comfort-title"
               className="font-display text-[22px] font-bold leading-[1.2] text-ink"
             >
-              Would you like larger text?
+              {t("comfortTitle", lang)}
             </h2>
             <p id="comfort-body" className="mt-1.5 text-[14px] leading-snug text-muted">
-              You told us you are {age}. We can make the words and the buttons bigger for the
-              rest of the form. Nothing else changes.
+              {t("comfortBody", lang, { age })}
             </p>
           </div>
         </div>
@@ -145,8 +147,12 @@ export function ComfortPrompt({
           from the form, at the two sizes on offer, using the same factor the app applies.
         */}
         <div className="mt-5 overflow-hidden rounded-2xl border border-line bg-card">
-          <PreviewRow label="Now" scale={1} muted />
-          <PreviewRow label={COMFORT_LABEL[target].replace(" text", "")} scale={ratio} />
+          <PreviewRow label={t("comfortNow", lang)} sample={sample} scale={1} muted />
+          <PreviewRow
+            label={t(target === "xl" ? "comfortXlShort" : "comfortLargeShort", lang)}
+            sample={sample}
+            scale={ratio}
+          />
         </div>
 
         <div className="mt-5 flex flex-col gap-2.5">
@@ -159,16 +165,15 @@ export function ComfortPrompt({
             }}
             className="w-full"
           >
-            Yes, make it bigger
+            {t("comfortYes", lang)}
           </Button>
           <Button variant="secondary" size="lg" onClick={onDecline} className="w-full">
-            No, keep it as it is
+            {t("comfortNo", lang)}
           </Button>
         </div>
 
         <p className="mt-3.5 text-center text-[12px] leading-snug text-muted">
-          Either way, the <span className="font-semibold text-ink">Aa</span> button at the top
-          changes the size any time.
+          {t("comfortFoot", lang)}
         </p>
       </motion.div>
     </div>
@@ -177,10 +182,12 @@ export function ComfortPrompt({
 
 function PreviewRow({
   label,
+  sample,
   scale,
   muted = false,
 }: {
   label: string;
+  sample: string;
   scale: number;
   muted?: boolean;
 }) {
@@ -206,7 +213,7 @@ function PreviewRow({
         style={{ fontSize: `${(15 * scale).toFixed(2)}px` }}
         className={muted ? "leading-snug text-muted" : "font-semibold leading-snug text-ink"}
       >
-        {SAMPLE}
+        {sample}
       </span>
     </div>
   );

@@ -12,6 +12,8 @@
  * consent: false and the Review screen then refuses to produce the JSON.
  */
 import { YesNo } from "./YesNo";
+import { t, type Lang } from "@/lib/i18n";
+import type { TextKey } from "@/lib/copy.hi";
 
 /**
  * Four points, each with a short plain-English restatement underneath.
@@ -20,33 +22,21 @@ import { YesNo } from "./YesNo";
  * you would say it out loud. Consent that is technically complete but unreadable is not
  * informed consent, and this is a DNA sample, not a newsletter signup.
  */
-const POINTS: { title: string; plain: string }[] = [
-  {
-    title: "You give a saliva or blood sample at the clinic.",
-    plain: "One sample, taken once, at your appointment.",
-  },
-  {
-    title:
-      "Your DNA is analysed for genes linked to hair loss, and for how you may respond to hair-loss treatment.",
-    plain: "We look only at hair-related genes - not ancestry, not disease risk.",
-  },
-  {
-    title:
-      "Your doctor uses the result to choose your treatment. It is not a diagnosis on its own.",
-    plain: "A doctor still makes the decision, with you.",
-  },
-  {
-    title: "You can withdraw consent and ask for your sample to be destroyed at any time.",
-    plain: "Change your mind whenever you like, and the sample is destroyed.",
-  },
+const POINTS: { title: TextKey; plain: TextKey }[] = [
+  { title: "consentTitle1", plain: "consentPoint2" },
+  { title: "consentTitle2", plain: "consentPlain2" },
+  { title: "consentTitle3", plain: "consentPlain3" },
+  { title: "consentTitle4", plain: "consentPoint4" },
 ];
 
 export function Consent({
   value,
   onChange,
+  lang,
 }: {
   value: boolean | null;
   onChange: (v: boolean) => void;
+  lang: Lang;
 }) {
   return (
     <div className="flex flex-col gap-5">
@@ -56,9 +46,11 @@ export function Consent({
             <span aria-hidden className="mt-1.5 size-2 shrink-0 rounded-full bg-brand" />
             <span className="min-w-0">
               <span className="block text-[14px] font-medium leading-snug text-ink">
-                {p.title}
+                {t(p.title, lang)}
               </span>
-              <span className="mt-1 block text-[13px] leading-snug text-muted">{p.plain}</span>
+              <span className="mt-1 block text-[13px] leading-snug text-muted">
+                {t(p.plain, lang)}
+              </span>
             </span>
           </li>
         ))}
@@ -66,21 +58,19 @@ export function Consent({
 
       <div>
         <p className="mb-3 text-[15px] font-semibold leading-snug text-ink">
-          Do you give permission for this genetic test?
+          {t("consentQuestion", lang)}
         </p>
         {/* No onAdvance: consent is the one answer that must not auto-advance. */}
         <YesNo
           value={value}
           onChange={onChange}
-          yesLabel="Yes, I agree"
-          noLabel="No"
+          lang={lang}
+          yesLabel={t("consentYes", lang)}
+          noLabel={t("consentNo", lang)}
         />
       </div>
 
-      <p className="text-[12px] leading-relaxed text-muted">
-        Nothing is pre-selected on this screen. Choosing &ldquo;No&rdquo; is recorded and stops
-        the test - you can still speak to your doctor.
-      </p>
+      <p className="text-[12px] leading-relaxed text-muted">{t("consentFoot", lang)}</p>
     </div>
   );
 }

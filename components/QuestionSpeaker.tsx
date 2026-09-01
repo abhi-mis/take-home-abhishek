@@ -20,9 +20,18 @@
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { speak, speechSupported, stopSpeaking } from "@/lib/speak";
+import { t, type Lang } from "@/lib/i18n";
 import { cn, tick } from "@/lib/utils";
 
-export function QuestionSpeaker({ text, className }: { text: string; className?: string }) {
+export function QuestionSpeaker({
+  text,
+  lang,
+  className,
+}: {
+  text: string;
+  lang: Lang;
+  className?: string;
+}) {
   const [supported, setSupported] = useState(false);
   const [speaking, setSpeaking] = useState(false);
 
@@ -48,7 +57,7 @@ export function QuestionSpeaker({ text, className }: { text: string; className?:
     setSpeaking(true);
     // Resolves when the reading finishes, is stopped, or the browser refuses - all of
     // which mean the same thing here: the button goes back to idle.
-    await speak(text);
+    await speak(text, lang);
     setSpeaking(false);
   }
 
@@ -56,8 +65,8 @@ export function QuestionSpeaker({ text, className }: { text: string; className?:
     <button
       type="button"
       onClick={() => void toggle()}
-      aria-label={speaking ? "Stop reading the question" : "Read the question aloud"}
-      title={speaking ? "Stop reading" : "Read the question aloud"}
+      aria-label={speaking ? t("readStop", lang) : t("readAloud", lang)}
+      title={speaking ? t("readStop", lang) : t("readAloud", lang)}
       className={cn(
         "relative grid size-9 shrink-0 cursor-pointer place-items-center rounded-full border transition-colors",
         speaking

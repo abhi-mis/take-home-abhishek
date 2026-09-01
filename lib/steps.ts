@@ -14,6 +14,7 @@
  * same rules to the whole object, so the step gate and the final gate can never
  * disagree.
  */
+import { t, type Lang } from "./i18n";
 import { QUESTIONS, type QuestionKey } from "./schema";
 import { hasNoneEscape, type Answers, type Meta } from "./types";
 import { outstandingFieldsFor, type OutstandingField } from "./followups";
@@ -117,30 +118,31 @@ export function validateStep(
   answers: Answers,
   meta: Meta,
   explicitNone: Record<string, true> = {},
+  lang: Lang = "en",
 ): StepValidation {
   switch (step.kind) {
     case "about": {
       // Both are required: sex gates two questions, and age sets the text size, the
       // onset-age ceiling and the Q6/Q7 suggestions. A name is optional on purpose.
       const missing: string[] = [];
-      if (meta.patient_sex === null) missing.push("Choose one option");
-      if (meta.patient_age === null) missing.push("Set your age");
+      if (meta.patient_sex === null) missing.push(t("vChooseOne", lang));
+      if (meta.patient_age === null) missing.push(t("vSetAge", lang));
       return missing.length === 0 ? OK : { complete: false, outstanding: missing };
     }
 
     case "number":
-      return answers.age_hair_loss_began !== null ? OK : fail("Pick an age range");
+      return answers.age_hair_loss_began !== null ? OK : fail(t("vPickRange", lang));
 
     case "single":
-      return answers[step.key as "duration"] !== null ? OK : fail("Choose one option");
+      return answers[step.key as "duration"] !== null ? OK : fail(t("vChooseOne", lang));
 
     case "yesno":
-      return answers[step.key as "adult_acne_oily_skin"] !== null ? OK : fail("Choose Yes or No");
+      return answers[step.key as "adult_acne_oily_skin"] !== null
+        ? OK
+        : fail(t("vYesNo", lang));
 
     case "consent":
-      return answers.consent !== null
-        ? OK
-        : fail("Please choose Yes or No - nothing is selected for you");
+      return answers.consent !== null ? OK : fail(t("vConsent", lang));
 
     case "multi": {
       const key = step.key as "family_history";
@@ -148,23 +150,21 @@ export function validateStep(
       if (selected.length > 0) return OK;
       if (hasNoneEscape(key) && explicitNone[key]) return OK;
       return fail(
-        hasNoneEscape(key)
-          ? "Select at least one, or choose “None of these”"
-          : "Select at least one option",
+        hasNoneEscape(key) ? t("vAtLeastOneOrNone", lang) : t("vAtLeastOne", lang),
       );
     }
 
     case "yesno_describe": {
       const v = answers.past_treatment_side_effects;
-      if (v === null) return fail("Choose Yes or No");
+      if (v === null) return fail(t("vYesNo", lang));
       if (v === false) return OK;
       return (answers.past_treatment_describe ?? "").trim().length > 0
         ? OK
-        : fail("Describe the side effect so your doctor knows what to avoid");
+        : fail(t("vDescribe", lang));
     }
 
     case "table":
-      return validateTableStep(step.key, answers);
+      return validateTableStep(step.key, answers, lang);
   }
 }
 
@@ -176,20 +176,24 @@ export function validateStep(
  * checks, so the "still needed" summary and the follow-up questions FollowUpFlow asks
  * are literally the same data. They cannot disagree about what is missing.
  */
-function validateTableStep(key: QuestionKey | null, answers: Answers): StepValidation {
-  const fields = outstandingFieldsFor(key, answers);
+function validateTableStep(
+  key: QuestionKey | null,
+  answers: Answers,
+  lang: Lang,
+): StepValidation {
+  const fields = outstandingFieldsFor(key, answers, lang);
   if (fields.length === 0) return OK;
   return {
     complete: false,
-    outstanding: fields.map((f) => `${f.label}: ${describeAsk(f)}`),
+    outstanding: fields.map((f) => `${f.label}: ${describeAsk(f, lang)}`),
   };
 }
 
 /** The compact half of the message - "choose Yes or No", "how long", ... */
-function describeAsk(f: OutstandingField): string {
-  if (f.kind === "yesno") return "choose Yes or No";
-  if (f.kind === "text") return "add a short detail";
-  return "choose one";
+function describeAsk(f: OutstandingField, lang: Lang): string {
+  if (f.kind === "yesno") return t("vAskYesNo", lang);
+  if (f.kind === "text") return t("vAskText", lang);
+  return t("vAskOne", lang);
 }
 
 /** Convenience wrapper kept for call sites that only need the boolean. */
@@ -199,6 +203,8 @@ export function isStepComplete(
   meta: Meta,
   explicitNone: Record<string, true> = {},
 ): boolean {
+  // Language is irrelevant to completeness, so this wrapper does not take one: only the
+  // MESSAGES are translated, never the rules that produce them.
   return validateStep(step, answers, meta, explicitNone).complete;
 }
 

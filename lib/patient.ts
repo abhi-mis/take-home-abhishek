@@ -21,6 +21,7 @@
  * answer nobody read is a fabricated medical record.
  */
 import type { Answers, Meta } from "./types";
+import { t, type Lang } from "./i18n";
 
 // ---------------------------------------------------------------------------
 // Comfort: the reason to ask for an age at all
@@ -34,11 +35,19 @@ export const COMFORT_ZOOM: Record<Comfort, number> = {
   xl: 1.26,
 };
 
-export const COMFORT_LABEL: Record<Comfort, string> = {
-  standard: "Standard text",
-  large: "Larger text",
-  xl: "Largest text",
-};
+/**
+ * The name of a scale, in the patient's language.
+ *
+ * A `Record<Comfort, string>` of English strings was fine while the app had one
+ * language. It is exactly the shape that cannot be translated, so the names moved into
+ * lib/copy.hi.ts and this is the accessor - which also means a missing Hindi name is a
+ * compile error rather than an English word on a Hindi screen.
+ */
+export function comfortName(c: Comfort, lang: Lang): string {
+  if (c === "large") return t("comfortLargeName", lang);
+  if (c === "xl") return t("comfortXlName", lang);
+  return t("comfortStandardName", lang);
+}
 
 /**
  * The comfort scale this age is OFFERED. It is never applied without an answer.
@@ -89,13 +98,13 @@ export const AGE_MIN = 16;
 export const AGE_MAX = 95;
 
 /** Coarse bands, used for copy rather than for any clinical decision. */
-export function ageBand(age: number | null): string {
+export function ageBand(age: number | null, lang: Lang): string {
   if (age === null) return "";
-  if (age < 25) return "under 25";
-  if (age < 40) return "25 to 39";
-  if (age < 55) return "40 to 54";
-  if (age < 70) return "55 to 69";
-  return "70 or older";
+  if (age < 25) return t("bandUnder25", lang);
+  if (age < 40) return t("band25to39", lang);
+  if (age < 55) return t("band40to54", lang);
+  if (age < 70) return t("band55to69", lang);
+  return t("band70plus", lang);
 }
 
 // ---------------------------------------------------------------------------
@@ -131,18 +140,20 @@ export function cleanFirstName(raw: string): string | null {
  */
 
 /** Echoed under the name field while the patient is still on that screen. */
-export function nameAck(name: string): string {
-  return `Thank you, ${name}. We will use this on screen only.`;
+export function nameAck(name: string, lang: Lang): string {
+  return t("aboutNameAck", lang, { name });
 }
 
 /** "Welcome, Anjali" - null when no name was given, so the caller renders nothing. */
-export function welcomeLine(meta: Meta): string | null {
-  return meta.first_name === null ? null : `Welcome, ${meta.first_name}`;
+export function welcomeLine(meta: Meta, lang: Lang): string | null {
+  return meta.first_name === null ? null : t("welcome", lang, { name: meta.first_name });
 }
 
 /** The closing heading: "All done, Anjali", or the plain version without a name. */
-export function doneTitle(meta: Meta, fallback: string): string {
-  return meta.first_name === null ? fallback : `${fallback}, ${meta.first_name}`;
+export function doneTitle(meta: Meta, fallback: string, lang: Lang): string {
+  return meta.first_name === null
+    ? fallback
+    : t("withName", lang, { title: fallback, name: meta.first_name });
 }
 
 /**
@@ -155,11 +166,15 @@ export function doneTitle(meta: Meta, fallback: string): string {
  * sitting an inch to the right - it turns brand-coloured and its label says which step it
  * is on - so the line keeps only what nothing else shows.
  */
-export function personalSummary(meta: Meta): string {
+export function personalSummary(meta: Meta, lang: Lang): string {
   const bits: string[] = [];
   if (meta.patient_sex !== null) {
     bits.push(
-      meta.patient_sex === "female" ? "Female" : meta.patient_sex === "male" ? "Male" : "Not stated",
+      meta.patient_sex === "female"
+        ? t("sexFemale", lang)
+        : meta.patient_sex === "male"
+          ? t("sexMale", lang)
+          : t("sexNotStated", lang),
     );
   }
   if (meta.patient_age !== null) bits.push(`${meta.patient_age}`);
@@ -174,21 +189,21 @@ export function personalSummary(meta: Meta): string {
  * and a much weaker signal for a male one, so the framing has to differ or the answer is
  * noise. The rest are there to stop a question reading as absurd.
  */
-export function personalNote(key: string, meta: Meta): string | undefined {
+export function personalNote(key: string, meta: Meta, lang: Lang): string | undefined {
   const age = meta.patient_age;
   const sex = meta.patient_sex;
 
   if (key === "excess_body_facial_hair" && sex === "female") {
-    return "Compared with what is usual for you - for example on the chin, upper lip, chest or stomach.";
+    return t("noteHirsutism", lang);
   }
   if (key === "pregnancy_related" && age !== null && age >= 50) {
-    return "If none of these apply any more, choose Not applicable.";
+    return t("notePregnancyOlder", lang);
   }
   if (key === "menstrual_cycle" && age !== null && age >= 50) {
-    return "If your periods have stopped, choose Menopausal.";
+    return t("noteMenopause", lang);
   }
   if (key === "age_hair_loss_began" && age !== null) {
-    return `You are ${age}, so this can be anywhere from ${AGE_MIN} to ${age}.`;
+    return t("noteOnsetRange", lang, { age, min: AGE_MIN });
   }
   return undefined;
 }
@@ -202,6 +217,61 @@ export function personalNote(key: string, meta: Meta): string | undefined {
  */
 export function maxOnsetAge(meta: Meta): number {
   return meta.patient_age === null ? 90 : Math.max(AGE_MIN, meta.patient_age);
+}
+
+// ---------------------------------------------------------------------------
+// Options this patient cannot truthfully pick
+// ---------------------------------------------------------------------------
+
+/**
+ * Why an option is unavailable to THIS patient, or undefined when it is fine.
+ *
+ * Two different things, and only one of them is a UI nicety:
+ *
+ *  - PCOS/PCOD is a disorder of the ovaries. Offering it to a male patient is not just
+ *    untidy, it is a route to a diagnosis in the output that cannot be true.
+ *  - An onset age above the patient's current age is arithmetically impossible. The
+ *    slider was already bounded; the decade cards above it were not, so tapping "50+"
+ *    at 25 silently set 25 and looked like the app ignoring the tap.
+ *
+ * The options are still RENDERED, greyed and unpressable with the reason stated. Removing
+ * them would be worse: a patient who came in believing they have PCOS needs to see that
+ * the form considered it and why it is closed, not to find the option missing and wonder
+ * whether they picked the wrong sex earlier.
+ *
+ * Note what is deliberately NOT here: "Menopausal" stays available at any age. Premature
+ * ovarian insufficiency exists, and a form that refuses to record it because the patient
+ * is 29 has decided it knows better than the patient about her own body.
+ */
+export function optionUnavailable(
+  key: string,
+  option: string,
+  meta: Meta,
+  lang: Lang,
+): string | undefined {
+  if (
+    key === "diagnosed_conditions" &&
+    option === "PCOS/PCOD" &&
+    meta.patient_sex === "male"
+  ) {
+    return t("unavailablePcos", lang);
+  }
+  return undefined;
+}
+
+/** The same rule as a map, ready to hand to a multi-select. */
+export function unavailableOptions(
+  key: string,
+  options: readonly string[],
+  meta: Meta,
+  lang: Lang,
+): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const o of options) {
+    const why = optionUnavailable(key, o, meta, lang);
+    if (why !== undefined) out[o] = why;
+  }
+  return out;
 }
 
 // ---------------------------------------------------------------------------
@@ -230,19 +300,21 @@ export function suggestionFor(
   key: string,
   answers: Answers,
   meta: Meta,
+  lang: Lang,
 ): Suggestion | undefined {
   const age = meta.patient_age;
+  const reason = age === null ? "" : t("suggestionReason", lang, { age });
 
   if (key === "menstrual_cycle") {
     if (age !== null && age >= 52 && answers.menstrual_cycle === null) {
-      return { value: "Menopausal", reason: `You are ${age} - is this the right answer?` };
+      return { value: "Menopausal", reason };
     }
     return undefined;
   }
 
   if (key === "pregnancy_related") {
     if (age !== null && age >= 50 && answers.pregnancy_related === null) {
-      return { value: "Not applicable", reason: `You are ${age} - is this the right answer?` };
+      return { value: "Not applicable", reason };
     }
     return undefined;
   }

@@ -17,12 +17,14 @@ import { motion } from "framer-motion";
 import { OptionCard } from "../ui/Button";
 import { OptionIcon, hasOptionIcon } from "./OptionIcons";
 import { tick } from "@/lib/utils";
+import { optionLabel, t, type Lang } from "@/lib/i18n";
 
 export function SingleChoice({
   options,
   value,
   gloss,
   suggestion,
+  lang,
   withIcons = false,
   onChange,
   onAdvance,
@@ -31,6 +33,7 @@ export function SingleChoice({
   value: string | null;
   gloss?: Record<string, string>;
   suggestion?: { value: string; reason: string };
+  lang: Lang;
   withIcons?: boolean;
   onChange: (v: string) => void;
   onAdvance?: () => void;
@@ -65,7 +68,7 @@ export function SingleChoice({
             onClick={() => choose(suggestion.value)}
             className="mt-2.5 min-h-[44px] w-full rounded-xl bg-brand px-4 text-[14px] font-semibold text-white transition-colors hover:bg-brand-strong active:scale-[0.98]"
           >
-            Yes - {suggestion.value}
+            {t("suggestionAcceptWith", lang, { value: optionLabel(suggestion.value, lang) })}
           </button>
         </motion.div>
       ) : null}
@@ -74,7 +77,7 @@ export function SingleChoice({
         {options.map((opt) => (
           <OptionCard
             key={opt}
-            label={opt}
+            label={optionLabel(opt, lang)}
             gloss={gloss?.[opt]}
             icon={withIcons && hasOptionIcon(opt) ? <OptionIcon option={opt} /> : undefined}
             selected={(pending ?? value) === opt}

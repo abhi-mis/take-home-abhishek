@@ -20,6 +20,8 @@
  * once, and the app sounds broken.
  */
 
+import { SPEECH_LANG, type Lang } from "./i18n";
+
 export type SpeakOutcome =
   | "spoken" // the browser voice played
   | "blocked" // the browser refused without a user gesture
@@ -47,19 +49,30 @@ export function stopSpeaking(): void {
 }
 
 /**
- * Preferred voice: `en-IN` where the platform has it, because these are Indian patients
- * and a Hindi word inside an English sentence is at least pronounced plausibly. It is a
- * preference, not a requirement - any English voice beats silence.
+ * Preferred voice for the chosen language.
+ *
+ * `hi-IN` when the form is in Hindi, `en-IN` when it is in English, and any voice at all
+ * rather than silence: a robotic fallback still helps someone who cannot read the screen,
+ * which is the entire point of this button.
+ *
+ * `en-IN` rather than `en-US` for English because these are Indian patients and an
+ * Indian-English voice pronounces names and place names plausibly where a US voice does
+ * not. For Hindi the exact-match tier matters much more: a hi-IN voice is present on
+ * Android and most Windows installs, and reading Devanagari with an English voice is
+ * worse than not reading it at all - so the family prefix (`hi-`) is tried before any
+ * generic fallback.
  *
  * Voices load asynchronously on some browsers, so an empty list on the first call is
  * normal and simply means the default voice is used.
  */
-function pickVoice(): SpeechSynthesisVoice | undefined {
+function pickVoice(want: string): SpeechSynthesisVoice | undefined {
   try {
     const voices = window.speechSynthesis.getVoices();
+    const family = want.split("-")[0] ?? want;
     return (
-      voices.find((v) => v.lang === "en-IN") ??
-      voices.find((v) => v.lang.startsWith("en-")) ??
+      voices.find((v) => v.lang === want) ??
+      voices.find((v) => v.lang.replace("_", "-").startsWith(family + "-")) ??
+      voices.find((v) => v.lang === family) ??
       undefined
     );
   } catch {
@@ -68,7 +81,7 @@ function pickVoice(): SpeechSynthesisVoice | undefined {
 }
 
 /** Speak one line. Resolves when playback finishes, or immediately when superseded. */
-export function speak(text: string): Promise<SpeakOutcome> {
+export function speak(text: string, lang: Lang = "en"): Promise<SpeakOutcome> {
   const line = text.trim();
   if (line.length === 0) return Promise.resolve("cancelled");
   if (!speechSupported()) return Promise.resolve("unavailable");
@@ -94,9 +107,12 @@ export function speak(text: string): Promise<SpeakOutcome> {
       return;
     }
 
-    const voice = pickVoice();
+    const want = SPEECH_LANG[lang];
+    const voice = pickVoice(want);
     if (voice !== undefined) utterance.voice = voice;
-    utterance.lang = voice?.lang ?? "en-IN";
+    // `lang` is set even when no matching voice was found: some engines use it to pick a
+    // pronunciation model, and it costs nothing when they do not.
+    utterance.lang = voice?.lang ?? want;
     utterance.rate = 0.98; // a touch under default: clinical questions read better slow
 
     let started = false;

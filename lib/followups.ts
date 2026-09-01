@@ -16,6 +16,8 @@
  * "still needed" list and the follow-up questions can never disagree about what is
  * missing.
  */
+import { optionLabel, t, ui, type Lang } from "./i18n";
+import type { TextKey } from "./copy.hi";
 import {
   HABIT_YESNO_KEYS,
   PRODUCT_DUR,
@@ -42,43 +44,42 @@ export interface OutstandingField {
   placeholder?: string;
 }
 
+/**
+ * Keys rather than sentences, because these questions are read by the patient.
+ *
+ * They used to be English literals here, which is exactly the shape that cannot be
+ * translated: the follow-up flow is the most conversational surface in the app, so an
+ * English question inside it is the most jarring place for one to appear.
+ */
 const HABIT_QUESTIONS: Record<
   string,
-  { label: string; question: string; kind: OutstandingField["kind"]; options?: readonly string[] }
+  { label: TextKey; question: TextKey; kind: OutstandingField["kind"]; options?: readonly string[] }
 > = {
-  smoking: { label: "Smoking", question: "Do you smoke?", kind: "yesno" },
-  alcohol: { label: "Alcohol", question: "Do you drink alcohol?", kind: "yesno" },
-  hard_water: {
-    label: "Hard water",
-    question: "Is the water at home hard?",
-    kind: "yesno",
-  },
+  smoking: { label: "habitSmoking", question: "habitSmokingHelp", kind: "yesno" },
+  alcohol: { label: "habitAlcohol", question: "fuAlcoholQ", kind: "yesno" },
+  hard_water: { label: "habitWater", question: "habitWaterHelp", kind: "yesno" },
   heating_tools_styling_chemicals: {
-    label: "Heat or styling chemicals",
-    question: "Do you use a dryer, straightener, or hair colour?",
+    label: "habitHeat",
+    question: "fuHeatQ",
     kind: "yesno",
   },
-  salon_treatments: {
-    label: "Salon treatments",
-    question: "Have you had salon treatments like keratin or smoothening?",
-    kind: "yesno",
-  },
+  salon_treatments: { label: "habitSalon", question: "fuSalonQ", kind: "yesno" },
   hair_wash_frequency: {
-    label: "Hair wash",
-    question: "How often do you wash your hair?",
+    label: "habitWash",
+    question: "habitWashHelp",
     kind: "options",
     options: WASH,
   },
   smoking_severity: {
-    label: "Smoking amount",
-    question: "How much do you smoke?",
+    label: "fuSmokingAmountLabel",
+    question: "fuSmokingAmountQ",
     kind: "options",
     options: SMOKING_SEV,
   },
 };
 
 /** Everything still unanswered on Q11, in the order the patient should be asked. */
-function habitsOutstanding(a: Answers): OutstandingField[] {
+function habitsOutstanding(a: Answers, lang: Lang): OutstandingField[] {
   const out: OutstandingField[] = [];
   const add = (field: string, extra?: Partial<OutstandingField>) => {
     const q = HABIT_QUESTIONS[field];
@@ -87,8 +88,8 @@ function habitsOutstanding(a: Answers): OutstandingField[] {
       path: `habits.${field}`,
       row: null,
       field,
-      label: q.label,
-      question: q.question,
+      label: t(q.label, lang),
+      question: t(q.question, lang),
       kind: q.kind,
       options: q.options,
       ...extra,
@@ -121,10 +122,10 @@ function habitsOutstanding(a: Answers): OutstandingField[] {
         path: "habits.salon_treatment_detail",
         row: null,
         field: "salon_treatment_detail",
-        label: "Salon treatment",
-        question: "Which salon treatment did you have?",
+        label: t("fuSalonDetailLabel", lang),
+        question: t("fuSalonDetailQ", lang),
         kind: "text",
-        placeholder: "e.g. keratin, about 6 months ago",
+        placeholder: t("habitSalonPlaceholder", lang),
       });
     }
   }
@@ -136,6 +137,7 @@ function habitsOutstanding(a: Answers): OutstandingField[] {
 function tableOutstanding(
   rows: readonly string[],
   entries: Record<string, Record<string, unknown>>,
+  lang: Lang,
   spec: {
     flag: string;
     flagQuestion: (row: string) => string;
@@ -156,7 +158,7 @@ function tableOutstanding(
         path: `${row}.${spec.flag}`,
         row,
         field: spec.flag,
-        label: row,
+        label: optionLabel(row, lang),
         question: spec.flagQuestion(row),
         kind: "yesno",
       });
@@ -169,7 +171,7 @@ function tableOutstanding(
           path: `${row}.${d.field}`,
           row,
           field: d.field,
-          label: `${row} - ${d.label}`,
+          label: `${optionLabel(row, lang)} - ${d.label}`,
           question: d.question(row),
           kind: d.kind,
           options: d.options,
@@ -180,31 +182,35 @@ function tableOutstanding(
   return out;
 }
 
-export function productsOutstanding(a: Answers): OutstandingField[] {
+export function productsOutstanding(a: Answers, lang: Lang): OutstandingField[] {
+  // `row` is a schema string, so it is translated for display exactly where it is read
+  // out - the stored answer keeps the English row name.
+  const name = (row: string) => optionLabel(row, lang);
   return tableOutstanding(
     PRODUCT_ROWS,
     a.products as unknown as Record<string, Record<string, unknown>>,
+    lang,
     {
       flag: "used",
-      flagQuestion: (row) => `Do you use ${row}?`,
+      flagQuestion: (row) => t("fuUseRow", lang, { row: name(row) }),
       details: [
         {
           field: "duration",
-          label: "how long",
-          question: (row) => `How long have you been using ${row}?`,
+          label: t("dlHowLong", lang),
+          question: (row) => t("fuHowLongRow", lang, { row: name(row) }),
           kind: "options",
           options: PRODUCT_DUR,
         },
         {
           field: "helped",
-          label: "did it help",
-          question: (row) => `Did ${row} help?`,
+          label: t("dlHelped", lang),
+          question: (row) => t("fuHelpedRow", lang, { row: name(row) }),
           kind: "yesno",
         },
         {
           field: "side_effects",
-          label: "side effects",
-          question: (row) => `Any side effects from ${row}?`,
+          label: t("dlSideEffects", lang),
+          question: (row) => t("fuSideEffectsRow", lang, { row: name(row) }),
           kind: "yesno",
         },
       ],
@@ -212,25 +218,27 @@ export function productsOutstanding(a: Answers): OutstandingField[] {
   );
 }
 
-export function proceduresOutstanding(a: Answers): OutstandingField[] {
+export function proceduresOutstanding(a: Answers, lang: Lang): OutstandingField[] {
+  const name = (row: string) => optionLabel(row, lang);
   return tableOutstanding(
     PROCEDURE_ROWS,
     a.procedures as unknown as Record<string, Record<string, unknown>>,
+    lang,
     {
       flag: "done",
-      flagQuestion: (row) => `Have you had ${row}?`,
+      flagQuestion: (row) => t("fuHadRow", lang, { row: name(row) }),
       details: [
         {
           field: "sessions",
-          label: "how many sessions",
-          question: (row) => `How many sessions of ${row}?`,
+          label: t("dlSessions", lang),
+          question: (row) => t("fuSessionsRow", lang, { row: name(row) }),
           kind: "options",
           options: SESSIONS,
         },
         {
           field: "helped",
-          label: "did it help",
-          question: (row) => `Did ${row} help?`,
+          label: t("dlHelped", lang),
+          question: (row) => t("fuHelpedRow", lang, { row: name(row) }),
           kind: "yesno",
         },
       ],
@@ -242,10 +250,11 @@ export function proceduresOutstanding(a: Answers): OutstandingField[] {
 export function outstandingFieldsFor(
   questionKey: string | null,
   answers: Answers,
+  lang: Lang,
 ): OutstandingField[] {
-  if (questionKey === "habits") return habitsOutstanding(answers);
-  if (questionKey === "products") return productsOutstanding(answers);
-  if (questionKey === "procedures") return proceduresOutstanding(answers);
+  if (questionKey === "habits") return habitsOutstanding(answers, lang);
+  if (questionKey === "products") return productsOutstanding(answers, lang);
+  if (questionKey === "procedures") return proceduresOutstanding(answers, lang);
   return [];
 }
 
@@ -255,7 +264,8 @@ export interface AnsweredField {
   value: string;
 }
 
-const yn = (v: unknown) => (v === true ? "Yes" : v === false ? "No" : "-");
+const yn = (v: unknown, lang: Lang) =>
+  v === true ? ui(lang).yes : v === false ? ui(lang).no : "-";
 
 /**
  * What IS answered, in display form.
@@ -268,31 +278,39 @@ const yn = (v: unknown) => (v === true ? "Yes" : v === false ? "No" : "-");
 export function answeredFieldsFor(
   questionKey: string | null,
   a: Answers,
+  lang: Lang,
 ): AnsweredField[] {
   const out: AnsweredField[] = [];
+  const UI = ui(lang);
+  const opt = (v: string) => optionLabel(v, lang);
 
   if (questionKey === "habits") {
     const h = a.habits;
     if (h.smoking !== null)
       out.push({
-        label: "Smoking",
-        value: h.smoking ? `Yes${h.smoking_severity ? ` (${h.smoking_severity})` : ""}` : "No",
+        label: t("habitSmoking", lang),
+        value: h.smoking
+          ? `${UI.yes}${h.smoking_severity ? ` (${opt(h.smoking_severity)})` : ""}`
+          : UI.no,
       });
-    if (h.alcohol !== null) out.push({ label: "Alcohol", value: yn(h.alcohol) });
-    if (h.hard_water !== null) out.push({ label: "Hard water", value: yn(h.hard_water) });
+    if (h.alcohol !== null)
+      out.push({ label: t("habitAlcohol", lang), value: yn(h.alcohol, lang) });
+    if (h.hard_water !== null)
+      out.push({ label: t("habitWater", lang), value: yn(h.hard_water, lang) });
     if (h.hair_wash_frequency !== null)
-      out.push({ label: "Hair wash", value: h.hair_wash_frequency });
+      out.push({ label: t("habitWash", lang), value: opt(h.hair_wash_frequency) });
     if (h.heating_tools_styling_chemicals !== null)
       out.push({
-        label: "Heat / styling chemicals",
-        value: yn(h.heating_tools_styling_chemicals),
+        label: t("habitHeat", lang),
+        value: yn(h.heating_tools_styling_chemicals, lang),
       });
     if (h.salon_treatments !== null)
       out.push({
-        label: "Salon treatments",
+        label: t("habitSalon", lang),
+        // The free-text detail is the patient's own words, so it is never translated.
         value: h.salon_treatments
-          ? `Yes${h.salon_treatment_detail ? ` (${h.salon_treatment_detail})` : ""}`
-          : "No",
+          ? `${UI.yes}${h.salon_treatment_detail ? ` (${h.salon_treatment_detail})` : ""}`
+          : UI.no,
       });
     return out;
   }
@@ -302,15 +320,23 @@ export function answeredFieldsFor(
       const e = a.products[row];
       if (e.used === null) continue;
       if (!e.used) {
-        out.push({ label: row, value: "Not used" });
+        out.push({ label: opt(row), value: t("svNotUsed", lang) });
         continue;
       }
       const bits = [
-        e.duration ?? "?",
-        e.helped === null ? "help unknown" : e.helped ? "helped" : "did not help",
-        e.side_effects === null ? "side effects unknown" : e.side_effects ? "side effects" : "no side effects",
+        e.duration === null ? "?" : opt(e.duration),
+        e.helped === null
+          ? t("svHelpUnknown", lang)
+          : e.helped
+            ? t("svHelped", lang)
+            : t("svNotHelped", lang),
+        e.side_effects === null
+          ? t("svSideUnknown", lang)
+          : e.side_effects
+            ? t("svSideEffects", lang)
+            : t("svNoSideEffects", lang),
       ];
-      out.push({ label: row, value: `Used - ${bits.join(", ")}` });
+      out.push({ label: opt(row), value: `${t("svUsed", lang)} - ${bits.join(", ")}` });
     }
     return out;
   }
@@ -320,14 +346,20 @@ export function answeredFieldsFor(
       const e = a.procedures[row];
       if (e.done === null) continue;
       if (!e.done) {
-        out.push({ label: row, value: "Not done" });
+        out.push({ label: opt(row), value: t("svNotDone", lang) });
         continue;
       }
       const bits = [
-        e.sessions ? `${e.sessions} sessions` : "sessions ?",
-        e.helped === null ? "help unknown" : e.helped ? "helped" : "did not help",
+        e.sessions === null
+          ? t("svSessionsUnknown", lang)
+          : t("svSessions", lang, { n: opt(e.sessions) }),
+        e.helped === null
+          ? t("svHelpUnknown", lang)
+          : e.helped
+            ? t("svHelped", lang)
+            : t("svNotHelped", lang),
       ];
-      out.push({ label: row, value: `Done - ${bits.join(", ")}` });
+      out.push({ label: opt(row), value: `${t("svDone", lang)} - ${bits.join(", ")}` });
     }
     return out;
   }

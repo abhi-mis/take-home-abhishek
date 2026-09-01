@@ -77,6 +77,11 @@ try {
 
   // Read-aloud must be on every question, not just the first: it is the accessibility
   // path for a patient who cannot comfortably read the screen.
+  //
+  // Wait for the heading first. The check used to run the instant the URL changed, which
+  // is before the header paints - a flaky pass that turned into a flaky failure the day
+  // the header grew a fourth control.
+  await page.getByRole("heading").first().waitFor({ timeout: 10_000 });
   const speaker = page.getByRole("button", { name: /Read the question aloud/ });
   if ((await speaker.count()) === 0)
     errors.push({ kind: "speaker", text: "no read-aloud button on Q1", fatal: false });
@@ -144,6 +149,16 @@ try {
   await tapButton("Next");
 
   // ---------- Q1 age (preset + explicit Next) ----------
+  // Decade cards above the patient's own age must be closed, not silently clamped.
+  const bands = await page.evaluate(() =>
+    [...document.querySelectorAll("button")]
+      .filter((b) => /^(Teens|20s|30s|40s|50\+)/.test((b.textContent ?? "").trim()))
+      .map((b) => `${(b.textContent ?? "").trim().slice(0, 5)}:${b.getAttribute("aria-disabled")}`),
+  );
+  notes.push(`onset decade cards at 60: ${bands.join(" ")}`);
+  if (bands.some((b) => b.endsWith(":true")))
+    errors.push({ kind: "onset", text: "a decade card was closed for a 60-year-old", fatal: false });
+
   const q1Text = (await page.locator("main").innerText()).replace(/\s+/g, " ");
   if (!/Welcome, Asha/.test(q1Text))
     errors.push({ kind: "name", text: "question 1 does not carry the welcome forward", fatal: false });
@@ -205,6 +220,14 @@ try {
 
   // ---------- Q5 conditions (multi) ----------
   await tapCheck(/Thyroid disorder/);
+  // Open for a female patient - and the thing the sex-switch check below depends on.
+  const pcosBlocked = await page
+    .getByRole("checkbox", { name: /PCOS/ })
+    .getAttribute("aria-disabled");
+  if (pcosBlocked === "true")
+    errors.push({ kind: "gate", text: "PCOS/PCOD was closed for a female patient", fatal: false });
+  else notes.push("PCOS/PCOD is available to a female patient");
+  await tapCheck(/PCOS/);
   await tapButton("Next");
 
   // ---------- Q6 + Q7: exist ONLY because of the gate ----------
@@ -374,6 +397,77 @@ try {
   // ---------- review ----------
   await page.getByText("All done").waitFor({ state: "visible", timeout: 15_000 });
   notes.push("reached the Review screen");
+
+  // ---------- the language switch ----------
+  /*
+    Two things have to be true at once, and only one of them is about translation.
+
+    The screen has to be entirely in one language - a single English sentence is the one
+    a Hindi-only patient needed - so this scans the rendered text for Latin words with an
+    allowlist for the terms that stay in English on purpose (PCOS, PRP, the product name).
+
+    And the ANSWERS have to be untouched. Hindi is presentation: the JSON handed to the
+    doctor must be byte-identical whichever language the form was filled in, so the same
+    stored values are re-read after the switch.
+  */
+  const beforeSwitch = await page.evaluate(() => {
+    const raw = sessionStorage.getItem("genoroot-intake-v1");
+    return raw === null ? null : JSON.stringify((JSON.parse(raw).state ?? JSON.parse(raw)).answers);
+  });
+
+  await page.getByRole("radio", { name: /हिंदी|Switch the form to Hindi/ }).first().click();
+  await page.waitForTimeout(700);
+
+  const htmlLang = await page.evaluate(() => document.documentElement.lang);
+  notes.push(`switched to Hindi -> <html lang="${htmlLang}">`);
+  if (htmlLang !== "hi")
+    errors.push({
+      kind: "i18n",
+      text: `html lang should be "hi" for a screen reader to use a Hindi voice, got "${htmlLang}"`,
+      fatal: false,
+    });
+
+  const ALLOWED_LATIN = /^(GenoRoot|PCOS|PCOD|PRP|GFC|iPRF|DNA|JSON|Aa|EN|Asha)$/i;
+  const strayEnglish = await page.evaluate((allow) => {
+    const re = new RegExp(allow.source, allow.flags);
+    const words = document.body.innerText.split(/[\s·:,.()\/?!"\u201c\u201d\-\[\]|]+/);
+    return [...new Set(words.filter((w) => /^[A-Za-z][A-Za-z']{2,}$/.test(w) && !re.test(w)))];
+  }, { source: ALLOWED_LATIN.source, flags: ALLOWED_LATIN.flags });
+
+  if (strayEnglish.length > 0)
+    errors.push({
+      kind: "i18n",
+      text: `English left on the Hindi review screen: ${strayEnglish.slice(0, 8).join(", ")}`,
+      fatal: false,
+    });
+  else notes.push("Hindi review screen has no English text left on it");
+
+  const afterSwitch = await page.evaluate(() => {
+    const raw = sessionStorage.getItem("genoroot-intake-v1");
+    return raw === null ? null : JSON.stringify((JSON.parse(raw).state ?? JSON.parse(raw)).answers);
+  });
+  if (afterSwitch !== beforeSwitch)
+    errors.push({
+      kind: "i18n",
+      text: "switching language changed the answers - it must be presentation only",
+      fatal: true,
+    });
+  else notes.push("answers unchanged by the language switch (still the English schema strings)");
+
+  const devanagariInAnswers = (afterSwitch ?? "").match(/[\u0900-\u097F]/);
+  if (devanagariInAnswers !== null)
+    errors.push({
+      kind: "i18n",
+      text: "Devanagari found in the stored answers - the doctor's JSON must stay English",
+      fatal: true,
+    });
+  else notes.push("no Devanagari in the stored answers");
+
+  // Back to English for the rest of the run.
+  await page.getByRole("radio", { name: /^EN$|Fill in English/ }).first().click();
+  await page.waitForTimeout(500);
+  const backHeading = await page.getByRole("heading").first().innerText();
+  notes.push(`switched back to English -> "${backHeading.replace(/\s+/g, " ").slice(0, 40)}"`);
   const reviewHeading = await page.getByRole("heading").first().innerText();
   if (!/Asha/.test(reviewHeading))
     errors.push({ kind: "name", text: `review heading dropped the name: "${reviewHeading}"`, fatal: false });
@@ -433,6 +527,24 @@ try {
   notes.push(`walked Back to: ${await heading()}`);
   await tapOption(/^Male/);
   notes.push("switched sex to Male");
+
+  // PCOS/PCOD was answered as a female patient. Switching to male must take it out of
+  // the answers, not leave an impossible diagnosis on its way to a doctor.
+  const conditionsAfterMale = await page.evaluate(() => {
+    const raw = sessionStorage.getItem("genoroot-intake-v1");
+    if (raw === null) return null;
+    const parsed = JSON.parse(raw);
+    return (parsed.state ?? parsed).answers.diagnosed_conditions;
+  });
+  notes.push(
+    `diagnosed_conditions after switching to Male: ${JSON.stringify(conditionsAfterMale)}`,
+  );
+  if (Array.isArray(conditionsAfterMale) && conditionsAfterMale.includes("PCOS/PCOD"))
+    errors.push({
+      kind: "gate",
+      text: "PCOS/PCOD survived a switch to a male patient",
+      fatal: false,
+    });
 
   const stillAsksPeriods = await page
     .getByRole("radio", { name: /^Irregular/ })

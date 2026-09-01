@@ -12,6 +12,7 @@
  */
 import { AnimatePresence, motion } from "framer-motion";
 import { cn, tick } from "@/lib/utils";
+import { optionLabel, t, type Lang } from "@/lib/i18n";
 import { SegmentedRow } from "./HabitsGrid";
 import { YesNo } from "./YesNo";
 
@@ -24,6 +25,7 @@ export interface ColumnSpec {
 
 export interface TableGridProps {
   rows: readonly string[];
+  lang: Lang;
   /** The boolean column that gates the rest ("used" or "done"). */
   flagKey: string;
   flagLabel: string;
@@ -37,6 +39,7 @@ export interface TableGridProps {
 
 export function TableGrid({
   rows,
+  lang,
   flagKey,
   flagLabel,
   detailColumns,
@@ -69,7 +72,9 @@ export function TableGrid({
             ) : null}
             <div className="row-split relative flex items-start gap-3">
               <div className="min-w-0 flex-1">
-                <p className="text-[14.5px] font-semibold leading-tight text-ink">{row}</p>
+                <p className="text-[14.5px] font-semibold leading-tight text-ink">
+                  {optionLabel(row, lang)}
+                </p>
                 {rowGloss?.[row] ? (
                   <p className="mt-0.5 text-[12.5px] leading-snug text-muted">{rowGloss[row]}</p>
                 ) : null}
@@ -77,6 +82,7 @@ export function TableGrid({
               <div className="row-control w-[124px] shrink-0">
                 <YesNo
                   size="sm"
+                  lang={lang}
                   value={(entry[flagKey] as boolean | null) ?? null}
                   yesLabel={flagLabel}
                   noLabel="No"
@@ -116,17 +122,19 @@ export function TableGrid({
                             )}
                           >
                             {col.label}
-                            {missing ? " · required" : ""}
+                            {missing ? " · " + t("required", lang) : ""}
                           </p>
                           {col.kind === "yesno" ? (
                             <YesNo
                               size="sm"
+                              lang={lang}
                               value={(entry[col.key] as boolean | null) ?? null}
                               onChange={(v) => onChangeRow(row, { [col.key]: v })}
                             />
                           ) : (
                             <SegmentedRow
                               options={col.options ?? []}
+                              lang={lang}
                               value={(entry[col.key] as string | null) ?? null}
                               onSelect={(v) => onChangeRow(row, { [col.key]: v })}
                             />

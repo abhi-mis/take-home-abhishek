@@ -15,29 +15,30 @@ import { motion } from "framer-motion";
 import { INTAKE_SCHEMA } from "@/lib/schema";
 import { SMOKING_SEV, WASH, type Habits } from "@/lib/types";
 import { cn, tick } from "@/lib/utils";
+import { optionLabel, t, type Lang } from "@/lib/i18n";
+import type { TextKey } from "@/lib/copy.hi";
 import { YesNo } from "./YesNo";
 
 const HABIT_ROWS = INTAKE_SCHEMA.sections[2].questions[1].rows;
 
-const LABELS: Record<string, { en: string; help: string }> = {
-  smoking: { en: "Smoking", help: "Do you smoke?" },
-  alcohol: { en: "Alcohol", help: "Do you drink?" },
-  hard_water: { en: "Hard water", help: "Is the water at home hard?" },
-  hair_wash_frequency: { en: "Hair wash", help: "How often do you wash your hair?" },
-  heating_tools_styling_chemicals: {
-    en: "Heat / styling chemicals",
-    help: "Dryer, straightener, or colouring?",
-  },
-  salon_treatments: { en: "Salon treatments", help: "Keratin, smoothening, and similar?" },
+const LABELS: Record<string, { en: TextKey; help: TextKey }> = {
+  smoking: { en: "habitSmoking", help: "habitSmokingHelp" },
+  alcohol: { en: "habitAlcohol", help: "habitAlcoholHelp" },
+  hard_water: { en: "habitWater", help: "habitWaterHelp" },
+  hair_wash_frequency: { en: "habitWash", help: "habitWashHelp" },
+  heating_tools_styling_chemicals: { en: "habitHeat", help: "habitHeatHelp" },
+  salon_treatments: { en: "habitSalon", help: "habitSalonHelp" },
 };
 
 export function HabitsGrid({
   value,
   onChange,
+  lang,
   justFilled = [],
 }: {
   value: Habits;
   onChange: (patch: Partial<Habits>) => void;
+  lang: Lang;
   justFilled?: string[];
 }) {
   return (
@@ -46,11 +47,12 @@ export function HabitsGrid({
         const highlighted = justFilled.includes(row.key);
         return (
           <Row key={row.key} highlighted={highlighted}>
-            <RowLabel field={row.key} />
+            <RowLabel field={row.key} lang={lang} />
 
             {row.key === "hair_wash_frequency" ? (
               <SegmentedRow
                 options={WASH}
+                lang={lang}
                 value={value.hair_wash_frequency}
                 onSelect={(v) => {
                   tick();
@@ -60,6 +62,7 @@ export function HabitsGrid({
             ) : (
               <YesNo
                 size="sm"
+                lang={lang}
                 value={value[row.key as "smoking"]}
                 onChange={(v) => {
                   tick();
@@ -79,9 +82,10 @@ export function HabitsGrid({
 
             {/* Conditional followups, revealed only when their trigger is true. */}
             {row.key === "smoking" && value.smoking ? (
-              <Followup label="How much?" missing={value.smoking_severity === null}>
+              <Followup label={t("habitHowMuch", lang)} missing={value.smoking_severity === null}>
                 <SegmentedRow
                   options={SMOKING_SEV}
+                  lang={lang}
                   value={value.smoking_severity}
                   onSelect={(v) =>
                     onChange({ smoking_severity: v as Habits["smoking_severity"] })
@@ -91,12 +95,12 @@ export function HabitsGrid({
             ) : null}
 
             {row.key === "salon_treatments" && value.salon_treatments ? (
-              <Followup label="Which treatment?" missing={!value.salon_treatment_detail}>
+              <Followup label={t("habitWhich", lang)} missing={!value.salon_treatment_detail}>
                 <input
                   type="text"
                   inputMode="text"
                   value={value.salon_treatment_detail ?? ""}
-                  placeholder="e.g. keratin, about 6 months ago"
+                  placeholder={t("habitSalonPlaceholder", lang)}
                   onChange={(e) =>
                     onChange({ salon_treatment_detail: e.target.value.trim() || null })
                   }
@@ -139,12 +143,16 @@ export function Row({
   );
 }
 
-function RowLabel({ field }: { field: string }) {
+function RowLabel({ field, lang }: { field: string; lang: Lang }) {
   const l = LABELS[field];
   return (
     <div className="mb-2.5">
-      <p className="text-[14.5px] font-semibold leading-tight text-ink">{l?.en ?? field}</p>
-      {l?.help ? <p className="mt-0.5 text-[12.5px] leading-snug text-muted">{l.help}</p> : null}
+      <p className="text-[14.5px] font-semibold leading-tight text-ink">
+        {l === undefined ? field : t(l.en, lang)}
+      </p>
+      {l !== undefined ? (
+        <p className="mt-0.5 text-[12.5px] leading-snug text-muted">{t(l.help, lang)}</p>
+      ) : null}
     </div>
   );
 }
@@ -180,10 +188,12 @@ function Followup({
 export function SegmentedRow({
   options,
   value,
+  lang,
   onSelect,
 }: {
   options: readonly string[];
   value: string | null;
+  lang: Lang;
   onSelect: (v: string) => void;
 }) {
   return (
@@ -203,7 +213,7 @@ export function SegmentedRow({
               : "border-line bg-paper text-muted hover:border-brand/50 hover:bg-brand-soft/40 hover:text-ink",
           )}
         >
-          {o}
+          {optionLabel(o, lang)}
         </button>
       ))}
     </div>

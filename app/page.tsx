@@ -10,12 +10,13 @@
 import Link from "next/link";
 import { motion } from "framer-motion";
 import { useEffect, useState } from "react";
-import { UI_COPY } from "@/lib/copy";
+import { t, ui } from "@/lib/i18n";
 import { TOTAL_QUESTIONS } from "@/lib/schema";
 import { useIntake } from "@/lib/store";
 import { Button } from "@/components/ui/Button";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { ComfortToggle } from "@/components/ComfortToggle";
+import { LangToggle } from "@/components/LangToggle";
 
 export default function Home() {
   const answered = useIntake((s) => Object.keys(s.touched).length);
@@ -23,6 +24,9 @@ export default function Home() {
   const firstName = useIntake((s) => s.meta.first_name);
   const comfort = useIntake((s) => s.comfort);
   const setComfort = useIntake((s) => s.setComfort);
+  const lang = useIntake((s) => s.lang);
+  const setLang = useIntake((s) => s.setLang);
+  const UI = ui(lang);
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []); // avoid a hydration mismatch on resume state
 
@@ -31,27 +35,37 @@ export default function Home() {
       <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}>
         <div className="mb-6 flex items-center justify-end gap-2">
           {/* Reachable before the form even starts, for anyone who needs it now. */}
-          <ComfortToggle comfort={comfort} onChange={setComfort} />
+          {/*
+            The language switch is FIRST, and it is on this screen at full size, because
+            it is the only control here that a patient cannot use the app without: the
+            other two adjust a form you can already read.
+          */}
+          <LangToggle lang={lang} onChange={setLang} />
+          <ComfortToggle comfort={comfort} onChange={setComfort} lang={lang} />
           <ThemeToggle />
         </div>
         <div className="inline-flex items-center gap-2 rounded-full bg-brand-soft px-3 py-1.5">
           <span aria-hidden className="size-2 rounded-full bg-brand" />
           <span className="text-[11px] font-bold uppercase tracking-[0.14em] text-brand-ink">
-            {UI_COPY.landingKicker}
+            {UI.landingKicker}
           </span>
         </div>
 
         <h1 className="mt-6 font-display text-[44px] font-bold leading-[0.98] tracking-[-0.02em] text-ink">
-          {UI_COPY.landingTitle}
+          {UI.landingTitle}
         </h1>
-        <p className="mt-4 text-[16px] leading-relaxed text-muted">{UI_COPY.landingBody}</p>
+        <p className="mt-4 text-[16px] leading-relaxed text-muted">{UI.landingBody}</p>
 
         <ul className="mt-8 flex flex-col gap-3">
           {[
-            { n: TOTAL_QUESTIONS, label: "short questions", sub: "one per screen, in order" },
-            { n: "~2", label: "minutes", sub: "mostly just tapping" },
-            { n: "3", label: "you can just say out loud", sub: "habits, products, treatments" },
-            { n: "Aa", label: "fitted to you", sub: "text size, skipped questions, sensible limits" },
+            {
+              n: TOTAL_QUESTIONS,
+              label: t("landingFeatQuestions", lang),
+              sub: t("landingFeatQuestionsSub", lang),
+            },
+            { n: "~2", label: t("landingFeatMinutes", lang), sub: t("landingFeatMinutesSub", lang) },
+            { n: "3", label: t("landingFeatVoice", lang), sub: t("landingFeatVoiceSub", lang) },
+            { n: "Aa", label: t("landingFeatFitted", lang), sub: t("landingFeatFittedSub", lang) },
           ].map((f) => (
             /*
               Two lines per row, not one. The single-line version read fine with three
@@ -91,18 +105,18 @@ export default function Home() {
             <Link href="/intake" className="contents">
               <Button size="lg" className="w-full">
                 {firstName === null
-                  ? UI_COPY.landingResume
-                  : `${UI_COPY.landingResume}, ${firstName}`}
+                  ? UI.landingResume
+                  : `${UI.landingResume}, ${firstName}`}
               </Button>
             </Link>
             <Button variant="ghost" onClick={reset}>
-              {UI_COPY.landingRestart}
+              {UI.landingRestart}
             </Button>
           </>
         ) : (
           <Link href="/intake" className="contents">
             <Button size="lg" className="w-full">
-              {UI_COPY.landingCta}
+              {UI.landingCta}
             </Button>
           </Link>
         )}

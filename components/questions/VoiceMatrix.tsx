@@ -19,7 +19,7 @@ import { INTAKE_SCHEMA } from "@/lib/schema";
 import { PRODUCT_DUR, PRODUCT_ROWS, PROCEDURE_ROWS, SESSIONS } from "@/lib/types";
 import type { Answers, Habits } from "@/lib/types";
 import type { ExtractResult } from "@/lib/extractPrompt";
-import { UI_COPY } from "@/lib/copy";
+import { optionLabel, t, ui, type Lang } from "@/lib/i18n";
 import { CheckIcon } from "../ui/Button";
 import { VoicePanel } from "./VoicePanel";
 import { HabitsGrid } from "./HabitsGrid";
@@ -30,41 +30,48 @@ import { ResultDialog } from "./ResultDialog";
 import { answeredFieldsFor, outstandingFieldsFor, type OutstandingField } from "@/lib/followups";
 import { fieldOps, mergeRows } from "@/lib/apply";
 
-const PRODUCT_COLUMNS: ColumnSpec[] = [
-  { key: "duration", label: "How long", kind: "options", options: PRODUCT_DUR },
-  { key: "helped", label: "Did it help?", kind: "yesno" },
-  { key: "side_effects", label: "Any side effects?", kind: "yesno" },
+/*
+  Column labels and row glosses as translation keys rather than sentences. Built per
+  render from `lang` because they are read by the patient, unlike the row keys beside
+  them, which are schema strings and never change.
+*/
+const productColumns = (lang: Lang): ColumnSpec[] => [
+  { key: "duration", label: t("colHowLong", lang), kind: "options", options: PRODUCT_DUR },
+  { key: "helped", label: t("colHelped", lang), kind: "yesno" },
+  { key: "side_effects", label: t("colSideEffects", lang), kind: "yesno" },
 ];
 
-const PROCEDURE_COLUMNS: ColumnSpec[] = [
-  { key: "sessions", label: "How many sessions", kind: "options", options: SESSIONS },
-  { key: "helped", label: "Did it help?", kind: "yesno" },
+const procedureColumns = (lang: Lang): ColumnSpec[] => [
+  { key: "sessions", label: t("colSessions", lang), kind: "options", options: SESSIONS },
+  { key: "helped", label: t("colHelped", lang), kind: "yesno" },
 ];
 
-const PRODUCT_GLOSS: Record<string, string> = {
-  "OTC/Medicated Shampoos": "Anti-dandruff or medicated shampoo",
-  "Hair Oils/Serums": "Oils or leave-in serums",
-  "Topical Minoxidil": "The solution or foam you apply",
-  "Oral Minoxidil": "Minoxidil tablets",
-  Supplements: "Biotin, vitamins, iron",
-};
+const productGloss = (lang: Lang): Record<string, string> => ({
+  "OTC/Medicated Shampoos": t("rowShampooHelp", lang),
+  "Hair Oils/Serums": t("rowOilsHelp", lang),
+  "Topical Minoxidil": t("rowTopicalHelp", lang),
+  "Oral Minoxidil": t("rowOralHelp", lang),
+  Supplements: t("rowSupplementsHelp", lang),
+});
 
-const PROCEDURE_GLOSS: Record<string, string> = {
-  "PRP/GFC/iPRF": "Injections made from your own blood",
-  "Stem Cells/Exosomes": "Stem cell or exosome therapy",
-  "Hair Transplant": "Transplant surgery",
-  Other: "Any other clinic treatment",
-};
+const procedureGloss = (lang: Lang): Record<string, string> => ({
+  "PRP/GFC/iPRF": t("rowPrpHelp", lang),
+  "Stem Cells/Exosomes": t("rowStemHelp", lang),
+  "Hair Transplant": t("rowTransplantHelp", lang),
+  Other: t("rowOtherHelp", lang),
+});
 
 export function VoiceMatrix({
   questionKey,
   answers,
   patch,
+  lang,
   setFocusMode,
 }: {
   questionKey: "habits" | "products" | "procedures";
   answers: Answers;
   patch: (p: Partial<Answers>) => void;
+  lang: Lang;
   /**
    * Reported UP to the page: "this step is presenting its own focused UI, so stand
    * down the shared chrome". True on the speak screen and during the follow-up flow.
@@ -111,7 +118,7 @@ export function VoiceMatrix({
    * validateStep() is blocking Next on.
    */
   const outstanding: OutstandingField[] = useMemo(
-    () => outstandingFieldsFor(questionKey, answers),
+    () => outstandingFieldsFor(questionKey, answers, lang),
     [questionKey, answers],
   );
 
@@ -183,7 +190,7 @@ export function VoiceMatrix({
     setFlowScope(null);
   }
 
-  const answered = answeredFieldsFor(questionKey, answers);
+  const answered = answeredFieldsFor(questionKey, answers, lang);
 
   // A scope narrows the queue to the item the patient just switched on; without one the
   // flow walks everything still outstanding.
@@ -201,6 +208,7 @@ export function VoiceMatrix({
     return (
       <SpeakFirst
         questionKey={questionKey}
+        lang={lang}
         onResult={apply}
         onTapInstead={() => setStage("form")}
       />
@@ -212,6 +220,7 @@ export function VoiceMatrix({
       {/* Stage 2: the popup. Rendered over the form so dismissing it reveals the grid. */}
       {stage === "result" ? (
         <ResultDialog
+          lang={lang}
           transcript={transcript}
           answered={answered}
           outstanding={outstanding}
@@ -232,12 +241,12 @@ export function VoiceMatrix({
       {confirmed && !flowOpen ? (
         <p className="mb-4 flex items-center gap-2 rounded-2xl border border-brand/35 bg-brand-soft/50 px-4 py-2.5 text-[13px] font-semibold text-brand-ink">
           <CheckIcon className="size-4 shrink-0" />
-          {UI_COPY.confirmedBanner} - you can still change anything below.
+          {ui(lang).confirmedBanner} - you can still change anything below.
         </p>
       ) : null}
 
       {/* Re-record without leaving the question. */}
-      {!flowOpen ? <VoicePanel questionKey={questionKey} onResult={apply} /> : null}
+      {!flowOpen ? <VoicePanel questionKey={questionKey} lang={lang} onResult={apply} /> : null}
 
       {/*
         The layered-question answer: rather than listing what is missing and leaving the
@@ -249,7 +258,8 @@ export function VoiceMatrix({
           // Remount on scope change so the progress total restarts for the new queue.
           key={flowScope ?? "all"}
           fields={flowFields}
-          title={flowScope ? UI_COPY.followUpConditional : undefined}
+          lang={lang}
+          title={flowScope ? ui(lang).followUpConditional : undefined}
           // A one-item detour should hand the grid straight back.
           autoCloseOnComplete={flowScope !== null}
           onAnswer={answerField}
@@ -271,11 +281,11 @@ export function VoiceMatrix({
             <span className="block text-[14px] font-bold leading-snug text-brand-ink">
               {/* "the remaining 1 one at a time" is not a sentence. */}
               {outstanding.length === 1
-                ? "Answer the last one now"
-                : `Answer the remaining ${outstanding.length} one at a time`}
+                ? t("followUpLast", lang)
+                : t("followUpRemaining", lang, { n: outstanding.length })}
             </span>
             <span className="mt-0.5 block text-[12px] leading-snug text-muted">
-              Quicker than finding them in the list below
+              {t("followUpQuicker", lang)}
             </span>
           </span>
           <span aria-hidden className="shrink-0 text-brand">
@@ -283,7 +293,7 @@ export function VoiceMatrix({
           </span>
         </button>
       ) : justFilled.length > 0 && !confirmed ? (
-        <p className="mb-3 text-[13px] font-medium text-brand-ink">{UI_COPY.reviewFilled}</p>
+        <p className="mb-3 text-[13px] font-medium text-brand-ink">{ui(lang).reviewFilled}</p>
       ) : null}
 
       {/*
@@ -295,6 +305,7 @@ export function VoiceMatrix({
       */}
       {flowOpen ? null : questionKey === "habits" ? (
         <HabitsGrid
+          lang={lang}
           value={answers.habits}
           justFilled={justFilled}
           onChange={(p) => {
@@ -306,10 +317,11 @@ export function VoiceMatrix({
       ) : questionKey === "products" ? (
         <TableGrid
           rows={PRODUCT_ROWS}
+          lang={lang}
           flagKey="used"
           flagLabel="Yes"
-          detailColumns={PRODUCT_COLUMNS}
-          rowGloss={PRODUCT_GLOSS}
+          detailColumns={productColumns(lang)}
+          rowGloss={productGloss(lang)}
           justFilled={justFilled}
           value={answers.products as unknown as Record<string, Record<string, unknown>>}
           onChangeRow={(row, p) => {
@@ -325,10 +337,11 @@ export function VoiceMatrix({
       ) : (
         <TableGrid
           rows={PROCEDURE_ROWS}
+          lang={lang}
           flagKey="done"
           flagLabel="Yes"
-          detailColumns={PROCEDURE_COLUMNS}
-          rowGloss={PROCEDURE_GLOSS}
+          detailColumns={procedureColumns(lang)}
+          rowGloss={procedureGloss(lang)}
           justFilled={justFilled}
           value={answers.procedures as unknown as Record<string, Record<string, unknown>>}
           onChangeRow={(row, p) => {
@@ -346,7 +359,7 @@ export function VoiceMatrix({
       {/* Sanity check that the rendered rows come from the schema, not a local list. */}
       {flowOpen ? null : (
         <p className="mt-4 text-[11px] text-muted/70">
-          {rowCount(questionKey)} rows from the intake schema.
+          {t("rowsFromSchema", lang, { n: rowCount(questionKey) })}
         </p>
       )}
     </div>

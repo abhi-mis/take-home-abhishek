@@ -65,6 +65,14 @@ export function OptionCard({
   icon,
   onSelect,
   multi = false,
+  /**
+   * Why this option cannot be picked by this patient. Present = shown but unpressable.
+   *
+   * Shown rather than removed on purpose: a patient who came in believing they have PCOS
+   * should see that the form considered it and why it is closed, not find the option gone
+   * and wonder whether they answered something wrong earlier.
+   */
+  unavailable,
   className,
 }: {
   selected: boolean;
@@ -74,20 +82,30 @@ export function OptionCard({
   icon?: React.ReactNode;
   onSelect: () => void;
   multi?: boolean;
+  unavailable?: string;
   className?: string;
 }) {
+  const blocked = unavailable !== undefined;
   return (
     <button
       type="button"
       role={multi ? "checkbox" : "radio"}
       aria-checked={selected}
-      onClick={onSelect}
+      // `aria-disabled` rather than `disabled`: a disabled button is skipped by screen
+      // readers entirely, which would hide both the option and the reason it is closed.
+      aria-disabled={blocked}
+      onClick={blocked ? undefined : onSelect}
       className={cn(
         "flex w-full items-center gap-3 rounded-2xl border-2 px-4 py-3.5 text-left",
-        "min-h-[56px] transition-all duration-100 active:scale-[0.99]",
-        selected
+        "min-h-[56px] transition-all duration-100",
+        blocked
+          ? "cursor-not-allowed border-dashed border-line bg-card/60"
+          : "active:scale-[0.99]",
+        !blocked && selected
           ? "border-brand bg-brand-soft"
-          : "border-line bg-card hover:border-brand/45 hover:bg-brand-soft/35 active:border-brand/40",
+          : !blocked
+            ? "border-line bg-card hover:border-brand/45 hover:bg-brand-soft/35 active:border-brand/40"
+            : "",
         className,
       )}
     >
@@ -96,10 +114,14 @@ export function OptionCard({
         className={cn(
           "grid size-6 shrink-0 place-items-center border-2 transition-colors",
           multi ? "rounded-md" : "rounded-full",
-          selected ? "border-brand bg-brand text-white" : "border-line bg-card",
+          blocked
+            ? "border-line/70 bg-line/25"
+            : selected
+              ? "border-brand bg-brand text-white"
+              : "border-line bg-card",
         )}
       >
-        {selected ? <CheckIcon /> : null}
+        {blocked ? <BlockedIcon /> : selected ? <CheckIcon /> : null}
       </span>
       {icon ? (
         <span
@@ -116,16 +138,42 @@ export function OptionCard({
         <span
           className={cn(
             "block text-[15px] leading-snug",
-            selected ? "font-semibold text-brand-ink" : "font-medium text-ink",
+            blocked
+              ? "font-medium text-muted"
+              : selected
+                ? "font-semibold text-brand-ink"
+                : "font-medium text-ink",
           )}
         >
           {label}
         </span>
-        {gloss ? (
+        {/* The reason replaces the gloss: it is the more useful sentence right now. */}
+        {blocked ? (
+          <span className="mt-0.5 block text-[13px] leading-snug text-muted">
+            {unavailable}
+          </span>
+        ) : gloss ? (
           <span className="mt-0.5 block text-[13px] leading-snug text-muted">{gloss}</span>
         ) : null}
       </span>
     </button>
+  );
+}
+
+/** The mark in a closed option's box: a slash, not a cross - nothing went wrong. */
+function BlockedIcon() {
+  return (
+    <svg
+      viewBox="0 0 20 20"
+      fill="none"
+      aria-hidden
+      className="size-3.5 shrink-0 text-muted"
+      stroke="currentColor"
+      strokeWidth={2.5}
+      strokeLinecap="round"
+    >
+      <path d="M5 15 15 5" />
+    </svg>
   );
 }
 

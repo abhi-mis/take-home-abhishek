@@ -15,20 +15,23 @@
  * question, so the grid does not need to be on screen for the question to be clear.
  */
 import { motion } from "framer-motion";
-import { SPEAK_PROMPTS, UI_COPY } from "@/lib/copy";
+import { speakPrompts, ui, type Lang } from "@/lib/i18n";
 import type { ExtractResult } from "@/lib/extractPrompt";
 import { VoicePanel } from "./VoicePanel";
 
 export function SpeakFirst({
   questionKey,
+  lang,
   onResult,
   onTapInstead,
 }: {
   questionKey: string;
+  lang: Lang;
   onResult: (r: ExtractResult, transcript: string) => void;
   onTapInstead: () => void;
 }) {
-  const prompt = SPEAK_PROMPTS[questionKey];
+  const UI = ui(lang);
+  const prompt = speakPrompts(lang)[questionKey];
 
   return (
     <div className="flex flex-col gap-4">
@@ -39,7 +42,7 @@ export function SpeakFirst({
           className="rounded-2xl border border-brand/25 bg-brand-soft/50 p-4"
         >
           <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-brand-ink">
-            {UI_COPY.speakTitle}
+            {UI.speakTitle}
           </p>
           <p className="mt-2 text-[15px] font-semibold leading-snug text-ink">{prompt.intro}</p>
 
@@ -65,19 +68,19 @@ export function SpeakFirst({
           {/* The conditional layer, stated up front so one reply can complete a row. */}
           {prompt.detailNote ? (
             <p className="mt-3 rounded-xl border border-brand/20 bg-card/60 px-3 py-2.5 text-[13px] leading-snug text-ink">
-              <span className="font-semibold text-brand-ink">{UI_COPY.speakDetailLabel}:</span>{" "}
+              <span className="font-semibold text-brand-ink">{UI.speakDetailLabel}:</span>{" "}
               {prompt.detailNote}
             </p>
           ) : null}
 
           <p className="mt-3 border-t border-brand/20 pt-3 text-[13px] leading-snug text-muted">
-            <span className="font-semibold text-brand-ink">{UI_COPY.speakExampleLabel}:</span>{" "}
+            <span className="font-semibold text-brand-ink">{UI.speakExampleLabel}:</span>{" "}
             <span className="italic">&ldquo;{prompt.example}&rdquo;</span>
           </p>
         </motion.div>
       ) : null}
 
-      <VoicePanel questionKey={questionKey} onResult={onResult} />
+      <VoicePanel questionKey={questionKey} lang={lang} onResult={onResult} />
 
       {/*
         Never a dead end. This is the same escape hatch that a denied microphone or a
@@ -88,7 +91,7 @@ export function SpeakFirst({
         onClick={onTapInstead}
         className="min-h-[48px] rounded-2xl border border-dashed border-line px-4 text-[14px] font-semibold text-muted transition-colors hover:border-brand/50 hover:bg-brand-soft/40 hover:text-brand-ink"
       >
-        {UI_COPY.speakTapInstead}
+        {UI.speakTapInstead}
       </button>
     </div>
   );

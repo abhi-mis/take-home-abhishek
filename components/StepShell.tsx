@@ -14,10 +14,10 @@ import { useEffect, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { ProgressBar } from "./ProgressBar";
 import { Button } from "./ui/Button";
-import { UI_COPY } from "@/lib/copy";
-import { ThemeToggle } from "./ThemeToggle";
+import { t, ui, type Lang } from "@/lib/i18n";
 import { QuestionSpeaker } from "./QuestionSpeaker";
 import { ComfortToggle } from "./ComfortToggle";
+import { LangToggle } from "./LangToggle";
 import type { Comfort } from "@/lib/patient";
 import { cn } from "@/lib/utils";
 
@@ -32,6 +32,8 @@ export function StepShell({
   personal,
   comfort,
   onComfort,
+  lang,
+  onLang,
   revisited,
   index,
   total,
@@ -56,6 +58,8 @@ export function StepShell({
   personal: string;
   comfort: Comfort;
   onComfort: (c: Comfort) => void;
+  lang: Lang;
+  onLang: (l: Lang) => void;
   /** True once this step has been completed before - then the summary shows on arrival. */
   revisited: boolean;
   hint?: string;
@@ -89,7 +93,7 @@ export function StepShell({
   return (
     <div className="mx-auto flex min-h-dvh w-full max-w-md flex-col">
       <header className="sticky top-0 z-30 bg-paper/95 px-5 pb-3 pt-4 backdrop-blur">
-        <ProgressBar index={index} total={total} />
+        <ProgressBar index={index} total={total} lang={lang} />
         <div className="mt-2.5 flex items-center gap-2">
           <div className="min-w-0 flex-1">
             <p className="truncate text-[11px] font-semibold uppercase tracking-[0.12em] text-muted">
@@ -108,11 +112,17 @@ export function StepShell({
           {/*
             Three controls, in the sticky header so they are reachable from the long table
             questions and identical on all 17 screens: read the question aloud, resize
-            everything, switch the palette.
+            everything, switch language.
+
+            The palette toggle is deliberately NOT here. Four controls plus a section
+            label do not fit a 380px header at the largest text scale - the label
+            truncated to nothing - and of the four, appearance is the one a patient sets
+            once before starting rather than needs mid-form. It lives on the landing and
+            review screens instead.
           */}
-          <QuestionSpeaker text={speech} className="-my-1" />
-          <ComfortToggle comfort={comfort} onChange={onComfort} className="-my-1" />
-          <ThemeToggle className="-my-1" />
+          <QuestionSpeaker text={speech} lang={lang} className="-my-1" />
+          <ComfortToggle comfort={comfort} onChange={onComfort} lang={lang} className="-my-1" />
+          <LangToggle lang={lang} onChange={onLang} className="-my-1" />
         </div>
       </header>
 
@@ -186,7 +196,9 @@ export function StepShell({
                   aria-live="polite"
                 >
                   <p className="text-[12.5px] font-bold uppercase tracking-wide text-warn">
-                    {outstanding.length === 1 ? "Still needed" : `Still needed (${outstanding.length})`}
+                    {outstanding.length === 1
+                      ? t("stillNeeded", lang)
+                      : t("stillNeededN", lang, { n: outstanding.length })}
                   </p>
                   <ul className="mt-1.5 flex flex-col gap-1">
                     {outstanding.slice(0, 8).map((o) => (
@@ -197,7 +209,7 @@ export function StepShell({
                     ))}
                     {outstanding.length > 8 ? (
                       <li className="text-[12.5px] italic text-warn/80">
-                        …and {outstanding.length - 8} more below
+                        {t("andMore", lang, { n: outstanding.length - 8 })}
                       </li>
                     ) : null}
                   </ul>
@@ -224,9 +236,9 @@ export function StepShell({
               size="lg"
               onClick={onBack}
               className="group w-[88px] shrink-0"
-              aria-label={UI_COPY.back}
+              aria-label={ui(lang).back}
             >
-              <BackArrow /> {UI_COPY.back}
+              <BackArrow /> {ui(lang).back}
             </Button>
             {hideNext ? (
               <div className="flex-1" />
@@ -246,7 +258,7 @@ export function StepShell({
                 }}
               >
                 <Button size="lg" onClick={onNext} disabled={!canGoNext} className="w-full">
-                  {UI_COPY.next}
+                  {ui(lang).next}
                 </Button>
               </div>
             )}

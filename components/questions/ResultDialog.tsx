@@ -16,7 +16,7 @@
  * counts are the moment the software looks like it did the work.
  */
 import { motion } from "framer-motion";
-import { UI_COPY } from "@/lib/copy";
+import { t, ui, type Lang } from "@/lib/i18n";
 import type { AnsweredField, OutstandingField } from "@/lib/followups";
 import { cn } from "@/lib/utils";
 import { CheckIcon } from "../ui/Button";
@@ -25,11 +25,13 @@ export function ResultDialog({
   transcript,
   answered,
   outstanding,
+  lang,
   onConfirm,
   onAnswerRest,
   onEdit,
 }: {
   transcript: string;
+  lang: Lang;
   answered: AnsweredField[];
   outstanding: OutstandingField[];
   onConfirm: () => void;
@@ -40,12 +42,9 @@ export function ResultDialog({
   const missed = outstanding.length;
   const got = answered.length;
 
+  const UI = ui(lang);
   const title =
-    got === 0
-      ? UI_COPY.resultNoneTitle
-      : missed === 0
-        ? UI_COPY.resultAllTitle
-        : UI_COPY.resultSomeTitle;
+    got === 0 ? UI.resultNoneTitle : missed === 0 ? UI.resultAllTitle : UI.resultSomeTitle;
 
   return (
     <div
@@ -84,8 +83,10 @@ export function ResultDialog({
             <h2 className="text-[18px] font-bold leading-tight text-ink">{title}</h2>
             <p className="mt-0.5 text-[13px] leading-snug text-muted">
               {got === 0
-                ? "Nothing in that reply matched this question. Try again, or tap the answers."
-                : `Filled ${got} of ${total} answers${missed > 0 ? ` - ${missed} still to go` : ""}.`}
+                ? t("resultNothingMatched", lang)
+                : missed > 0
+                  ? t("resultFilledOfLeft", lang, { got, total, missed })
+                  : t("resultFilledOf", lang, { got, total })}
             </p>
           </div>
         </header>
@@ -100,7 +101,7 @@ export function ResultDialog({
           {answered.length > 0 ? (
             <>
               <p className="text-[11px] font-bold uppercase tracking-wide text-brand-ink">
-                {UI_COPY.resultConfirmQuestion}
+                {UI.resultConfirmQuestion}
               </p>
               <ul className="mt-2 divide-y divide-line overflow-hidden rounded-xl border border-line">
                 {answered.map((f) => (
@@ -145,7 +146,7 @@ export function ResultDialog({
               onClick={onAnswerRest}
               className="min-h-[52px] rounded-2xl bg-brand text-[15px] font-bold text-white transition-colors hover:bg-brand-strong active:scale-[0.99]"
             >
-              {UI_COPY.resultAnswerRest} ({missed})
+              {UI.resultAnswerRest} ({missed})
             </button>
           ) : (
             <button
@@ -153,7 +154,7 @@ export function ResultDialog({
               onClick={onConfirm}
               className="min-h-[52px] rounded-2xl bg-brand text-[15px] font-bold text-white transition-colors hover:bg-brand-strong active:scale-[0.99]"
             >
-              {UI_COPY.resultConfirm}
+              {UI.resultConfirm}
             </button>
           )}
           <button
@@ -161,7 +162,7 @@ export function ResultDialog({
             onClick={onEdit}
             className="min-h-[48px] rounded-2xl border border-line text-[14px] font-semibold text-muted transition-colors hover:border-brand/50 hover:text-brand-ink"
           >
-            {UI_COPY.resultEdit}
+            {UI.resultEdit}
           </button>
         </footer>
       </motion.div>

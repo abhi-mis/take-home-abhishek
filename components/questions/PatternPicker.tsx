@@ -13,23 +13,25 @@
  */
 import { motion } from "framer-motion";
 import { PATTERN } from "@/lib/types";
-import { COPY, UI_COPY } from "@/lib/copy";
 import { cn, tick } from "@/lib/utils";
+import { optionLabel, questionCopy, t, ui, type Lang } from "@/lib/i18n";
 import { ScalpDiagram } from "./ScalpDiagram";
 import { CheckIcon } from "../ui/Button";
 
 export function PatternPicker({
   values,
   noneChosen,
+  lang,
   onChange,
   onChooseNone,
 }: {
   values: string[];
   noneChosen: boolean;
+  lang: Lang;
   onChange: (next: string[]) => void;
   onChooseNone: () => void;
 }) {
-  const gloss = COPY.pattern.gloss ?? {};
+  const gloss = questionCopy(lang).pattern.gloss ?? {};
 
   function toggle(opt: string) {
     tick();
@@ -47,7 +49,7 @@ export function PatternPicker({
               type="button"
               role="checkbox"
               aria-checked={selected}
-              aria-label={opt}
+              aria-label={optionLabel(opt, lang)}
               onClick={() => toggle(opt)}
               className={cn(
                 "relative flex flex-col overflow-hidden rounded-2xl border-2 p-2 text-left",
@@ -83,7 +85,7 @@ export function PatternPicker({
                     selected ? "text-brand-ink" : "text-ink",
                   )}
                 >
-                  {opt}
+                  {optionLabel(opt, lang)}
                 </span>
                 {gloss[opt] ? (
                   <span className="mt-0.5 block text-[11.5px] leading-snug text-muted">
@@ -115,7 +117,7 @@ export function PatternPicker({
             : "border-dashed border-line bg-transparent text-muted hover:border-brand/50 hover:text-ink",
         )}
       >
-        {UI_COPY.notSure} - I cannot tell which
+        {t("patternNotSure", lang, { label: ui(lang).notSure })}
       </button>
     </div>
   );

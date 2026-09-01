@@ -6,23 +6,28 @@
  */
 import { useEffect, useState } from "react";
 import { cn, tick } from "@/lib/utils";
-import { UI_COPY } from "@/lib/copy";
+import { ui, type Lang } from "@/lib/i18n";
 
 export function YesNo({
   value,
   onChange,
   onAdvance,
+  lang,
   size = "lg",
-  yesLabel = UI_COPY.yes,
-  noLabel = UI_COPY.no,
+  yesLabel,
+  noLabel,
 }: {
   value: boolean | null;
   onChange: (v: boolean) => void;
   onAdvance?: () => void;
+  lang: Lang;
   size?: "lg" | "sm";
+  /** Overrides for the grids ("I use this"); default to plain yes / no. */
   yesLabel?: string;
   noLabel?: string;
 }) {
+  const yes = yesLabel ?? ui(lang).yes;
+  const no = noLabel ?? ui(lang).no;
   const [pending, setPending] = useState<boolean | null>(null);
 
   useEffect(() => {
@@ -36,8 +41,8 @@ export function YesNo({
   return (
     <div role="radiogroup" className={cn("grid grid-cols-2", size === "lg" ? "gap-3" : "gap-2")}>
       {[
-        { v: true, label: yesLabel },
-        { v: false, label: noLabel },
+        { v: true, label: yes },
+        { v: false, label: no },
       ].map(({ v, label }) => (
         <button
           key={label}

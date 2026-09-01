@@ -17,13 +17,14 @@ import { useRouter } from "next/navigation";
 import { useIntake } from "@/lib/store";
 import { getQuestion, type QuestionKey } from "@/lib/schema";
 import { stepIndexById, validateStep, visibleSteps, type Step } from "@/lib/steps";
-import { COPY, SECTION_LABEL, UI_COPY } from "@/lib/copy";
+import { questionCopy, sectionLabel, ui, type Lang } from "@/lib/i18n";
 import { questionSpeech } from "@/lib/questionSpeech";
 import {
   maxOnsetAge,
   personalNote,
   shouldOfferComfort,
   suggestedComfort,
+  unavailableOptions,
   personalSummary,
   welcomeLine,
   suggestionFor,
@@ -55,6 +56,8 @@ export default function IntakePage() {
   const touched = useIntake((s) => s.touched);
   const explicitNone = useIntake((s) => s.explicitNone);
   const comfort = useIntake((s) => s.comfort);
+  const lang = useIntake((s) => s.lang);
+  const setLang = useIntake((s) => s.setLang);
 
   // Actions are created once, so these references are stable for the store's lifetime.
   const patch = useIntake((s) => s.patch);
@@ -113,6 +116,11 @@ export default function IntakePage() {
   // resumed session can land straight onto a table question.
   const focusStepId = useRef<string | null>(null);
 
+  // Resolved once per render: the whole screen is in one language, so every string
+  // below comes from the same two objects.
+  const UI = ui(lang);
+  const COPY_L = questionCopy(lang);
+
   const isReview = currentStepId === "review";
   const index = isReview ? steps.length : stepIndexById(steps, currentStepId);
   const step = isReview ? null : steps[index];
@@ -155,6 +163,7 @@ export default function IntakePage() {
   const comfortDialog =
     offerComfort && meta.patient_age !== null ? (
       <ComfortPrompt
+        lang={lang}
         age={meta.patient_age}
         target={suggestedComfort(meta.patient_age)}
         onAccept={acceptComfort}
@@ -182,29 +191,31 @@ export default function IntakePage() {
 
   if (!step) return null;
 
-  const copy = step.key ? COPY[step.key] : null;
-  const title = step.kind === "about" ? UI_COPY.aboutTitle : (copy?.title ?? step.key ?? "");
+  const copy = step.key ? COPY_L[step.key] : null;
+  const title = step.kind === "about" ? UI.aboutTitle : (copy?.title ?? step.key ?? "");
   // A hint that knows who is reading it, where that changes what the question means.
-  const extra = step.key ? personalNote(step.key, meta) : undefined;
+  const extra = step.key ? personalNote(step.key, meta, lang) : undefined;
   const hint = [copy?.hint, extra].filter(Boolean).join(" ") || undefined;
   // One call decides both whether Next is enabled and what the patient still owes us.
-  const check = validateStep(step, answers, meta, explicitNone);
+  const check = validateStep(step, answers, meta, explicitNone, lang);
 
   return (
     <>
     {comfortDialog}
     <StepShell
       stepId={step.id}
-      sectionTitle={SECTION_LABEL[step.sectionId] ?? step.sectionTitle}
+      sectionTitle={sectionLabel(lang)[step.sectionId] ?? step.sectionTitle}
       questionNumber={step.n}
       title={title}
       hint={hint}
-      speech={questionSpeech(step, meta)}
+      speech={questionSpeech(step, meta, lang)}
       // Only on question 1: a greeting that repeats on every screen stops being one.
-      welcome={step.n === 1 ? (welcomeLine(meta) ?? undefined) : undefined}
-      personal={personalSummary(meta)}
+      welcome={step.n === 1 ? (welcomeLine(meta, lang) ?? undefined) : undefined}
+      personal={personalSummary(meta, lang)}
       comfort={comfort}
       onComfort={setComfort}
+      lang={lang}
+      onLang={setLang}
       // Already been past this step once, so the outstanding list is a reminder rather
       // than an accusation and can show immediately.
       revisited={touched[step.id] === true}
@@ -217,18 +228,20 @@ export default function IntakePage() {
       onBack={goBack}
       // Auto-advancing kinds own their own progression, so no Next button is shown.
       hideNext={AUTO_ADVANCE.has(step.kind)}
-      footerNote={step.kind === "multi" ? UI_COPY.multiHint : undefined}
+      footerNote={step.kind === "multi" ? UI.multiHint : undefined}
     >
       {renderStep({
         step,
         answers,
         meta,
+        COPY_L,
         patch,
         setSex,
         setAge,
         setFirstName,
         comfort,
         comfortAsked,
+        lang,
         next,
         chooseNone,
         explicitNone,
@@ -247,12 +260,15 @@ interface RenderArgs {
   step: Step;
   answers: Answers;
   meta: Meta;
+  /** The question copy in the patient's language, resolved once by the page. */
+  COPY_L: ReturnType<typeof questionCopy>;
   patch: (p: Partial<Answers>) => void;
   setSex: ReturnType<typeof useIntake.getState>["setSex"];
   setAge: (age: number) => void;
   setFirstName: (name: string | null) => void;
   comfort: Comfort;
   comfortAsked: boolean;
+  lang: Lang;
   next: () => void;
   chooseNone: (key: string) => void;
   explicitNone: Record<string, true>;
@@ -263,12 +279,14 @@ function renderStep({
   step,
   answers,
   meta,
+  COPY_L,
   patch,
   setSex,
   setAge,
   setFirstName,
   comfort,
   comfortAsked,
+  lang,
   next,
   chooseNone,
   explicitNone,
@@ -278,6 +296,7 @@ function renderStep({
     case "about":
       return (
         <AboutYou
+          lang={lang}
           firstName={meta.first_name}
           sex={meta.patient_sex}
           age={meta.patient_age}
@@ -292,6 +311,7 @@ function renderStep({
     case "number":
       return (
         <NumberStepper
+          lang={lang}
           value={answers.age_hair_loss_began}
           // Cannot have started after the age they just told us they are.
           max={maxOnsetAge(meta)}
@@ -304,11 +324,12 @@ function renderStep({
       const q = getQuestion(key);
       return (
         <SingleChoice
+          lang={lang}
           options={"options" in q ? q.options : []}
-          gloss={COPY[key]?.gloss}
+          gloss={COPY_L[key]?.gloss}
           withIcons
           value={answers[key as "duration"]}
-          suggestion={suggestionFor(key, answers, meta)}
+          suggestion={suggestionFor(key, answers, meta, lang)}
           onChange={(v) => patch({ [key]: v } as Partial<Answers>)}
           onAdvance={next}
         />
@@ -323,6 +344,7 @@ function renderStep({
       if (key === "pattern") {
         return (
           <PatternPicker
+          lang={lang}
             values={answers.pattern}
             noneChosen={explicitNone.pattern === true}
             onChange={(v) => patch({ pattern: v })}
@@ -334,10 +356,13 @@ function renderStep({
       const q = getQuestion(key);
       return (
         <MultiChoice
+          lang={lang}
           options={"options" in q ? q.options : []}
-          gloss={COPY[key]?.gloss}
+          gloss={COPY_L[key]?.gloss}
+          // PCOS/PCOD to a male patient: shown, greyed, and unpressable. See lib/patient.
+          unavailable={unavailableOptions(key, "options" in q ? q.options : [], meta, lang)}
           exclusive={EXCLUSIVE_OPTIONS[key]}
-          noneLabel={hasNoneEscape(key) ? UI_COPY.none : undefined}
+          noneLabel={hasNoneEscape(key) ? ui(lang).none : undefined}
           noneChosen={explicitNone[key] === true}
           onChooseNone={() => chooseNone(key)}
           withIcons
@@ -351,6 +376,7 @@ function renderStep({
       const key = step.key as "adult_acne_oily_skin";
       return (
         <YesNo
+          lang={lang}
           value={answers[key]}
           onChange={(v) => patch({ [key]: v } as Partial<Answers>)}
           onAdvance={next}
@@ -359,11 +385,12 @@ function renderStep({
     }
 
     case "yesno_describe":
-      return <YesNoDescribe answers={answers} patch={patch} />;
+      return <YesNoDescribe answers={answers} patch={patch} lang={lang} />;
 
     case "table":
       return (
         <VoiceMatrix
+          lang={lang}
           questionKey={step.key as "habits" | "products" | "procedures"}
           answers={answers}
           patch={patch}
@@ -372,6 +399,6 @@ function renderStep({
       );
 
     case "consent":
-      return <Consent value={answers.consent} onChange={(v) => patch({ consent: v })} />;
+      return <Consent value={answers.consent} onChange={(v) => patch({ consent: v })} lang={lang} />;
   }
 }
