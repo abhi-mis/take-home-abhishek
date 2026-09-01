@@ -10,13 +10,15 @@
  *  - `autoAdvance` questions have no Next button at all. Tapping the answer IS the
  *    Next tap, so a 16-question form costs 16 taps instead of 32.
  */
-import Link from "next/link";
+import { useEffect, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { ProgressBar } from "./ProgressBar";
 import { Button } from "./ui/Button";
 import { UI_COPY } from "@/lib/copy";
 import { ThemeToggle } from "./ThemeToggle";
-import { rememberMode } from "@/lib/mode";
+import { QuestionSpeaker } from "./QuestionSpeaker";
+import { ComfortToggle } from "./ComfortToggle";
+import type { Comfort } from "@/lib/patient";
 import { cn } from "@/lib/utils";
 
 export function StepShell({
@@ -25,6 +27,11 @@ export function StepShell({
   questionNumber,
   title,
   hint,
+  speech,
+  personal,
+  comfort,
+  onComfort,
+  revisited,
   index,
   total,
   direction,
@@ -40,6 +47,14 @@ export function StepShell({
   sectionTitle: string;
   questionNumber: number | null;
   title: string;
+  /** The full question, options included, for the read-aloud button. */
+  speech: string;
+  /** "Female · 58 · larger text" - proof that the first screen changed something. */
+  personal: string;
+  comfort: Comfort;
+  onComfort: (c: Comfort) => void;
+  /** True once this step has been completed before - then the summary shows on arrival. */
+  revisited: boolean;
   hint?: string;
   index: number;
   total: number;
@@ -53,32 +68,47 @@ export function StepShell({
   children: React.ReactNode;
   footerNote?: React.ReactNode;
 }) {
+  /**
+   * Has the patient tried to leave this step yet?
+   *
+   * The outstanding list used to appear the moment a question rendered, which meant a
+   * patient arriving at Q1 was immediately told, in warning red, that something was
+   * missing - before they had done anything at all. Telling someone off for not having
+   * answered yet is the fastest way to make software feel hostile.
+   *
+   * So it stays quiet until they either press Next (a disabled button passes the tap
+   * through to this handler) or return to a step they have already passed through.
+   */
+  const [pressedNext, setPressedNext] = useState(false);
+  useEffect(() => setPressedNext(false), [stepId]);
+  const showOutstanding = outstanding.length > 0 && (pressedNext || revisited);
+
   return (
     <div className="mx-auto flex min-h-dvh w-full max-w-md flex-col">
       <header className="sticky top-0 z-30 bg-paper/95 px-5 pb-3 pt-4 backdrop-blur">
         <ProgressBar index={index} total={total} />
-        <div className="mt-2.5 flex items-center gap-3">
-          <p className="min-w-0 flex-1 truncate text-[11px] font-semibold uppercase tracking-[0.12em] text-muted">
-            {sectionTitle}
-          </p>
+        <div className="mt-2.5 flex items-center gap-2">
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-[11px] font-semibold uppercase tracking-[0.12em] text-muted">
+              {sectionTitle}
+            </p>
+            {/*
+              The customisation, stated. Without this, "we made the text bigger for you"
+              is something the app did TO the patient; with it, it is a setting they can
+              see and change. It is also how someone notices the form is skipping two
+              questions for them rather than losing them.
+            */}
+            {personal ? (
+              <p className="truncate text-[11px] font-medium text-brand-ink/80">{personal}</p>
+            ) : null}
+          </div>
           {/*
-            The other direction of "two ways to answer". The form and the assistant are
-            views onto one store, so this hands over mid-intake with every answer intact
-            - and the link is in the header on every question, not only at the start,
-            because the moment a patient wants to stop tapping is usually Q11.
+            Three controls, in the sticky header so they are reachable from the long table
+            questions and identical on all 17 screens: read the question aloud, resize
+            everything, switch the palette.
           */}
-          <Link
-            href="/chat"
-            onClick={() => rememberMode("chat")}
-            aria-label="Switch to the assistant and answer by talking"
-            className="-my-1 flex h-9 shrink-0 items-center gap-1.5 rounded-full border border-line bg-card px-2.5 text-[11.5px] font-semibold text-muted transition-colors hover:border-brand/50 hover:text-brand-ink"
-          >
-            <svg viewBox="0 0 24 24" aria-hidden className="size-[15px]" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
-              <path d="M12 4a3 3 0 0 1 3 3v5a3 3 0 0 1-6 0V7a3 3 0 0 1 3-3Z" />
-              <path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v2.5" />
-            </svg>
-            Talk
-          </Link>
+          <QuestionSpeaker text={speech} className="-my-1" />
+          <ComfortToggle comfort={comfort} onChange={onComfort} className="-my-1" />
           <ThemeToggle className="-my-1" />
         </div>
       </header>
@@ -92,13 +122,32 @@ export function StepShell({
             exit={{ opacity: 0, x: direction * -18 }}
             transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
           >
-            <h1 className="text-[22px] font-bold leading-[1.25] tracking-[-0.01em] text-ink">
+{/*
+              The question, typeset rather than printed.
+
+              The number sits in its own rail to the left rather than as a watermark
+              behind the text. The watermark version looked designed in a mockup and
+              muddy in practice - a serif numeral directly behind the first word of a
+              question is exactly where you cannot afford noise. A rail gives the same
+              sense of place, never collides at any text size, and costs one border.
+            */}
+            <div className="flex gap-3.5">
               {questionNumber !== null ? (
-                <span className="mr-1.5 text-brand/60 tabular-nums">{questionNumber}.</span>
+                <div
+                  aria-hidden
+                  className="flex shrink-0 flex-col items-center gap-2 pt-1.5"
+                >
+                  <span className="font-display text-[15px] font-bold leading-none text-brand">
+                    {questionNumber}
+                  </span>
+                  <span className="w-px flex-1 bg-gradient-to-b from-brand/35 to-transparent" />
+                </div>
               ) : null}
-              {title}
-            </h1>
-            {hint ? <p className="mt-2 text-[14px] leading-snug text-muted">{hint}</p> : null}
+              <h1 className="font-display text-[25px] font-bold leading-[1.22] text-ink">
+                {title}
+              </h1>
+            </div>
+            {hint ? <p className="mt-2.5 text-[14px] leading-snug text-muted">{hint}</p> : null}
             <div className="mt-6">{children}</div>
 
             {/*
@@ -108,7 +157,7 @@ export function StepShell({
               questions that is also the list of rows still to answer.
             */}
             <AnimatePresence initial={false}>
-              {outstanding.length > 0 ? (
+              {showOutstanding ? (
                 <motion.div
                   initial={{ opacity: 0, y: -4 }}
                   animate={{ opacity: 1, y: 0 }}
@@ -163,9 +212,24 @@ export function StepShell({
             {hideNext ? (
               <div className="flex-1" />
             ) : (
-              <Button size="lg" onClick={onNext} disabled={!canGoNext} className="flex-1">
-                {UI_COPY.next}
-              </Button>
+              /*
+                The wrapper catches the tap that the disabled button cannot.
+                `disabled:pointer-events-none` means a press on a blocked Next lands here
+                instead of nowhere - which is what turns "the button is dead" into "here
+                is what is missing". The button itself stays genuinely `disabled`, so
+                keyboard and screen-reader users are told it is unavailable rather than
+                being led into a no-op.
+              */
+              <div
+                className="flex-1"
+                onPointerDown={() => {
+                  if (!canGoNext) setPressedNext(true);
+                }}
+              >
+                <Button size="lg" onClick={onNext} disabled={!canGoNext} className="w-full">
+                  {UI_COPY.next}
+                </Button>
+              </div>
             )}
           </div>
         </div>

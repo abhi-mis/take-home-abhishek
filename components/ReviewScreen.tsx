@@ -19,6 +19,8 @@ import type { Answers, Meta } from "@/lib/types";
 import { Button, CheckIcon } from "./ui/Button";
 import { cn, downloadJson } from "@/lib/utils";
 import { ThemeToggle } from "./ThemeToggle";
+import { ComfortToggle } from "./ComfortToggle";
+import { useIntake } from "@/lib/store";
 
 export function ReviewScreen({
   answers,
@@ -34,6 +36,10 @@ export function ReviewScreen({
   onRestart: () => void;
 }) {
   const [showJson, setShowJson] = useState(false);
+  // One field per selector: a selector that builds a value re-renders forever.
+  const comfort = useIntake((st) => st.comfort);
+  const setComfort = useIntake((st) => st.setComfort);
+
   const result = useMemo(
     () => validate(answers, meta, explicitNone),
     [answers, meta, explicitNone],
@@ -45,6 +51,7 @@ export function ReviewScreen({
   return (
     <div className="mx-auto w-full max-w-md px-5 pb-16 pt-8">
       <div className="mb-5 flex justify-end">
+        <ComfortToggle comfort={comfort} onChange={setComfort} />
         <ThemeToggle />
       </div>
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>

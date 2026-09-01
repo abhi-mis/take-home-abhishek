@@ -24,7 +24,7 @@ import {
   SYSTEM_PROMPT,
   buildUserMessage,
   extractFromModelText,
-  isExtractKey,
+  isVoiceKey,
   type ExtractResult,
 } from "../lib/extractPrompt";
 import { callModel, describeSettings, llmSettings, type LlmSettings } from "../lib/llm";
@@ -147,8 +147,8 @@ async function main() {
   let hardFailures = 0;
 
   for (const fx of fixtures) {
-    if (!isExtractKey(fx.questionKey)) {
-      console.log(`SKIP ${fx.id} - ${fx.questionKey} is not an extractable question`);
+    if (!isVoiceKey(fx.questionKey)) {
+      console.log(`SKIP ${fx.id} - ${fx.questionKey} is not a voice question`);
       continue;
     }
 

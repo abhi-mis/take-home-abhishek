@@ -5,8 +5,8 @@
  * before it can touch a patient's answers.
  *
  * Four defences, in order:
- *   1. `questionKey` must be on the EXTRACT_KEYS allow-list, so a caller cannot ask the
- *      model to fill consent - the one answer that may never be inferred from prose.
+ *   1. `questionKey` must be one of the four voice-enabled keys, so a caller cannot ask
+ *      the model to fill consent or sample_type.
  *   2. the model is shown ONE schema slice and nothing else, at temperature 0.
  *   3. the assistant turn is PREFILLED with an opening brace, so the model is continuing
  *      a JSON object rather than starting a message - no preamble, no code fence. The
@@ -25,7 +25,7 @@ import {
   SYSTEM_PROMPT,
   buildUserMessage,
   extractFromModelText,
-  isExtractKey,
+  isVoiceKey,
 } from "@/lib/extractPrompt";
 import {
   NO_PROVIDER_MESSAGE,
@@ -57,8 +57,8 @@ export async function POST(req: Request) {
   }
 
   const { questionKey, transcript } = body;
-  if (!questionKey || !isExtractKey(questionKey))
-    return NextResponse.json({ error: "Unknown or non-extractable questionKey" }, { status: 400 });
+  if (!questionKey || !isVoiceKey(questionKey))
+    return NextResponse.json({ error: "Unknown or non-voice questionKey" }, { status: 400 });
   if (!transcript || transcript.trim().length < 2)
     return NextResponse.json({ error: "Empty transcript" }, { status: 400 });
   if (transcript.length > 4000)

@@ -57,7 +57,7 @@ Each question picks the cheapest modality rather than sharing one control.
 - **Q1 age** - decade presets first (Teens/20s/30s/40s/50+), fine-tune revealed after.
   Onset age is a *memory*, not a fact; asking for a number opens a numeric keypad over
   the form. One tap, then an optional nudge.
-- **Q2 / Q8 / Q9 / Q15 / sex gate - auto-advance.** Tapping the answer *is* the Next
+- **Q2 / Q8 / Q9 / Q15 - auto-advance.** Tapping the answer *is* the Next
   tap, after a 180ms beat so the choice visibly registers. These steps hide the Next
   button entirely: 16 questions cost ~16 taps, not 32.
 - **Q4 is pictures.** Six inline-SVG scalp diagrams with the affected zone shaded, in
@@ -272,6 +272,87 @@ is not, and an extra tap to dismiss a card is ceremony the patient did not ask f
 
 ---
 
+## Personalisation: the form learns who it is talking to
+
+A form that treats a 22-year-old and a 68-year-old identically has quietly optimised for
+the 22-year-old, because that is who the person building it can picture. So the first
+screen - before question 1 - asks three things, and every one of them has to pay for
+itself by changing something downstream. Asking for personal detail and then doing nothing
+with it is worse than not asking.
+
+```
+About You  ->  name (optional)   on-screen copy only, never in the output
+               sex               gates Q6/Q7, emitted so nulls are explainable
+               age               text size + tap size, Q1's ceiling, Q6/Q7 suggestions
+```
+
+All of it lives in [lib/patient.ts](lib/patient.ts), which is pure - so every rule has a
+test and none of them can hide inside a component.
+
+### Why it is the FIRST screen and not the fifth
+
+The sex question used to sit immediately before section B, because its only job was gating
+Q6/Q7 and asking a stranger their sex up front felt abrupt. Adding age forced the move: the
+age decides how big the type is, and a form cannot resize itself at question 6. Once it had
+moved, the abruptness turned out to be solvable with copy and a name field rather than with
+placement.
+
+### The comfort scale
+
+55 flips the default to 12% larger, 70 to 26%, and the **Aa** button in the header
+overrides either - after which the automatic default stops applying, because a default that
+keeps overriding a deliberate choice is a bug with good intentions.
+
+Two decisions inside that:
+
+- **Page zoom, not a font-size scale.** Zoom reflows and scales the tap targets too.
+  Larger text on 44px controls helps someone who cannot see the screen and does nothing
+  for someone whose hands shake, and shaky hands are the more common reason a form gets
+  abandoned halfway. Zoom is also what browser zoom does, so it is a proven interaction.
+  The one cost is that `min-h-dvh` measures the viewport *before* zoom, so it is divided
+  back out in one CSS rule - the alternative was retiring dynamic viewport units app-wide.
+- **It is stored with the answers, in sessionStorage.** Comfort is derived from this
+  patient's age, so the next person to pick up a shared clinic phone must not inherit it.
+  Forgetting it is correct behaviour, not a missing feature.
+
+### The bound that makes the age question clinical rather than cosmetic
+
+`maxOnsetAge()` caps Q1 at the patient's current age. Without it a 45-year-old can slide
+"my hair loss started" to 60, and that reaches the doctor looking like a fact rather than a
+slider mistake. Lowering the age afterwards also pulls an already-recorded onset age down
+(`clampOnsetAge` in the store), because the alternative is a stale answer that is now past
+its own validation bound.
+
+### Suggestions, and the line they must not cross
+
+Q6 offers *Menopausal* to a patient of 52+; Q7 offers *Not applicable* to 50+. Both are
+rendered as a prompt the patient taps to accept, and `tests/patient.test.ts` asserts that
+`suggestionFor()` does not touch `answers` at all. A suggestion someone accepts is help; an
+answer nobody read is a fabricated medical record, and on a form that a doctor will act on
+the distinction is the whole point.
+
+This also replaced a genuinely bad inference. The old version guessed from
+`age_hair_loss_began` - "your hair loss started after 50, so you are probably
+post-menopausal" - which is a weak proxy wearing a helpful hat. With a real age it is an
+honest offer.
+
+### Two things that made it stop looking generated
+
+Not personalisation exactly, but the same complaint:
+
+- **The questions are set in a serif** (a system stack - no webfont to download on a bad
+  clinic connection), with the question number in a rail to its left. The first attempt put
+  the number behind the title as a large ghost numeral: it looked designed in a mockup and
+  muddy in practice, because directly behind the first word of a question is precisely
+  where you cannot afford noise.
+- **Validation stopped nagging on arrival.** The outstanding list used to render the moment
+  a question appeared, so a patient reaching Q1 was told in warning red that something was
+  missing before they had done anything. It now waits until they press a blocked **Next**
+  (the disabled button passes the tap to its wrapper) or return to a step they have already
+  been through. The smoke test asserts both halves: silent on arrival, explicit once asked.
+
+---
+
 ## Validation: nothing is optional
 
 One function - `validateStep()` in `lib/steps.ts` - answers "may this patient
@@ -306,7 +387,7 @@ choose how often"), and a test asserts those messages never leak a snake_case fi
 mic → WAV (16kHz mono, in-browser)
     → POST /api/transcribe   (Sarvam Saaras, key server-side)
     → transcript
-    → POST /api/extract      (Claude + ONE schema slice, temp 0, JSON prefill)
+    → POST /api/extract      (Claude + ONE schema slice, temp 0)
     → Zod-validated patch → merged into store → grid highlights what changed → tap to confirm
 ```
 
@@ -383,9 +464,11 @@ of the UI, so a bad extraction patch can't bypass the interface.
 
 ## What's tested, and what deliberately isn't
 
-**`npm test` - 152 deterministic tests, no API key needed.** These are the dependable
+**`npm test` - 126 deterministic tests, no API key needed.** These are the dependable
 checks: the step builder, sex gating in all four states, every conditional-followup
-rule in both directions, exclusive options, 16-key coverage, and - most of the value - the slice layer fed what a 70B model *actually* returns: markdown fences, prose
+rule in both directions, exclusive options, 16-key coverage, the personalisation rules
+(comfort thresholds, the onset-age ceiling, and that a suggestion never writes an answer),
+and - most of the value - the slice layer fed what a model *actually* returns: markdown fences, prose
 wrappers, invented option strings, extra keys, followups with no trigger, rows that
 don't exist, arrays where objects belong. Every one must end in a legal patch or
 nothing.
@@ -414,25 +497,16 @@ over-eager `false` is visible and editable on the Review screen.
 through the actual routes: transcribe **1.6 s**, verbatim; extract filled all six habit
 fields correctly.
 
-**The conversation is tested by walking it.** `tests/chatFlow.test.ts` answers whatever
-the assistant asks, turn by turn, with no knowledge of the question list, and then runs
-the result through the same Zod validator the download button uses - so the claim under
-test is "a patient who only ever talks produces a schema-valid form", not "bubbles
-render". `tests/apply.test.ts` pins the write rules both modes now share (a flag answered
-No must null its detail columns, or the finished form is off-schema), and
-`tests/llm.test.ts` pins the per-provider request shape.
-
-**Two real-browser smokes, both keyless.** `npm run smoke` walks the form;
-`npm run smoke:chat` walks the conversation to 17/17 with no API keys at all and the TTS
-route stubbed to 503 - which is how the "open table question has no chips" dead end was
-found.
+**The write rules are tested without a browser.** `tests/apply.test.ts` pins the ones
+that decide validity - a flag answered No must null its detail columns, or the finished
+form is off-schema - and `tests/llm.test.ts` pins the request configuration, including the
+default model and a junk `ANTHROPIC_TEMPERATURE` being dropped rather than sent as NaN.
+That second file exists because of a real 502: see below.
 
 **Also verified by hand:** production build clean, `tsc --noEmit` clean (strict, plus
-`noUncheckedIndexedAccess`, zero `any`), and the extract route rejects `consent` with a
-400. Note that `sample_type` **is** extractable now - chat mode has no grid to fall back
-on, so a typed "saliva is fine" has to be understood. `consent` is the one answer that
-stays off the allow-list permanently: it is a tap or the patient's own typed yes/no,
-never a model's reading of prose.
+`noUncheckedIndexedAccess`, zero `any`), both pages server-render the right copy, and the
+extract route rejects `consent` and `sample_type` with a 400 - neither can ever be
+model-filled, even with a valid key.
 
 ---
 
@@ -470,128 +544,50 @@ The fix is three parts, in increasing order of usefulness:
 The smoke test then caught two of my own bad assumptions, which is the point of running
 real software: `getByText("Saliva")` was clicking the *hint* text ("Saliva mein sui nahi
 lagti") that sits above the options - so it now uses roles, because the options are real
-`radio`/`checkbox` elements; and Back from Q6 lands on Q5, not the sex gate, because the
+`radio`/`checkbox` elements; and Back from Q6 lands on Q5, not on About You, because the
 gate is inserted before the first section-B question.
 
 ---
 
-## Chat mode: the conversation is a view, not a second app
+## Read the question aloud
 
-The risk with "add a chat mode" is obvious: you end up with two apps that ask the same
-16 questions and disagree about what a valid answer is. Then a patient finishes the
-conversation, lands on the review screen, and the download button is disabled with no
-visible reason - because the chat accepted something the validator does not.
+Every question carries one button that reads it out. Press again to stop. That is the
+whole feature, and the restraint is deliberate - an earlier revision of this app had a
+full conversational agent that asked all 16 questions itself, and it was the wrong shape:
+it needed muting, it needed trusting, it talked in a waiting room, and it put a model
+between the patient and a medical form on every single answer. A button that speaks only
+when pressed is understood instantly by everyone and can do none of those things.
 
-So chat mode owns exactly one thing: the conversation. Everything that decides anything
-is shared.
+**It reads the options, not just the question.** `questionSpeech()`
+([lib/questionSpeech.ts](lib/questionSpeech.ts)) builds the spoken text from the schema
+and lib/copy.ts, so "Where are you losing hair?" is followed by all six choices. Reading
+the title alone would be useless to the person who actually needs this - someone facing
+small type in a second language without their glasses. Because it is derived rather than
+written, a question added to `lib/schema.ts` becomes speakable with no edit, and the
+spoken wording can never drift from the printed wording: they are the same strings.
 
-```
-lib/chatFlow.ts   nextTurn(answers, meta, explicitNone)
-    |
-    |-- visibleSteps(meta)        <- the SAME list the wizard renders
-    |-- validateStep(step, ...)   <- the SAME gate the Next button uses
-    |-- outstandingFieldsFor(...) <- the SAME conditional descriptors the grid uses
-    |-- COPY[key].title           <- the SAME question wording
-    v
-first step that does not validate  ->  ask it
-```
+Two details worth the words:
 
-There is no question list in `chatFlow.ts`, no "step 7 of 16", no state machine to keep
-in sync. The consequences are the point:
+- **A few hints are rewritten for the ear.** "Tap the pictures that look closest to you"
+  is precisely the wrong thing to say to someone who asked to have the question read to
+  them. Only those hints are swapped; every other one is spoken as printed.
+- **The table questions reuse the microphone's own checklist.** Q11 speaks the same
+  enumerated six items the voice panel prints, so the button and the mic prompt cannot
+  disagree about what a complete answer covers.
 
-- **Add a question to the schema** and it appears in the conversation with no edit here.
-- **The finishing line cannot lie.** The assistant says "that is everything" when every
-  visible step passes `validateStep` - the same condition the form's last Next needs.
-- **Switching modes works mid-question**, in both directions, because both are views
-  onto one store. `stepIdForTurn()` is the bridge: it maps the current turn back to a
-  wizard step id so "I would rather tap through the form" lands on the question the
-  assistant just asked, not back at Q1.
-
-`chatFlow.ts` is pure - no React, no fetch, no store import - which is what lets
-`tests/chatFlow.test.ts` answer whatever the assistant asks, one turn at a time, with no
-knowledge of the question list, and then run the result through the same Zod validator
-the download button uses. A test that says "chat mode renders bubbles" is worthless; the
-claim worth testing is "a patient who only ever talks produces a schema-valid form".
-There is a source-scanning guard test that fails if that purity is ever broken.
-
-### How much of a reply reaches the model
-
-`interpretLocally()` first, model second. It resolves a tapped chip, yes/no (including
-`haan`, `nahi`, `bilkul`), a bare age, an option repeated verbatim, and a blanket "none
-of these" with no API call at all - which is most replies, and is why the conversation
-feels instant rather than two seconds behind every answer.
-
-It is deliberately conservative. `"it started at 30 and I am 45 now"` returns null and
-goes to the model, because a regex picking the wrong one of two numbers is a wrong
-medical answer that nobody will notice. `"20s"` maps to the same value as tapping the
-"20s" chip, not to the digits inside it - otherwise the typed and the tapped answer
-would quietly differ by five years.
-
-Two categories never reach the model:
-
-1. **Consent.** A tap, or the patient's own typed yes/no. It is absent from
-   `EXTRACT_KEYS`, so `/api/extract` refuses it even if the UI asked - defence in depth,
-   because "the patient probably agreed" is not consent.
-2. **A conditional detail.** "Did it help?" is not sent to the model, because the slice
-   for that question covers the whole table and a bare "it helped a bit" carries no clue
-   which row it belongs to. A guess written into the wrong row is a silent wrong answer.
-   Those turns always have chips, so "tap one of these" is a complete answer.
-
-### The read-back, and what "no" means
-
-When one sentence fills six fields, the assistant lists them and asks. Treating silence
-as agreement is not consent, so `fillSummary()` produces the counts ("I got 4, and 2
-still to go") and the label/value list, and the patient confirms.
-
-"No, let me redo it" runs `clearQuestionOps()` and re-asks the question one field at a
-time. The alternatives are worse: keeping a fill the patient just rejected, or asking
-them to correct fields one by one without knowing which one is wrong.
-
-### Never a dead end - the gap the smoke test caught
-
-The first version of the open table question had **no chips at all**: it wanted a
-sentence, and a sentence needs the model. Which means a missing API key, a rate limit, or
-an accent the transcriber cannot read left the conversation with no way forward - the
-exact failure the form avoids with "I would rather answer by tapping".
-
-`scripts/smoke-chat.mjs` completes the whole intake with **no API keys**, which is how
-that surfaced. The fix is the "Ask me one at a time" chip: it is not an answer, it flips
-that question to the per-field path (`preferFields`), which has chips for everything.
-The same flag is set automatically when an extraction returns nothing usable, so a
-patient the model cannot read is never asked the same six-part question twice.
-
-### Speech: an enhancement, never a channel
-
-Every line is rendered as a bubble *before* `speak()` is called, so speech is never the
-channel a question arrives through.
-
-The voice is the browser's own `speechSynthesis`. Anthropic has no text-to-speech
-endpoint, and I did not want to add a second vendor to get one: that would mean another
-key to leak, a network round trip before every question, and - the part that actually
-decided it - audio of a patient's medical answers being posted to a third party, since
-some of what the assistant says is their own answers read back. The browser voice is
-more robotic and needs no key, no network, and no trust.
-
-Two details matter more than the voice quality:
-
-- **Barge-in.** `speak()` bumps a `generation` counter, and a stale utterance cannot
-  report itself as spoken. Without it a patient who answers quickly gets the previous
-  question spoken over the new one - two voices at once, and the app sounds broken.
-- **Noticing silence.** Chrome silently drops `speak()` when the document has had no
-  user activation, with no error and no event - and the tap that got here happened on
-  the *previous* page. So the promise waits ~1.2s for `onstart` and reports `blocked` if
-  it never fires, which is what turns a dead mute button into a visible "tap to hear the
-  question".
-
-`en-IN` is preferred where the platform has it, because a Hindi word inside an English
-sentence is at least pronounced plausibly. It is a preference, not a requirement.
+The voice is the browser's `speechSynthesis`: no key, no network, works offline, and no
+audio of a patient's answers is sent anywhere. A hosted voice would sound better and buy
+none of that. `speak()` also bumps a generation counter so a stale utterance cannot keep
+reading over the next question, and the button renders nothing at all when the browser
+has no speech support - the same rule the microphone follows, because a control that does
+nothing is worse than no control.
 
 ---
 
-## Swapping the extraction provider
+## The extraction provider
 
-Extraction runs on **Anthropic** - `claude-sonnet-5`, temperature 0 - and on nothing
-else. There is no provider abstraction, no adapter interface, no `EXTRACT_PROVIDER`
+Extraction runs on **Anthropic** - `claude-haiku-4-5-20251001`, temperature 0 - and on
+nothing else. There is no provider abstraction, no adapter interface, no `EXTRACT_PROVIDER`
 switch. That is deliberate: an abstraction whose only job is to make a future swap easy
 is a cost you pay every day for a decision you make once. Keeping every model-specific
 detail inside [lib/llm.ts](lib/llm.ts) already makes the swap a one-file change, and the
@@ -607,29 +603,56 @@ llmSettings()
 ```
 
 That fallback is a complete path, not a degraded one: every question in both modes can be
-answered by tapping or typing, which is what `npm run smoke:chat` proves by finishing the
-whole intake with no keys at all.
+answered by tapping, which is what `npm run smoke` proves by walking the whole intake
+with no keys at all.
 
-### The JSON prefill
+### The 502 I shipped, and what it changed
 
-The interesting part of the Anthropic path is how it is made to return bare JSON.
-Instead of asking for JSON and hoping, the request ends with an **assistant turn
-prefilled with an opening brace**:
+The first Anthropic build sent what I assumed was the ideal request: `temperature: 0` for
+reproducibility, plus an assistant turn **prefilled with `{`** so the model would continue
+a JSON object rather than start a message. Both are good ideas. Both were rejected by the
+model I had chosen, and the only thing anyone saw was:
 
 ```
-user:      Question: ... Schema: {...} Transcript: "..."
-assistant: {
+POST /api/extract -> 502 Bad Gateway
 ```
 
-The model is now physically continuing a JSON object rather than starting a message, so
-there is no "Here is the JSON:", no code fence, no apology. The brace is added back to
-the response before parsing, because the API returns only what was generated after the
-prefill. The fence-stripping parser still runs behind it - it costs nothing, it covers a
-gateway or a model update that wraps the output anyway, and a parser you only trust on
-the happy path is not a parser.
+The actual cause was two lines deep in a server log: `400 temperature is deprecated for
+this model`. So I probed the account's own model list instead of guessing:
+
+| model | `temperature` | assistant prefill | plain output |
+| --- | --- | --- | --- |
+| `claude-sonnet-5` | rejected | rejected | bare JSON |
+| `claude-opus-4-8` | rejected | rejected | bare JSON |
+| `claude-sonnet-4-6` | accepted | rejected | ```json fenced |
+| **`claude-haiku-4-5`** | **accepted** | accepted | ```json fenced |
+
+Three things came out of that, and all three are in the code:
+
+1. **The model choice.** Haiku 4.5 is the one that still accepts `temperature: 0`, and
+   reproducibility is not optional on a medical form - the same reply must fill the same
+   fields every time or the output cannot be audited. It was also the fastest of the four
+   (1.1-1.3s versus 1.9s) and got every field of the Hinglish probe right.
+2. **Prefill is not used at all**, even though Haiku accepts it. It would buy bare JSON
+   instead of a fenced block, and `parseModelJson()` already strips fences - so it would
+   buy nothing while quietly breaking the moment someone changes `ANTHROPIC_MODEL`. The
+   JSON contract is the system prompt plus that parser, which is the most heavily tested
+   thing in the app precisely because it has always been the real guarantee.
+3. **An unsupported parameter is now handled, not fatal.** `callModel()` drops
+   `temperature` and retries once if the API says the model does not accept it, and
+   remembers that for the life of the process. One wasted round trip to learn a permanent
+   fact about a model is fine; learning it on every question is not, and neither is a
+   hardcoded table of model ids that goes stale the week after it is written. Setting
+   `ANTHROPIC_MODEL=claude-sonnet-5` therefore just works.
+
+The route learned something too: a **config** error (a model that will never accept the
+request, a revoked key) now logs the provider's own words and returns a distinct message,
+because retrying it forever only burns the patient's time. What the patient sees stays
+patient-safe either way - an API error string is not a thing to show someone in a waiting
+room.
 
 `callModel()` is shared by the route and `npm run eval`, so the benchmark cannot run a
-different model, temperature or JSON strategy than production does.
+different model or temperature than production does.
 
 Sarvam remains the transcriber: it is trained for Hinglish and Indian-accented English,
 which is where general-purpose STT degrades first for this audience. And the assistant's
@@ -655,8 +678,8 @@ voice needs no vendor at all - see above.
    brief's specific model is retired (410 Gone) and the free catalog's quirks are listed
    above. The eval figure quoted in this document was measured on NIM and has **not**
    been re-run on Claude.
-6. **The assistant's voice is the browser's, not a hosted TTS.** Anthropic has no
-   text-to-speech endpoint and a second vendor was not worth it here. Reasoning above.
+6. **Read-aloud is the browser's voice, not a hosted TTS.** No key, no network, and no
+   audio of a patient's answers leaving the device. Reasoning above.
 7. **Not done by me:** the Vercel deploy, any git/GitHub step (you asked me not to push,
    and I have not staged, committed or pushed anything - note the project directory does
    sit inside a git work tree), and the 2-minute recording.

@@ -22,13 +22,22 @@ const PRESETS = [
 ] as const;
 
 const MIN = 5;
-const MAX = 90;
+const DEFAULT_MAX = 90;
 
 export function NumberStepper({
   value,
+  max = DEFAULT_MAX,
   onChange,
 }: {
   value: number | null;
+  /**
+   * Upper bound, which is the patient's own age once they have given it.
+   *
+   * Not cosmetic: without it a 45-year-old can slide this to 60 and the doctor receives
+   * "hair loss began at 60" as a fact. The presets above the slider are filtered by it
+   * too, so an impossible decade is never offered in the first place.
+   */
+  max?: number;
   onChange: (v: number) => void;
 }) {
   // Fine-tune is revealed after the first coarse pick, or immediately on a resumed answer.
@@ -36,7 +45,7 @@ export function NumberStepper({
 
   function set(v: number) {
     tick();
-    onChange(Math.min(MAX, Math.max(MIN, v)));
+    onChange(Math.min(max, Math.max(MIN, v)));
   }
 
   return (
@@ -96,7 +105,7 @@ export function NumberStepper({
           <input
             type="range"
             min={MIN}
-            max={MAX}
+            max={max}
             value={value ?? 25}
             aria-label="Age hair loss began"
             onChange={(e) => onChange(Number(e.target.value))}

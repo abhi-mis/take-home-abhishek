@@ -11,10 +11,11 @@ import {
   PROCEDURE_ROWS,
   type Answers,
   type Meta,
+  EMPTY_META,
 } from "@/lib/types";
 
-const male: Meta = { patient_sex: "male" };
-const female: Meta = { patient_sex: "female" };
+const male: Meta = { ...EMPTY_META, patient_sex: "male" };
+const female: Meta = { ...EMPTY_META, patient_sex: "female" };
 
 /** Every row explicitly answered "not used" - the new default a patient must supply. */
 function allUnused() {
@@ -105,7 +106,7 @@ describe("coverage", () => {
   });
 
   it("reports an empty form as missing all 16 keys", () => {
-    const r = validate(structuredClone(EMPTY_ANSWERS), { patient_sex: null }, {});
+    const r = validate(structuredClone(EMPTY_ANSWERS), { ...EMPTY_META, patient_sex: null }, {});
     expect(r.valid).toBe(false);
     // menstrual/pregnancy are gated out when sex is not female, so 14 remain.
     expect(r.missing).toHaveLength(TOTAL_QUESTIONS - 2);
@@ -156,7 +157,7 @@ describe("gating enforced on the output, not just the UI", () => {
 
   it("rejects a stale pregnancy answer when sex was declined", () => {
     const a: Answers = { ...completeMale(), pregnancy_related: "Currently pregnant" };
-    const r = validate(a, { patient_sex: "prefer_not" }, ALL_TOUCHED);
+    const r = validate(a, { ...EMPTY_META, patient_sex: "prefer_not" }, ALL_TOUCHED);
     expect(r.valid).toBe(false);
     expect(r.issues.join(" ")).toMatch(/pregnancy_related/);
   });

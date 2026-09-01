@@ -6,15 +6,15 @@
 import { describe, expect, it } from "vitest";
 import { ALL_STEPS, isStepComplete, isStepVisible, validateStep, visibleSteps } from "@/lib/steps";
 import { QUESTIONS, TOTAL_QUESTIONS } from "@/lib/schema";
-import { EMPTY_ANSWERS, type Meta } from "@/lib/types";
+import { EMPTY_ANSWERS, EMPTY_META, type Meta } from "@/lib/types";
 
-const female: Meta = { patient_sex: "female" };
-const male: Meta = { patient_sex: "male" };
-const declined: Meta = { patient_sex: "prefer_not" };
-const unset: Meta = { patient_sex: null };
+const female: Meta = { ...EMPTY_META, patient_sex: "female", patient_age: 34 };
+const male: Meta = { ...EMPTY_META, patient_sex: "male", patient_age: 34 };
+const declined: Meta = { ...EMPTY_META, patient_sex: "prefer_not" };
+const unset: Meta = { ...EMPTY_META, patient_sex: null };
 
 describe("step list is built from the schema", () => {
-  it("has one step per question, plus the sex gate", () => {
+  it("has one step per question, plus the About You step", () => {
     expect(ALL_STEPS).toHaveLength(TOTAL_QUESTIONS + 1);
     expect(TOTAL_QUESTIONS).toBe(16);
   });
@@ -30,17 +30,17 @@ describe("step list is built from the schema", () => {
     expect(numbers).toEqual([...numbers].sort((a, b) => a - b));
   });
 
-  it("inserts the sex gate immediately before the first section B question", () => {
-    const gateIndex = ALL_STEPS.findIndex((s) => s.id === "sex_gate");
-    expect(gateIndex).toBeGreaterThan(0);
-    // Everything before it is section A; the step right after it opens section B.
-    expect(ALL_STEPS.slice(0, gateIndex).every((s) => s.sectionId === "A")).toBe(true);
-    expect(ALL_STEPS[gateIndex + 1]?.sectionId).toBe("B");
-    expect(ALL_STEPS[gateIndex + 1]?.key).toBe("diagnosed_conditions");
+  it("asks About You first, before any graded question", () => {
+    // It has to be first, not merely early: the age it collects decides the text size
+    // for every screen after it, and a form cannot resize itself at question 6.
+    expect(ALL_STEPS[0]?.id).toBe("about_you");
+    expect(ALL_STEPS[0]?.kind).toBe("about");
+    expect(ALL_STEPS[0]?.key).toBeNull();
+    expect(ALL_STEPS[1]?.key).toBe(QUESTIONS[0]?.key);
   });
 
-  it("puts the gate before both female-only questions", () => {
-    const gate = ALL_STEPS.findIndex((s) => s.id === "sex_gate");
+  it("puts About You before both female-only questions", () => {
+    const gate = ALL_STEPS.findIndex((s) => s.id === "about_you");
     for (const key of ["menstrual_cycle", "pregnancy_related"]) {
       expect(ALL_STEPS.findIndex((s) => s.key === key)).toBeGreaterThan(gate);
     }
@@ -87,9 +87,23 @@ describe("sex gating", () => {
 describe("isStepComplete", () => {
   const step = (id: string) => ALL_STEPS.find((s) => s.id === id)!;
 
-  it("blocks the gate until a sex is chosen", () => {
-    expect(isStepComplete(step("sex_gate"), EMPTY_ANSWERS, unset)).toBe(false);
-    expect(isStepComplete(step("sex_gate"), EMPTY_ANSWERS, male)).toBe(true);
+  it("needs both a sex and an age before About You is complete", () => {
+    const withAge = { ...unset, patient_age: 58 };
+    const withSex = { ...EMPTY_META, patient_sex: "male" as const };
+    expect(isStepComplete(step("about_you"), EMPTY_ANSWERS, unset)).toBe(false);
+    expect(isStepComplete(step("about_you"), EMPTY_ANSWERS, withAge)).toBe(false);
+    expect(isStepComplete(step("about_you"), EMPTY_ANSWERS, withSex)).toBe(false);
+    expect(
+      isStepComplete(step("about_you"), EMPTY_ANSWERS, { ...withSex, patient_age: 58 }),
+    ).toBe(true);
+    // A name is optional and must never gate the step.
+    expect(
+      isStepComplete(step("about_you"), EMPTY_ANSWERS, {
+        patient_sex: "female",
+        patient_age: 30,
+        first_name: null,
+      }),
+    ).toBe(true);
   });
 
   it("requires a value for single-choice and yes/no questions", () => {
@@ -249,7 +263,7 @@ describe("table steps require every row to be answered", () => {
 describe("validation messages are patient-readable English", () => {
   it("never leaks a field name or code into an outstanding message", () => {
     for (const st of ALL_STEPS) {
-      for (const msg of validateStep(st, EMPTY_ANSWERS, { patient_sex: null }).outstanding) {
+      for (const msg of validateStep(st, EMPTY_ANSWERS, { ...EMPTY_META, patient_sex: null }).outstanding) {
         expect(msg).not.toMatch(/_/); // no snake_case identifiers
         expect(msg[0]).toBe(msg[0]!.toUpperCase());
       }

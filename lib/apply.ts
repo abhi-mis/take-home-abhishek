@@ -1,29 +1,22 @@
 /**
  * Writing answers back into the store - the rules, in one place.
  *
- * Both modes now write the same answers: the form's grids and follow-up flow, and the
- * chat's replies. The rules that make an answer VALID are clinical, not cosmetic:
+ * Three different controls write these answers: the grids, the guided follow-up flow, and
+ * a voice fill. The rules that make an answer VALID are clinical, not cosmetic:
  *
  *   - a flag answered "No" must null its detail columns, or validate.ts's
  *     "detail must be null when the flag is false" invariant breaks and the downloaded
  *     JSON is off-schema;
  *   - an extraction merges into existing answers, never replaces them, so a second
- *     reply that mentions one more product does not erase the first four;
- *   - "None"/"No known family history" is exclusive.
+ *     reply that mentions one more product does not erase the first four.
  *
- * Those rules used to live inside VoiceMatrix. Two callers means one definition, or the
- * chat and the form will eventually disagree about what a valid answer is - and the
- * disagreement would surface as a schema-invalid download, which is the one output
- * nobody is allowed to get wrong. These are pure functions so they are unit-testable
- * without React.
+ * Those rules used to live inside VoiceMatrix, next to the JSX. Pulling them out is what
+ * makes them testable without React - and a schema-invalid download is the one output
+ * nobody is allowed to get wrong, so it deserves tests that do not need a browser.
  */
 import type { OutstandingField } from "./followups";
 import type { ExtractResult } from "./extractPrompt";
 import {
-  EMPTY_HABITS,
-  EMPTY_PROCEDURE,
-  EMPTY_PRODUCT,
-  EXCLUSIVE_OPTIONS,
   PROCEDURE_ROWS,
   PRODUCT_ROWS,
   type Answers,
@@ -31,17 +24,10 @@ import {
   type PatientSex,
 } from "./types";
 
-/**
- * A store update, expressed as data.
- *
- * `none` carries "the patient actively said none of these" for the two multi-selects
- * whose schema has no such option - it maps to `chooseNone()`, not to `patch()`, so a
- * deliberate empty answer stays distinguishable from an unanswered one.
- */
+/** A store update, expressed as data rather than applied - so it can be asserted. */
 export interface Ops {
   patch?: Partial<Answers>;
   sex?: PatientSex;
-  none?: string[];
 }
 
 /**
@@ -86,15 +72,13 @@ export function extractOps(
   answers: Answers,
 ): Ops {
   const p = result.patch;
-  const none = result.none && result.none.length > 0 ? result.none : undefined;
 
   if (questionKey === "habits" && p.habits) {
-    return { patch: { habits: { ...answers.habits, ...(p.habits as Partial<Habits>) } }, none };
+    return { patch: { habits: { ...answers.habits, ...(p.habits as Partial<Habits>) } } };
   }
   if (questionKey === "products" && p.products) {
     return {
       patch: { products: mergeRows(answers.products, p.products as Partial<Answers["products"]>) },
-      none,
     };
   }
   if (questionKey === "procedures" && p.procedures) {
@@ -102,27 +86,19 @@ export function extractOps(
       patch: {
         procedures: mergeRows(answers.procedures, p.procedures as Partial<Answers["procedures"]>),
       },
-      none,
     };
   }
 
-  // Single-answer questions: the slice returns exactly the one key it owns.
-  const patch = { ...p };
-  const exclusive = EXCLUSIVE_OPTIONS[questionKey];
-  const picked = patch[questionKey as "family_history"];
-  if (exclusive !== undefined && Array.isArray(picked) && picked.includes(exclusive)) {
-    // Exclusive means exclusive, whichever route filled it in.
-    (patch as Record<string, unknown>)[questionKey] = [exclusive];
-  }
-  return Object.keys(patch).length > 0 ? { patch, none } : { none };
+  // Q14 and anything else single-valued: the slice returns exactly the keys it owns.
+  return Object.keys(p).length > 0 ? { patch: { ...p } } : {};
 }
 
 /**
  * One follow-up field -> store ops.
  *
- * This is where the "No nulls its details" invariant lives. It fires for the grid, the
- * follow-up flow, and the chat identically, so the invariant cannot hold in one mode
- * and fail in another.
+ * This is where the "No nulls its details" invariant lives. The grid and the guided
+ * follow-up flow both come through here, so a row answered in one cannot end up shaped
+ * differently from the same row answered in the other.
  */
 export function fieldOps(
   questionKey: string,
@@ -167,39 +143,4 @@ export function fieldOps(
   }
 
   return {};
-}
-
-/**
- * Wipe one question back to unanswered.
- *
- * Needed because chat mode asks "is that right?" after a reply fills several fields at
- * once, and "no" has to mean something. Clearing and re-asking is the honest response:
- * keeping a fill the patient just rejected, or asking them to correct fields one by one
- * without knowing which one is wrong, both end with a wrong answer in the output.
- */
-export function clearQuestionOps(questionKey: string, answers: Answers): Ops {
-  if (questionKey === "habits") return { patch: { habits: { ...EMPTY_HABITS } } };
-  if (questionKey === "products") {
-    return {
-      patch: {
-        products: Object.fromEntries(
-          PRODUCT_ROWS.map((r) => [r, { ...EMPTY_PRODUCT }]),
-        ) as Answers["products"],
-      },
-    };
-  }
-  if (questionKey === "procedures") {
-    return {
-      patch: {
-        procedures: Object.fromEntries(
-          PROCEDURE_ROWS.map((r) => [r, { ...EMPTY_PROCEDURE }]),
-        ) as Answers["procedures"],
-      },
-    };
-  }
-  if (questionKey === "past_treatment_side_effects") {
-    return { patch: { past_treatment_side_effects: null, past_treatment_describe: null } };
-  }
-  const empty = Array.isArray(answers[questionKey as "family_history"]) ? [] : null;
-  return { patch: { [questionKey]: empty } as unknown as Partial<Answers> };
 }

@@ -5,15 +5,10 @@ scalp intake and outputs the form **fully filled as structured data**.
 
 Mobile-first, finishable with one thumb, no database, no auth, no admin panel.
 
-**Two ways to answer, and the patient picks:**
-
-| | |
-| --- | --- |
-| **Talk it through** (`/chat`) | A voice assistant asks all 16 questions, reads each one aloud, and fills the form from the reply. Speak, type, or tap back. |
-| **Fill the form yourself** (`/intake`) | One question per screen, pictures where they help. Three of the sixteen also accept voice. |
-
-Both write the same answers to the same store, so a patient can switch between them at
-any question and lose nothing - the link is in the header of every screen.
+One question per screen, pictures where they help. Three of the sixteen can be answered
+by **talking** - the software fills the grid and the patient taps to confirm - and every
+one of the seventeen screens has a **speaker button that reads the question and its
+options aloud**, for the patient who cannot comfortably read the screen.
 
 > Deep dive into the logic and the reasoning behind each decision:
 > **[Implementation.md](Implementation.md)**
@@ -28,34 +23,31 @@ cp .env.example .env.local     # optional - see below
 npm run dev                    # http://localhost:3000
 ```
 
-**The app is fully usable with no API keys - both modes.** Every question can be
-completed by tapping or typing, in the form and in the conversation, and you get a
-valid, complete structured object at the end. Keys turn on three accelerators:
+**The app is fully usable with no API keys.** Every question can be completed by
+tapping, and you get a valid, complete structured object at the end. Keys turn on the
+two accelerators:
 
 | Missing key | What degrades |
 | --- | --- |
-| `ANTHROPIC_API_KEY` | Free prose is not interpreted. Chips and typed exact answers still work, and table questions offer **"Ask me one at a time"**. |
-| `SARVAM_API_KEY` | The microphone is hidden. Typing and tapping are unaffected. |
+| `ANTHROPIC_API_KEY` | The voice questions do not auto-fill. The tap grid underneath is always there. |
+| `SARVAM_API_KEY` | The microphone is hidden entirely. Tapping is unaffected. |
 
-The assistant's voice needs **no key at all** - it speaks through the browser's own
-`speechSynthesis` (see below).
+Read-aloud needs **no key at all** - it uses the browser's own `speechSynthesis`.
 
 ```bash
-npm test              # 152 deterministic tests, no key needed
-npm run smoke         # real-browser walkthrough of the FORM (start a dev server first)
-npm run smoke:chat    # real-browser walkthrough of the CONVERSATION, no keys needed
+npm test              # 126 deterministic tests, no key needed
+npm run smoke         # real-browser walkthrough of the whole intake (needs a dev server)
 npm run eval          # live extraction eval against the fixtures (needs ANTHROPIC_API_KEY)
 npm run build         # production build
 npm run typecheck
 ```
 
-Both smokes need a server running. To keep them from fighting a dev server already open
-in your editor over `.next/trace` on Windows, give them their own build dir:
+`npm run smoke` needs a server running. To keep it from fighting a dev server already
+open in your editor over `.next/trace` on Windows, give it its own build dir:
 
 ```bash
 NEXT_DIST_DIR=.next-smoke npx next dev -p 3130
-node scripts/smoke-browser.mjs http://localhost:3130
-node scripts/smoke-chat.mjs    http://localhost:3130
+npm run smoke -- http://localhost:3130
 ```
 
 ### Environment
@@ -63,7 +55,8 @@ node scripts/smoke-chat.mjs    http://localhost:3130
 | Variable | Where to get it | Notes |
 | --- | --- | --- |
 | `ANTHROPIC_API_KEY` | [console.anthropic.com/settings/keys](https://console.anthropic.com/settings/keys) | Extraction |
-| `ANTHROPIC_MODEL` | - | `claude-sonnet-5` (default); `claude-haiku-4-5-20251001` for lower latency and cost |
+| `ANTHROPIC_MODEL` | - | `claude-haiku-4-5-20251001` (default, and the fastest of the four I probed) |
+| `ANTHROPIC_TEMPERATURE` | - | optional, defaults to `0`; dropped automatically if the model rejects it |
 | `SARVAM_API_KEY` | [dashboard.sarvam.ai](https://dashboard.sarvam.ai) | Speech to text |
 | `SARVAM_MODEL` / `SARVAM_MODE` | - | `saaras:v3` / `codemix` |
 
@@ -84,17 +77,45 @@ gh repo create genoroot-intake --private --source=. --push
 
 ---
 
+## Fitted to the patient
+
+The first screen asks three things - a first name (optional), sex, and age - and every one
+of them changes the rest of the form. That is the whole reason it is allowed to ask.
+
+| Given | What actually changes |
+| --- | --- |
+| **age 55-69** | text and every tap target scale up 12%; 70+ scales 26%. Automatic, and overridable with the **Aa** button in the header. |
+| **age, any** | Q1's onset-age slider is capped at it. A 45-year-old can no longer record "hair loss began at 60", and lowering the age later pulls a now-impossible onset answer down with it. |
+| **age 52+** | Q6 offers *Menopausal*; 50+ offers *Not applicable* on Q7. Offers, rendered as a prompt the patient has to accept - never a pre-filled answer. |
+| **sex: female** | Q6 and Q7 appear. Q9 is reframed as a hirsutism screen ("on the chin, upper lip, chest or stomach") because that is what it is asking a female patient. |
+| **sex: male / not stated** | Q6 and Q7 are skipped, and any stored answers are nulled rather than left stale. |
+| **a name** | on-screen copy uses it. It is deliberately **not** in the downloaded JSON - a warmer form is not a reason to put a patient's name in a clinical file. `patient_sex` and `patient_age` are, because both make the answers interpretable. |
+
+The header shows what was customised (`Female · 60 · larger text`), so it is a setting the
+patient can see and change rather than something the app did to them quietly.
+
+**Why zoom rather than a font scale.** Zoom reflows and takes the *tap targets* with it.
+Bigger text on 44px buttons helps someone who cannot read the screen and does nothing for
+someone whose hands are unsteady - and unsteady hands are the more common reason a form
+gets abandoned. It is also exactly what browser zoom does, so it is a proven interaction
+rather than an invention.
+
+**Comfort lives with the answers, not in localStorage.** It is derived from *this*
+patient's age, so on a shared clinic phone the next person must not inherit it.
+sessionStorage forgetting it is the correct behaviour, not a limitation.
+
+---
+
 ## Model & service choices
 
 | Layer | Choice | Why this one |
 | --- | --- | --- |
 | Framework | Next.js (App Router) + TS on Vercel | one-command live link; API routes hide keys with no separate backend |
 | STT | **Sarvam Saaras v3** | the locally-right pick. Patients here speak Hinglish and Indian-accented English, which is where western STT degrades first. `mode=codemix` returns mixed Hindi/English in Roman script - also the easiest thing for the extraction model to read. |
-| Extraction | **Anthropic** - `claude-sonnet-5`, temp 0, **JSON prefill** | reading loose Hinglish prose into a fixed schema is exactly where a stronger model earns its keep, and the prompts here are tiny (one schema slice plus one reply). Prefilling the assistant turn with `{` makes the model *continue* a JSON object rather than start a message, which removes preambles and code fences by construction rather than by instruction. One provider, no adapter layer - see below for what I measured before settling here. |
-| Assistant voice | the **browser's** `speechSynthesis` | Anthropic has no text-to-speech endpoint, and adding a second vendor for one is not worth it here. This costs a more robotic voice and buys: no key, no network round trip, works offline, and no audio of a patient's medical answers is ever sent anywhere. The text is always on screen first, so speech is never the channel a question arrives through. |
+| Extraction | **Anthropic** - `claude-haiku-4-5`, temp 0 | chosen by probing this account's own model list, not by reputation: fastest of the four tried (1.1-1.3s for a full habits slice versus 1.9s), cheapest, correct on the Hinglish probe, and the only one that still accepts `temperature: 0` - which a medical form needs, because the same reply must fill the same fields every time. One provider, no adapter layer. See below. |
+| Read-aloud | the **browser's** `speechSynthesis` | no key, no network round trip, works offline, and no audio of a patient's medical answers is ever sent anywhere. A hosted voice would sound better and buy none of that. It speaks only when the button is pressed, which is also what satisfies browsers that refuse to speak without a user gesture. |
 | Validation | **Zod** + a coverage check | one validator for shape *and* the conditional-null rules |
 | State | Zustand + sessionStorage | no server state. sessionStorage (not local) so an intake left open on a shared clinic phone isn't readable by the next patient. |
-| Conversation | schema-driven, not scripted | `nextTurn()` scans the same `visibleSteps()` the wizard renders and asks the same `validateStep()` whether each is satisfied. There is no question list in chat mode, so the two modes cannot drift. |
 | Tests | Vitest | deterministic units, plus a separate tolerant eval for the LLM |
 
 **Contracts verified against live docs, not guessed** (Aug 2026): Sarvam is
@@ -125,9 +146,14 @@ That endpoint scored **56-58/58 fields (97-100%)** on the fixture eval, so the *
 was never the problem. What made it the wrong home for a patient-facing screen was
 everything around it: a catalog that retires model IDs from under you, per-model quirks
 that are hard 400s (reasoning models reject `temperature` and want
-`max_completion_tokens`), no reliable JSON mode, and free-tier throttling that turned a
-76-second eval run into 400 seconds on a bad afternoon. Claude removes all four, and the
-JSON prefill is a stronger guarantee than asking politely for JSON.
+`max_completion_tokens`), and free-tier throttling that turned a 76-second eval run into
+400 seconds on a bad afternoon.
+
+Worth saying plainly: Claude's own lineup has the same *class* of quirk - the newest
+models reject `temperature` outright, and one of them rejects assistant prefill - which
+is why [lib/llm.ts](lib/llm.ts) probes rather than assumes, and drops an unsupported
+parameter instead of failing. That code exists because the first Anthropic build shipped
+a 502 to the browser for exactly this reason.
 
 **The eval figure above does not transfer.** It was measured on `gpt-oss-20b`, not on
 Claude, and I have not re-run it since the switch - so treat it as evidence about the
@@ -169,56 +195,6 @@ head outline and one visual language - five top-down views plus loose strands fo
 shedding - because a set of pictures only helps if the pictures are comparable. Q3 and
 Q15 get smaller line icons for the same reason (Q15's real question is "needle or no
 needle").
-
----
-
-## Two ways to answer
-
-The landing page offers a genuine choice, not a primary and a fallback. Which one is
-better is not a design opinion - it depends on the patient. Someone in a noisy reception
-with one hand free wants to tap; someone who reads English slowly, or is holding a
-toddler, wants to talk.
-
-```
-/chat                                          /intake
-assistant asks + speaks                        one question per screen
-patient speaks / types / taps                  taps, pictures on Q4
-        \                                     /
-         \_____ one Zustand store ___________/
-                 one schema, one validateStep(), one Zod validator
-```
-
-**The conversation has no script.** `nextTurn()` ([lib/chatFlow.ts](lib/chatFlow.ts))
-walks the same `visibleSteps(meta)` the wizard renders, asks the same `validateStep()`
-whether each one is satisfied, and stops at the first that is not. So:
-
-- a question added to `lib/schema.ts` appears in the conversation with no edit;
-- the assistant's "that is everything" means exactly what the form's last **Next**
-  means: `validateStep` passed;
-- switching modes mid-intake carries every answer across, in either direction;
-- conditional details come from [lib/followups.ts](lib/followups.ts), the same
-  descriptors the grid uses. "Do you use Topical Minoxidil? **Yes**" is followed by
-  *how long / did it help / any side effects* - asked, not revealed.
-
-**How much of a reply reaches the model.** As little as possible.
-`interpretLocally()` resolves a tapped chip, "yes", "no", "haan", a bare age, an option
-repeated verbatim, and "none of these" with **no API call at all**. Free prose ("my mum
-and my sister both lost hair") is what the model is for. Two things never reach it:
-
-| | |
-| --- | --- |
-| **Consent** | a tap, or the patient's own typed yes/no. It is absent from `EXTRACT_KEYS`, so the route would refuse it even if the UI asked. |
-| **A conditional detail** | "Did it help?" is not sent, because its slice covers the whole table and a bare "it helped a bit" carries no clue which row it belongs to. Those turns always have chips. |
-
-**When one reply fills six fields, the assistant reads them back and asks.** Silence is
-not consent. "No, let me redo it" clears that question and re-asks it one field at a
-time - keeping a fill the patient just rejected would be worse than asking again.
-
-**Speech is an enhancement, never a channel.** Every line is on screen as a bubble
-*before* it is spoken, and the voice is the browser's own - so there is no key, no
-round trip, and no audio of a patient's answers leaving the device. A browser that
-refuses to speak without a user gesture turns into a "tap to hear the question" button
-rather than a mystery.
 
 ---
 
@@ -300,10 +276,7 @@ solved problem where a hand-rolled version would be worse and slower.
 
 Two tiers, on purpose.
 
-**Deterministic (`npm test`, 152 tests, no key) - the dependable gate.** The
-conversation is tested by walking it: `tests/chatFlow.test.ts` answers whatever the
-assistant asks, turn by turn, with no knowledge of the question list, then runs the
-result through the same Zod validator the download button uses. One test
+**Deterministic (`npm test`, 126 tests, no key) - the dependable gate.** One test
 diffs `lib/schema.ts` against the schema as downloaded from the URL in the brief, so
 "verbatim copy" is proven rather than claimed · step builder and
 schema coverage · sex gating across all four states, including that switching away from
@@ -363,8 +336,7 @@ matches the measured reality instead of assuming it is fast.
 Also verified: clean production build, `tsc --noEmit` clean under `strict` +
 `noUncheckedIndexedAccess` with zero `any`, and the extract route rejects `consent` with
 a 400 - it is the one answer that can never be model-filled, even with a valid key.
-(`sample_type` became extractable when chat mode landed: a conversation has no grid to
-fall back on, so a typed "saliva is fine" has to be understood.)
+Neither can ever be model-filled, even with a valid key.
 
 ---
 
@@ -396,25 +368,26 @@ analytics.
 
 ```
 app/
-  page.tsx                  landing - the two ways to answer
+  page.tsx                  landing
   intake/page.tsx           wizard shell - switches on step.kind, has no question list
-  chat/page.tsx             conversation shell - bubbles, speech, one reply -> store
   api/transcribe/route.ts   Sarvam proxy (key server-side)
   api/extract/route.ts      structured extraction + schema gate
 components/
   StepShell.tsx  ProgressBar.tsx  ReviewScreen.tsx  ThemeToggle.tsx
-  questions/     SingleChoice MultiChoice YesNo NumberStepper SexGate PatternPicker
+  QuestionSpeaker.tsx        the read-aloud button, on every question
+  ComfortToggle.tsx          text-size control (Aa), and the DOM projection of it
+  questions/     SingleChoice MultiChoice YesNo NumberStepper AboutYou PatternPicker
                  Consent YesNoDescribe VoiceMatrix VoicePanel SpeakFirst ResultDialog
                  FollowUpFlow HabitsGrid TableGrid ScalpDiagram
-  chat/          ChatBubble QuickReplies Composer
 lib/
   schema.ts        source of truth (verbatim copy of the published schema)
   types.ts         Answers + enums, all derived from schema.ts
   steps.ts         schema -> ordered steps + gating + per-step validation
   followups.ts     conditional questions, as answerable descriptors
-  chatFlow.ts      the conversation driver - pure, no React, no fetch, no store
-  apply.ts         the write rules (shared by both modes)
-  llm.ts           the model boundary: one callModel(), model + temp + JSON prefill
+  apply.ts         the write rules (grid, follow-up flow and voice fill share them)
+  questionSpeech.ts what the speaker button reads out, derived from the schema
+  patient.ts       personalisation: comfort scale, onset cap, age-aware suggestions
+  llm.ts           the model boundary: one callModel(), and the parameter negotiation
   speak.ts         browser speechSynthesis, with barge-in and a no-voice fallback
   store.ts         Zustand
   validate.ts      Zod + 16-key coverage
@@ -422,8 +395,7 @@ lib/
   audio.ts         in-browser 16kHz mono WAV encoding
   copy.ts          all microcopy, in one place
 fixtures/patients/ 12 transcripts (4 held out) + expected answers
-tests/             152 deterministic tests (incl. a full walk of the conversation)
-scripts/smoke-browser.mjs  Playwright walkthrough of the form
-scripts/smoke-chat.mjs     Playwright walkthrough of the conversation, keyless
+tests/             126 deterministic tests (incl. a selector-stability source scan)
+scripts/smoke-browser.mjs  Playwright walkthrough of the full intake
 scripts/eval-fixtures.ts   live extraction eval
 ```

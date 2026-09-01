@@ -119,11 +119,22 @@ export interface Answers {
 export type PatientSex = "male" | "female" | "prefer_not";
 
 /**
- * UI-only. Not one of the 16 graded answers - it exists purely to gate Q6/Q7.
- * Emitted alongside the answers as metadata so the doctor can see why they're null.
+ * Who the form is talking to.
+ *
+ * None of this is one of the 16 graded answers - it is asked first so the rest of the
+ * form can adapt to the person filling it:
+ *
+ *   patient_sex  gates Q6/Q7, and is emitted so a doctor can see WHY they are null
+ *   patient_age  drives the comfort scale (a 60-year-old should not have to pinch-zoom),
+ *                caps the onset age at Q1, and turns the Q6/Q7 suggestions from a guess
+ *                based on onset age into something based on the patient's actual age
+ *   first_name   used only in on-screen copy, and deliberately NOT emitted - a warmer
+ *                form is not worth putting a name in a downloaded clinical file
  */
 export interface Meta {
   patient_sex: PatientSex | null;
+  patient_age: number | null;
+  first_name: string | null;
 }
 
 export const EMPTY_HABITS: Habits = {
@@ -170,4 +181,4 @@ export const EMPTY_ANSWERS: Answers = {
   consent: null,
 };
 
-export const EMPTY_META: Meta = { patient_sex: null };
+export const EMPTY_META: Meta = { patient_sex: null, patient_age: null, first_name: null };

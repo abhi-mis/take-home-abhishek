@@ -69,41 +69,97 @@ const tapCheck = (name) => tap(page.getByRole("checkbox", { name }), `check "${n
 const tapButton = (name) => tap(page.getByRole("button", { name }), `button "${name}"`);
 
 try {
-  // ---------- landing: two ways to answer ----------
+  // ---------- landing ----------
   await page.goto(BASE, { waitUntil: "networkidle" });
   notes.push(`page title: ${JSON.stringify(await page.title())}`);
-  // Both paths must be offered, and both must be real links rather than one being a
-  // disabled "coming soon" - the landing page promises a choice.
-  const ways = page.getByRole("link", { name: /Talk it through|Fill the form yourself/ });
-  const waysCount = await ways.count();
-  if (waysCount !== 2) errors.push({ kind: "landing", text: `expected 2 ways, found ${waysCount}`, fatal: false });
-  notes.push(`landing offers ${waysCount} ways to answer`);
-
-  await tap(page.getByRole("link", { name: /Fill the form yourself/ }), "way: form");
+  await tapButton("Start");
   await page.waitForURL(/\/intake/, { timeout: 15_000 });
 
-  // The form must offer the way back to the assistant on every question, not only at
-  // the start: the moment a patient wants to stop tapping is usually Q11.
-  const talkLink = page.getByRole("link", { name: /Switch to the assistant/ });
-  if ((await talkLink.count()) === 0)
-    errors.push({ kind: "switch", text: "no assistant link in the form header", fatal: false });
-  else notes.push("form header offers the assistant");
+  // Read-aloud must be on every question, not just the first: it is the accessibility
+  // path for a patient who cannot comfortably read the screen.
+  const speaker = page.getByRole("button", { name: /Read the question aloud/ });
+  if ((await speaker.count()) === 0)
+    errors.push({ kind: "speaker", text: "no read-aloud button on Q1", fatal: false });
+  else notes.push("read-aloud button present");
+
+  // ---------- About You: the personalisation gate ----------
+  // Next must be blocked until BOTH sex and age are given, because both change the rest
+  // of the form: gated questions, text size, and the onset-age ceiling at Q1.
+  const aboutBlocked = await page.getByRole("button", { name: "Next" }).isDisabled();
+  notes.push(`About You blocks Next before answers? ${aboutBlocked}  (must be true)`);
+  if (!aboutBlocked)
+    errors.push({ kind: "about", text: "About You did not gate Next", fatal: false });
+
+  await page.getByRole("textbox", { name: /First name/ }).fill("Asha");
+  await tapOption(/^Female/);
+  if (!(await page.getByRole("button", { name: "Next" }).isDisabled()))
+    errors.push({ kind: "about", text: "sex alone was enough to pass About You", fatal: false });
+  else notes.push("sex alone is not enough - the age is still required");
+
+  // 55-64 must switch the comfort scale on, visibly.
+  await tapButton("55-64");
+  const comfortAttr = await page.evaluate(() => document.documentElement.dataset.comfort ?? "");
+  const zoom = await page.evaluate(() =>
+    getComputedStyle(document.documentElement).getPropertyValue("--comfort-zoom").trim(),
+  );
+  notes.push(`age 55-64 -> data-comfort="${comfortAttr}", --comfort-zoom=${zoom}`);
+  if (comfortAttr !== "large")
+    errors.push({
+      kind: "comfort",
+      text: `expected larger text for a 55-64 patient, got "${comfortAttr}"`,
+      fatal: false,
+    });
+
+  const headerText = (await page.locator("header").innerText()).replace(/\s+/g, " ");
+  notes.push(`header summary: ${headerText.slice(0, 70)}`);
+  if (!/Female/.test(headerText))
+    errors.push({ kind: "personal", text: "header does not show what was customised", fatal: false });
+
+  await tapButton("Next");
 
   // ---------- Q1 age (preset + explicit Next) ----------
+  // The patient said they are 60, so the onset slider must not go past that.
+  const onsetMax = await page.evaluate(() => {
+    const el = document.querySelector('input[type="range"]');
+    return el instanceof HTMLInputElement ? el.max : "";
+  });
+  notes.push(`onset-age slider max for a 60-year-old: ${onsetMax || "(no slider yet)"}`);
   await tapButton(/^30s/);
+  const onsetMaxAfter = await page.evaluate(() => {
+    const el = document.querySelector('input[type="range"]');
+    return el instanceof HTMLInputElement ? Number(el.max) : -1;
+  });
+  if (onsetMaxAfter > 60)
+    errors.push({
+      kind: "ceiling",
+      text: `onset age could be set to ${onsetMaxAfter} by a 60-year-old`,
+      fatal: false,
+    });
+  else notes.push(`onset age capped at ${onsetMaxAfter} - cannot exceed the patient's age`);
   await tapButton("Next");
 
   // ---------- Q2 duration (auto-advance) ----------
   await tapOption("Over a year");
 
-  // Validation must actually BLOCK: Q3 starts with nothing selected, so Next is
-  // disabled and the reason is printed on screen.
+  // Validation must actually BLOCK, and it must explain itself when the patient tries.
   const nextBtn = page.getByRole("button", { name: "Next" });
   await nextBtn.waitFor({ state: "visible", timeout: 12_000 });
   const blocked = await nextBtn.isDisabled();
-  const reason = await page.getByRole("status").innerText().catch(() => "");
-  notes.push(`Q3 Next disabled before answering? ${blocked}  reason shown: ${JSON.stringify(reason.replace(/\s+/g, " ").slice(0, 60))}`);
   if (!blocked) throw new Error("Next was enabled on an unanswered multi-select");
+
+  // On ARRIVAL the screen must be quiet - telling someone off before they have done
+  // anything is the fastest way to make software feel hostile.
+  const nagOnArrival = await page.getByRole("status").count();
+  notes.push(`Q3 nags before any interaction? ${nagOnArrival > 0}  (must be false)`);
+  if (nagOnArrival > 0)
+    errors.push({ kind: "nag", text: "the outstanding list appeared before the patient acted", fatal: false });
+
+  // Pressing the blocked Next passes the tap to its wrapper, which reveals the reason.
+  await nextBtn.click({ force: true });
+  await page.waitForTimeout(320);
+  const reason = await page.getByRole("status").innerText().catch(() => "");
+  notes.push(`after pressing a blocked Next: ${JSON.stringify(reason.replace(/\s+/g, " ").slice(0, 60))}`);
+  if (!reason) errors.push({ kind: "nag", text: "a blocked Next explained nothing", fatal: false });
 
   // ---------- Q3 family history (multi) ----------
   await tapCheck(/Father had hair loss/);
@@ -115,10 +171,6 @@ try {
   if (diagrams < 6) throw new Error(`expected 6 scalp diagrams, found ${diagrams}`);
   await tapCheck("Thinning at crown");
   await tapButton("Next");
-
-  // ---------- sex gate: Female gives the longest path ----------
-  await tapOption(/^Female/);
-  notes.push("chose Female - Q6 and Q7 must now appear");
 
   // ---------- Q5 conditions (multi) ----------
   await tapCheck(/Thyroid disorder/);
@@ -332,16 +384,18 @@ try {
   if (a.consent !== true) throw new Error("consent did not record as true");
 
   // ---------- gating in the other direction ----------
-  // Go back to the gate, switch to Male, and confirm Q6/Q7 vanish AND their stored
+  // Go back to About You, switch to Male, and confirm Q6/Q7 vanish AND their stored
   // answers are nulled rather than left stale.
   await page.getByRole("button", { name: /menstrual_cycle|How are your periods/ }).first().click();
   await page.waitForTimeout(500);
-  // The gate is inserted before the FIRST section-B question, which is Q5 - so from
-  // Q6 it is two steps back (Q6 -> Q5 -> gate), not one.
-  await tapButton("Back");
-  await tapButton("Back");
-  const atGate = await heading();
-  notes.push(`two Back taps from Q6 landed on: ${atGate}`);
+  // About You is now step 0, so walk back to it rather than counting taps.
+  while (!/about you/i.test(await heading())) {
+    const back = page.getByRole("button", { name: "Back" });
+    if ((await back.count()) === 0) break;
+    await back.click();
+    await page.waitForTimeout(320);
+  }
+  notes.push(`walked Back to: ${await heading()}`);
   await tapOption(/^Male/);
   notes.push("switched sex to Male");
 

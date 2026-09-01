@@ -201,7 +201,14 @@ export function buildOutput(answers: Answers, meta: Meta) {
   return {
     form: "GenoRoot Hair & Scalp Intake",
     completed_at: new Date().toISOString(),
-    patient_sex: meta.patient_sex, // metadata, not one of the 16 graded answers
+    /**
+     * Metadata, not graded answers - but clinically worth having: sex explains why the
+     * two gated questions are null, and current age is what makes "hair loss began at 24"
+     * interpretable. `first_name` is deliberately NOT here: a warmer form on the phone is
+     * not a reason to put a patient's name in a downloaded clinical file.
+     */
+    patient_sex: meta.patient_sex,
+    patient_age: meta.patient_age,
     answers,
   };
 }

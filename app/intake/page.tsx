@@ -17,15 +17,23 @@ import { useRouter } from "next/navigation";
 import { useIntake } from "@/lib/store";
 import { getQuestion, type QuestionKey } from "@/lib/schema";
 import { stepIndexById, validateStep, visibleSteps, type Step } from "@/lib/steps";
-import { COPY, UI_COPY } from "@/lib/copy";
-import { EXCLUSIVE_OPTIONS, hasNoneEscape, type Answers } from "@/lib/types";
+import { COPY, SECTION_LABEL, UI_COPY } from "@/lib/copy";
+import { questionSpeech } from "@/lib/questionSpeech";
+import {
+  maxOnsetAge,
+  personalNote,
+  personalSummary,
+  suggestionFor,
+  type Comfort,
+} from "@/lib/patient";
+import { EXCLUSIVE_OPTIONS, hasNoneEscape, type Answers, type Meta } from "@/lib/types";
 import { StepShell } from "@/components/StepShell";
 import { ReviewScreen } from "@/components/ReviewScreen";
 import { SingleChoice } from "@/components/questions/SingleChoice";
 import { MultiChoice } from "@/components/questions/MultiChoice";
 import { YesNo } from "@/components/questions/YesNo";
 import { NumberStepper } from "@/components/questions/NumberStepper";
-import { SexGate } from "@/components/questions/SexGate";
+import { AboutYou } from "@/components/questions/AboutYou";
 import { Consent } from "@/components/questions/Consent";
 import { VoiceMatrix } from "@/components/questions/VoiceMatrix";
 import { YesNoDescribe } from "@/components/questions/YesNoDescribe";
@@ -42,10 +50,15 @@ export default function IntakePage() {
   const currentStepId = useIntake((s) => s.currentStepId);
   const touched = useIntake((s) => s.touched);
   const explicitNone = useIntake((s) => s.explicitNone);
+  const comfort = useIntake((s) => s.comfort);
 
   // Actions are created once, so these references are stable for the store's lifetime.
   const patch = useIntake((s) => s.patch);
   const setSex = useIntake((s) => s.setSex);
+  const setAge = useIntake((s) => s.setAge);
+  const setFirstName = useIntake((s) => s.setFirstName);
+  const setComfort = useIntake((s) => s.setComfort);
+  const comfortChosen = useIntake((s) => s.comfortChosen);
   const next = useIntake((s) => s.next);
   const back = useIntake((s) => s.back);
   const goTo = useIntake((s) => s.goTo);
@@ -122,17 +135,27 @@ export default function IntakePage() {
   if (!step) return null;
 
   const copy = step.key ? COPY[step.key] : null;
-  const title = step.kind === "sexgate" ? UI_COPY.sexGateTitle : (copy?.title ?? step.key ?? "");
+  const title = step.kind === "about" ? UI_COPY.aboutTitle : (copy?.title ?? step.key ?? "");
+  // A hint that knows who is reading it, where that changes what the question means.
+  const extra = step.key ? personalNote(step.key, meta) : undefined;
+  const hint = [copy?.hint, extra].filter(Boolean).join(" ") || undefined;
   // One call decides both whether Next is enabled and what the patient still owes us.
   const check = validateStep(step, answers, meta, explicitNone);
 
   return (
     <StepShell
       stepId={step.id}
-      sectionTitle={step.sectionTitle}
+      sectionTitle={SECTION_LABEL[step.sectionId] ?? step.sectionTitle}
       questionNumber={step.n}
       title={title}
-      hint={copy?.hint}
+      hint={hint}
+      speech={questionSpeech(step, meta)}
+      personal={personalSummary(meta, comfort)}
+      comfort={comfort}
+      onComfort={setComfort}
+      // Already been past this step once, so the outstanding list is a reminder rather
+      // than an accusation and can show immediately.
+      revisited={touched[step.id] === true}
       index={index}
       total={steps.length}
       direction={direction}
@@ -147,51 +170,78 @@ export default function IntakePage() {
       {renderStep({
         step,
         answers,
+        meta,
         patch,
         setSex,
+        setAge,
+        setFirstName,
+        comfort,
+        comfortChosen,
         next,
         chooseNone,
         explicitNone,
-        sex: meta.patient_sex,
         setFocusMode,
       })}
     </StepShell>
   );
 }
 
-const AUTO_ADVANCE = new Set(["single", "yesno", "sexgate"]);
+// About You is NOT auto-advance: it has three inputs, and jumping forward the instant
+// one of them is touched would strand the other two.
+const AUTO_ADVANCE = new Set(["single", "yesno"]);
 
 interface RenderArgs {
   step: Step;
   answers: Answers;
+  meta: Meta;
   patch: (p: Partial<Answers>) => void;
   setSex: ReturnType<typeof useIntake.getState>["setSex"];
+  setAge: (age: number) => void;
+  setFirstName: (name: string | null) => void;
+  comfort: Comfort;
+  comfortChosen: boolean;
   next: () => void;
   chooseNone: (key: string) => void;
   explicitNone: Record<string, true>;
-  sex: string | null;
   setFocusMode: (focused: boolean) => void;
 }
 
 function renderStep({
   step,
   answers,
+  meta,
   patch,
   setSex,
+  setAge,
+  setFirstName,
+  comfort,
+  comfortChosen,
   next,
   chooseNone,
   explicitNone,
-  sex,
   setFocusMode,
 }: RenderArgs) {
   switch (step.kind) {
-    case "sexgate":
-      return <SexGate value={sex as never} onChange={setSex} onAdvance={next} />;
+    case "about":
+      return (
+        <AboutYou
+          firstName={meta.first_name}
+          sex={meta.patient_sex}
+          age={meta.patient_age}
+          comfort={comfort}
+          comfortChosen={comfortChosen}
+          onFirstName={setFirstName}
+          onSex={setSex}
+          onAge={setAge}
+        />
+      );
 
     case "number":
       return (
         <NumberStepper
           value={answers.age_hair_loss_began}
+          // Cannot have started after the age they just told us they are.
+          max={maxOnsetAge(meta)}
           onChange={(v) => patch({ age_hair_loss_began: v })}
         />
       );
@@ -205,7 +255,7 @@ function renderStep({
           gloss={COPY[key]?.gloss}
           withIcons
           value={answers[key as "duration"]}
-          suggestion={suggestionFor(key, answers)}
+          suggestion={suggestionFor(key, answers, meta)}
           onChange={(v) => patch({ [key]: v } as Partial<Answers>)}
           onAdvance={next}
         />
@@ -271,27 +321,4 @@ function renderStep({
     case "consent":
       return <Consent value={answers.consent} onChange={(v) => patch({ consent: v })} />;
   }
-}
-
-/**
- * Q6: a patient whose hair loss began at 50+ is very likely post-menopausal, so we
- * offer that answer instead of making her scroll - but only as a suggestion she has
- * to accept, never a silent pre-fill.
- *
- * Note we suggest "Menopausal" rather than "Not applicable": both skip the follow-up
- * work, but "Menopausal" is the one that actually tells the doctor something, and
- * "Not applicable" reads as "I won't say". Onset age is an imperfect proxy for
- * current age, which is exactly why this is a suggestion and not an inference.
- */
-function suggestionFor(
-  key: QuestionKey,
-  answers: Answers,
-): { value: string; reason: string } | undefined {
-  if (key !== "menstrual_cycle") return undefined;
-  const onset = answers.age_hair_loss_began;
-  if (onset === null || onset < 50) return undefined;
-  return {
-    value: "Menopausal",
-    reason: "You said your hair loss started after 50 - is this the right answer?",
-  };
 }

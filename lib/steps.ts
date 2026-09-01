@@ -26,26 +26,34 @@ export type StepKind =
   | "yesno_describe"
   | "table"
   | "consent"
-  | "sexgate";
+  | "about";
 
 export interface Step {
   /** Stable id used for routing, progress and the `explicitNone` set. */
   id: string;
-  /** Schema question key, or null for the synthetic SexGate. */
+  /** Schema question key, or null for the synthetic About You step. */
   key: QuestionKey | null;
   kind: StepKind;
   sectionId: string;
   sectionTitle: string;
-  /** Question number 1..16; null for the SexGate (it isn't a graded question). */
+  /** Question number 1..16; null for About You (it isn't a graded question). */
   n: number | null;
 }
 
-const SEX_GATE_STEP: Step = {
-  id: "sex_gate",
+/**
+ * Asked FIRST, before question 1, and the reason is the whole personalisation story.
+ *
+ * It used to sit immediately before section B, because its only job was gating Q6/Q7 and
+ * asking a stranger their sex up front felt abrupt. Then it grew a second job - age - and
+ * age has to be known before the form renders anything, because it decides how big the
+ * type is. A form cannot resize itself at question 6.
+ */
+const ABOUT_STEP: Step = {
+  id: "about_you",
   key: null,
-  kind: "sexgate",
-  sectionId: "B",
-  sectionTitle: "Hormonal & Health Influences",
+  kind: "about",
+  sectionId: "0",
+  sectionTitle: "About you",
   n: null,
 };
 
@@ -56,16 +64,10 @@ function kindFor(q: (typeof QUESTIONS)[number]): StepKind {
   return q.type as StepKind;
 }
 
-/** All steps, gating ignored. Order is schema order. */
+/** All steps, gating ignored. About You first, then schema order. */
 export const ALL_STEPS: Step[] = (() => {
-  const out: Step[] = [];
-  let gateInserted = false;
+  const out: Step[] = [ABOUT_STEP];
   for (const q of QUESTIONS) {
-    // The gate must be answered before the first question of section B renders.
-    if (!gateInserted && q.sectionId === "B") {
-      out.push(SEX_GATE_STEP);
-      gateInserted = true;
-    }
     out.push({
       id: q.key,
       key: q.key,
@@ -117,8 +119,14 @@ export function validateStep(
   explicitNone: Record<string, true> = {},
 ): StepValidation {
   switch (step.kind) {
-    case "sexgate":
-      return meta.patient_sex !== null ? OK : fail("Choose one option to continue");
+    case "about": {
+      // Both are required: sex gates two questions, and age sets the text size, the
+      // onset-age ceiling and the Q6/Q7 suggestions. A name is optional on purpose.
+      const missing: string[] = [];
+      if (meta.patient_sex === null) missing.push("Choose one option");
+      if (meta.patient_age === null) missing.push("Set your age");
+      return missing.length === 0 ? OK : { complete: false, outstanding: missing };
+    }
 
     case "number":
       return answers.age_hair_loss_began !== null ? OK : fail("Pick an age range");

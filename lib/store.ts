@@ -17,6 +17,7 @@ import {
   type Meta,
   type PatientSex,
 } from "./types";
+import { suggestedComfort, type Comfort } from "./patient";
 import { ALL_STEPS, isStepVisible, visibleSteps } from "./steps";
 
 interface IntakeState {
@@ -30,9 +31,19 @@ interface IntakeState {
    * lets validation tell "deliberately empty" from "not answered yet".
    */
   explicitNone: Record<string, true>;
+  /**
+   * Text and tap-target scale. Derived from the patient's age when they set it, then
+   * frozen the moment they touch the control themselves - an automatic default that
+   * keeps overriding a deliberate choice is just a bug with good intentions.
+   */
+  comfort: Comfort;
+  comfortChosen: boolean;
 
   patch: (p: Partial<Answers>) => void;
   setSex: (sex: PatientSex) => void;
+  setAge: (age: number) => void;
+  setFirstName: (name: string | null) => void;
+  setComfort: (c: Comfort) => void;
   /** Choose "None of these": clears the array AND records the deliberate choice. */
   chooseNone: (key: string) => void;
   markTouched: (id: string) => void;
@@ -59,6 +70,18 @@ function applySexGate(answers: Answers, sex: PatientSex): Answers {
   return { ...answers, menstrual_cycle: null, pregnancy_related: null };
 }
 
+/**
+ * Lowering the current age has to pull the onset age down with it.
+ *
+ * Otherwise going back and correcting "58" to "34" leaves "hair loss began at 55"
+ * sitting in the answers - past its own validation bound, and on its way to a doctor.
+ */
+function clampOnsetAge(answers: Answers, age: number): Answers {
+  const onset = answers.age_hair_loss_began;
+  if (onset === null || onset <= age) return answers;
+  return { ...answers, age_hair_loss_began: age };
+}
+
 export const useIntake = create<IntakeState>()(
   persist(
     (set, get) => ({
@@ -67,6 +90,8 @@ export const useIntake = create<IntakeState>()(
       currentStepId: ALL_STEPS[0]!.id,
       touched: {},
       explicitNone: {},
+      comfort: "standard",
+      comfortChosen: false,
 
       patch: (p) =>
         set((s) => {
@@ -86,10 +111,21 @@ export const useIntake = create<IntakeState>()(
 
       setSex: (sex) =>
         set((s) => ({
-          meta: { patient_sex: sex },
+          meta: { ...s.meta, patient_sex: sex },
           answers: applySexGate(s.answers, sex),
-          touched: { ...s.touched, sex_gate: true },
         })),
+
+      setAge: (age) =>
+        set((s) => ({
+          meta: { ...s.meta, patient_age: age },
+          answers: clampOnsetAge(s.answers, age),
+          // The age-driven default applies until the patient overrides it themselves.
+          comfort: s.comfortChosen ? s.comfort : suggestedComfort(age),
+        })),
+
+      setFirstName: (name) => set((s) => ({ meta: { ...s.meta, first_name: name } })),
+
+      setComfort: (c) => set({ comfort: c, comfortChosen: true }),
 
       markTouched: (id) => set((s) => ({ touched: { ...s.touched, [id]: true } })),
 
@@ -124,6 +160,8 @@ export const useIntake = create<IntakeState>()(
           currentStepId: ALL_STEPS[0]!.id,
           touched: {},
           explicitNone: {},
+          comfort: "standard",
+          comfortChosen: false,
         }),
 
     }),
@@ -136,6 +174,11 @@ export const useIntake = create<IntakeState>()(
         currentStepId: s.currentStepId,
         touched: s.touched,
         explicitNone: s.explicitNone,
+        // Persisted with the answers rather than in localStorage: comfort is derived
+        // from THIS patient's age, so the next person on a shared clinic phone must not
+        // inherit it. sessionStorage forgetting it is the correct behaviour.
+        comfort: s.comfort,
+        comfortChosen: s.comfortChosen,
       }),
     },
   ),

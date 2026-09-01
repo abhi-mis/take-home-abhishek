@@ -19,6 +19,15 @@
   --color-code-bg: var(--code-bg);
   --color-code-fg: var(--code-fg);
   --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  /*
+    A serif for the questions themselves.
+    Deliberately a system stack, not a webfont: this is the one screen a patient in a
+    clinic queue on a bad connection must never see unstyled, and no download can beat
+    a font that is already on the device. It exists because a form set entirely in the
+    system sans reads like a settings panel - the serif makes a question read as
+    something a person is asking you.
+  */
+  --font-display: ui-serif, Georgia, "Iowan Old Style", "Palatino Linotype", serif;
 }
 
 /*
@@ -84,8 +93,50 @@ html {
   -webkit-text-size-adjust: 100%;
 }
 
+/*
+  COMFORT SCALE - the answer to "what about a 55-year-old filling this in?"
+
+  The age given on the first screen picks a default (lib/patient.ts), the Aa button in the
+  header overrides it, and the whole page scales here. Two decisions worth defending:
+
+  - `zoom`, not a font-size scale. Zoom reflows and takes the TAP TARGETS with it, so a
+    60-year-old gets bigger buttons as well as bigger type. Larger text on 44px controls
+    helps someone who cannot see the screen and does nothing at all for someone whose
+    hands are unsteady. It is also exactly what browser zoom does, which is the proven
+    interaction rather than an invention.
+  - the `dvh` correction. A child sized `min-h-dvh` measures the viewport BEFORE zoom, so
+    zooming it overflows by that factor and leaves a dead scroll region at the bottom of
+    every screen. Dividing it back out is a one-line fix and the alternative is retiring
+    dynamic viewport units across the app.
+*/
+:root {
+  --comfort-zoom: 1;
+}
+:root[data-comfort="large"] {
+  --comfort-zoom: 1.12;
+}
+:root[data-comfort="xl"] {
+  --comfort-zoom: 1.26;
+}
+
 body {
-  background: var(--color-paper);
+  zoom: var(--comfort-zoom);
+}
+
+:root[data-comfort] .min-h-dvh {
+  min-height: calc(100dvh / var(--comfort-zoom));
+}
+
+body {
+  /*
+    A single warm wash from the top rather than a flat fill. It is two gradient stops and
+    it is the difference between "a page" and "a designed page" on a phone screen - the
+    eye reads the top of the form as lit, which is where the question is.
+  */
+  background:
+    radial-gradient(120% 55% at 50% 0%, color-mix(in oklab, var(--color-brand) 7%, transparent) 0%, transparent 60%),
+    var(--color-paper);
+  background-attachment: fixed;
   color: var(--color-ink);
   font-family: var(--font-sans);
   /* Room for the fixed footer nav so the last option is never trapped under it. */
@@ -162,6 +213,13 @@ input[type="range"]:active {
 }
 .flash-fill {
   animation: flash-fill 1.5s ease-out forwards;
+}
+
+/* Questions and the numbers that matter are set in the display serif. */
+.font-display {
+  font-family: var(--font-display);
+  font-feature-settings: "liga" 1, "kern" 1;
+  letter-spacing: -0.011em;
 }
 
 .no-scrollbar::-webkit-scrollbar {

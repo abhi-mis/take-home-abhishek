@@ -1,15 +1,16 @@
 /**
  * The write rules, which are clinical rather than cosmetic.
  *
- * Two modes now write the same answers, so these functions are the single definition of
- * what a valid write looks like. The invariant that matters most: a flag answered "No"
+ * The grids, the guided follow-up flow and a voice fill all write through these
+ * functions, so they are the single definition of what a valid write looks like. The
+ * invariant that matters most: a flag answered "No"
  * must null its detail columns. If it does not, `validate.ts` rejects the finished form
  * ("must be null unless ...") and the patient is stuck on a review screen with no
- * visible problem to fix - so it is asserted here for every table, both modes.
+ * visible problem to fix - so it is asserted here for every table.
  */
 import { describe, expect, it } from "vitest";
-import { clearQuestionOps, extractOps, fieldOps, mergeRows } from "@/lib/apply";
-import { outstandingFieldsFor, productsOutstanding } from "@/lib/followups";
+import { extractOps, fieldOps, mergeRows } from "@/lib/apply";
+import { outstandingFieldsFor } from "@/lib/followups";
 import { AnswersSchema } from "@/lib/validate";
 import {
   EMPTY_ANSWERS,
@@ -139,24 +140,6 @@ describe("extractOps merges rather than replaces", () => {
     expect(ops.patch?.habits).toMatchObject({ smoking: false, alcohol: true });
   });
 
-  it("enforces exclusivity on the way in, whichever route filled it", () => {
-    const ops = extractOps(
-      "diagnosed_conditions",
-      { patch: { diagnosed_conditions: ["None", "Anemia"] }, unfilled: [] },
-      fresh(),
-    );
-    expect(ops.patch?.diagnosed_conditions).toEqual(["None"]);
-  });
-
-  it("passes a deliberate none through as a store op, not an answer", () => {
-    const ops = extractOps(
-      "pattern",
-      { patch: { pattern: [] }, unfilled: [], none: ["pattern"] },
-      fresh(),
-    );
-    expect(ops.none).toEqual(["pattern"]);
-  });
-
   it("produces answers that survive the full Zod validator", () => {
     let a = fresh();
     const ops = extractOps(
@@ -190,43 +173,5 @@ describe("extractOps merges rather than replaces", () => {
       ),
     );
     expect(parsed.success).toBe(true);
-  });
-});
-
-describe("clearQuestionOps resets a rejected fill", () => {
-  it("wipes a whole table back to unanswered", () => {
-    const a = fresh();
-    a.products["Oral Minoxidil"] = { used: true, duration: "<3mo", helped: true, side_effects: true };
-    const ops = clearQuestionOps("products", a);
-    const cleared = ops.patch?.products;
-    expect(cleared?.["Oral Minoxidil"]).toEqual({
-      used: null,
-      duration: null,
-      helped: null,
-      side_effects: null,
-    });
-    // And every row is outstanding again, so the conversation re-asks all of them.
-    expect(productsOutstanding({ ...a, ...ops.patch } as Answers).length).toBe(
-      PRODUCT_ROWS.length,
-    );
-  });
-
-  it("clears Q14 and its conditional description together", () => {
-    const a = fresh();
-    a.past_treatment_side_effects = true;
-    a.past_treatment_describe = "itching";
-    const ops = clearQuestionOps("past_treatment_side_effects", a);
-    expect(ops.patch).toEqual({
-      past_treatment_side_effects: null,
-      past_treatment_describe: null,
-    });
-  });
-
-  it("clears a multi-select to an empty array and a single to null", () => {
-    const a = fresh();
-    a.family_history = ["Father had hair loss"];
-    a.duration = "Over a year";
-    expect(clearQuestionOps("family_history", a).patch).toEqual({ family_history: [] });
-    expect(clearQuestionOps("duration", a).patch).toEqual({ duration: null });
   });
 });
