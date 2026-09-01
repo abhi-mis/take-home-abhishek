@@ -47,7 +47,8 @@ export function YesNo({
           }}
           className={cn(
             "rounded-2xl border-2 font-semibold transition-all duration-100 active:scale-[0.98]",
-            size === "lg" ? "min-h-[88px] text-lg" : "min-h-[44px] px-3 text-[13px]",
+            // tap-lg shrinks under `pointer: fine`; the 88px stays for thumbs.
+            size === "lg" ? "tap-lg min-h-[88px] text-lg" : "min-h-[44px] px-3 text-[13px]",
             shown === v
               ? "border-brand bg-brand-soft text-brand-ink"
               : "border-line bg-card text-muted hover:border-brand/50 hover:bg-brand-soft/40 hover:text-ink",

@@ -58,7 +58,7 @@ export function SingleChoice({
           <button
             type="button"
             onClick={() => choose(suggestion.value)}
-            className="mt-2.5 min-h-[44px] w-full rounded-xl bg-brand px-4 text-[14px] font-semibold text-white transition-colors hover:bg-brand-strong active:scale-[0.98]"
+            className="mt-2.5 min-h-[44px] w-full rounded-xl bg-ink px-4 text-[14px] font-semibold text-paper transition-colors hover:bg-brand-strong active:scale-[0.98]"
           >
             {t("suggestionAcceptWith", lang, { value: optionLabel(suggestion.value, lang) })}
           </button>

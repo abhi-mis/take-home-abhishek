@@ -1,55 +1,64 @@
 "use client";
 
 /**
- * The wizard shell - the only router in the app.
+ * The intake, one section at a time.
  *
- * It does exactly three things:
- *   1. reads the current step out of the store,
- *   2. maps `step.kind` (which came from the schema's `type`) to a component,
- *   3. tells StepShell whether Next is allowed.
+ * This page is the only router in the app, and it does four things:
+ *   1. reads the current SECTION out of the store,
+ *   2. renders its visible questions as cards, one of them open,
+ *   3. opens the next unanswered card when the open one is answered,
+ *   4. tells SectionShell whether the section may be left.
  *
- * Adding a question to lib/schema.ts makes it appear here with no edit, as long as
- * its `type` is one of the kinds in the switch below. That is what "schema-driven"
- * buys: the wizard has no list of questions in it.
+ * Adding a question to lib/schema.ts still needs no edit here: it lands in a section via
+ * lib/sections.ts and renders via QuestionBody's switch on `step.kind`.
+ *
+ * Two rules this file exists to enforce, both learned the hard way:
+ *
+ *  - Nothing NAVIGATES on its own. Answering may open the next card in place, which keeps
+ *    the answer on screen as a summary; it may never move to another section. A mis-tap
+ *    that both records an answer and leaves the screen is a wrong clinical answer nobody
+ *    sees again.
+ *  - Correcting an answered card does NOT jump forward. First pass wants momentum, a
+ *    correction wants to stay put.
  */
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useIntake } from "@/lib/store";
-import { getQuestion, type QuestionKey } from "@/lib/schema";
-import { stepIndexById, validateStep, visibleSteps, type Step } from "@/lib/steps";
-import { questionCopy, sectionLabel, ui, type Lang } from "@/lib/i18n";
-import { questionSpeech } from "@/lib/questionSpeech";
 import {
-  maxOnsetAge,
-  personalNote,
-  shouldOfferComfort,
-  suggestedComfort,
-  unavailableOptions,
-  personalSummary,
-  welcomeLine,
-  suggestionFor,
-  type Comfort,
-} from "@/lib/patient";
-import { EXCLUSIVE_OPTIONS, hasNoneEscape, type Answers, type Meta } from "@/lib/types";
-import { StepShell } from "@/components/StepShell";
+  ALL_SECTIONS,
+  answeredCount,
+  isAnswered,
+  nextUnansweredAfter,
+  sectionById,
+  sectionIndexById,
+  validateSection,
+  visibleQuestions,
+} from "@/lib/sections";
+import { questionCopy, sectionLabel, t, ui } from "@/lib/i18n";
+import { shortLabel } from "@/lib/summary";
+import { shouldOfferComfort, suggestedComfort } from "@/lib/patient";
+import { keyAction, optionCountForStep, optionsForStep, toggleMulti } from "@/lib/keymap";
+import { neighbourQuestion } from "@/lib/sections";
+import { EXCLUSIVE_OPTIONS, type Answers } from "@/lib/types";
+import { SectionShell } from "@/components/SectionShell";
 import { ComfortPrompt } from "@/components/ComfortPrompt";
 import { ReviewScreen } from "@/components/ReviewScreen";
-import { QuestionBody } from "@/components/questions/QuestionBody";
+import { QuestionCard } from "@/components/questions/QuestionCard";
 
 export default function IntakePage() {
   const router = useRouter();
 
-  // One field per selector. Zustand compares selector results with Object.is, so a
-  // selector must never BUILD its result - `(s) => s.steps()` returns a fresh array
-  // every call, never compares equal, and re-renders forever.
+  // One field per selector. Zustand compares selector results with Object.is, so a selector
+  // must never BUILD its result - `(s) => s.steps()` returns a fresh array every call, never
+  // compares equal, and re-renders until React throws.
   const answers = useIntake((s) => s.answers);
   const meta = useIntake((s) => s.meta);
-  const currentStepId = useIntake((s) => s.currentStepId);
+  const currentSectionId = useIntake((s) => s.currentSectionId);
+  const openQuestionId = useIntake((s) => s.openQuestionId);
   const touched = useIntake((s) => s.touched);
   const explicitNone = useIntake((s) => s.explicitNone);
   const comfort = useIntake((s) => s.comfort);
   const lang = useIntake((s) => s.lang);
-  const setLang = useIntake((s) => s.setLang);
 
   // Actions are created once, so these references are stable for the store's lifetime.
   const patch = useIntake((s) => s.patch);
@@ -57,27 +66,25 @@ export default function IntakePage() {
   const setAge = useIntake((s) => s.setAge);
   const setFirstName = useIntake((s) => s.setFirstName);
   const setComfort = useIntake((s) => s.setComfort);
+  const setLang = useIntake((s) => s.setLang);
   const comfortChosen = useIntake((s) => s.comfortChosen);
   const comfortAsked = useIntake((s) => s.comfortAsked);
   const acceptComfort = useIntake((s) => s.acceptComfort);
   const declineComfort = useIntake((s) => s.declineComfort);
-  const next = useIntake((s) => s.next);
-  const back = useIntake((s) => s.back);
-  const goTo = useIntake((s) => s.goTo);
+  const openQuestion = useIntake((s) => s.openQuestion);
+  const nextSection = useIntake((s) => s.nextSection);
+  const prevSection = useIntake((s) => s.prevSection);
+  const goToSection = useIntake((s) => s.goToSection);
   const chooseNone = useIntake((s) => s.chooseNone);
   const reset = useIntake((s) => s.reset);
 
   /**
    * The text-size offer, held back for a beat.
    *
-   * The delay is the whole reason this is an effect rather than a render-time flag: an
-   * age can be set by dragging a slider through 55, and a dialog that appears mid-drag
-   * has interrupted the very control the patient is using. Half a second of stillness
-   * means they have arrived at an age rather than passed through one.
-   *
-   * It is not scoped to the About You step on purpose. A fast patient can tap "55-64"
-   * and Next inside those 500ms, and the offer still has to reach them - one screen
-   * later is late, never is a bug.
+   * The delay is why this is an effect rather than a render-time flag: an age can be set by
+   * dragging a slider through 55, and a dialog that appears mid-drag has interrupted the
+   * very control the patient is using. Half a second of stillness means they arrived at an
+   * age rather than passed through one.
    */
   const [offerComfort, setOfferComfort] = useState(false);
   const eligible = shouldOfferComfort(meta, comfortChosen, comfortAsked);
@@ -90,67 +97,207 @@ export default function IntakePage() {
     return () => clearTimeout(t);
   }, [eligible, meta.patient_age]);
 
-  // Derived OUTSIDE the store, memoised on `meta` - the only input gating can depend
-  // on. Same live-recompute behaviour, but a stable reference between sex changes.
-  const steps = useMemo(() => visibleSteps(meta), [meta]);
+  const isReview = currentSectionId === "review";
+  const section = sectionById(currentSectionId) ?? ALL_SECTIONS[0]!;
+  const index = sectionIndexById(section.id);
 
-  // Direction drives the slide animation; a plain ref beats storing it in the store.
-  const [direction, setDirection] = useState<1 | -1>(1);
-  const prevIndex = useRef(0);
-
-  /**
-   * "Focus mode" = this step is presenting its own focused surface (the speak-first
-   * screen, or the guided follow-up flow), so StepShell stands down its outstanding-items
-   * summary rather than repeating or pre-empting it.
-   */
-  const [focusMode, setFocusMode] = useState(false);
-  // null, not currentStepId, so the derive below also runs on the FIRST render - a
-  // resumed session can land straight onto a table question.
-  const focusStepId = useRef<string | null>(null);
-
-  // Resolved once per render: the whole screen is in one language, so every string
-  // below comes from the same two objects.
-  const UI = ui(lang);
-  const COPY_L = questionCopy(lang);
-
-  const isReview = currentStepId === "review";
-  const index = isReview ? steps.length : stepIndexById(steps, currentStepId);
-  const step = isReview ? null : steps[index];
+  // Derived OUTSIDE the store and memoised on the only inputs gating depends on.
+  const visible = useMemo(() => visibleQuestions(section, meta), [section, meta]);
+  const check = validateSection(section, answers, meta, explicitNone);
+  const answered = visible.length - check.missing.length;
 
   /**
-   * Reset focus mode DURING render, not in an effect.
+   * Answering the open card opens the next unanswered one, in place.
    *
-   * An effect runs after paint, so a table question rendered one frame with the summary
-   * visible before its speak screen suppressed it - a visible ghost of "STILL NEEDED (6)"
-   * flashing under the mic. Deriving it here means the correct value is on screen from
-   * the very first frame. Table questions open focused (they start on the speak screen);
-   * everything else opens with the summary available.
+   * An effect rather than a callback so it fires however the answer arrived: a tap, the
+   * keyboard, or a voice fill that answered six rows at once. The guard on `justOpened`
+   * is what makes a CORRECTION stay put - reopening an answered card sets it, so the
+   * effect declines to move on that render.
    */
-  if (focusStepId.current !== currentStepId) {
-    focusStepId.current = currentStepId;
-    setFocusMode(step?.kind === "table");
-  }
-
+  /**
+   * What to announce after a card opens by itself.
+   *
+   * Focus deliberately does NOT move on a tap: yanking a screen reader's cursor because
+   * someone answered a question is worse than leaving it alone. But something has to say
+   * that a new question appeared, or a screen-reader user taps an answer and the form goes
+   * silent while the next question quietly renders below them. A polite live region is the
+   * right tool: it waits for a gap in speech instead of interrupting.
+   *
+   * On the keyboard the opposite applies and focus does move, because pressing Enter is
+   * asking to move.
+   */
+  const [announcement, setAnnouncement] = useState("");
+  const correcting = useRef(false);
+  /**
+   * Set when an answer came from a NUMBER KEY, to stop the auto-open for that change.
+   *
+   * Tapping option 2 and having the next card open is the accordion working. Pressing "2"
+   * and having it open is the same thing until you consider that a keyboard repeats: "2 2 2"
+   * would answer three different questions in a row, each one scrolling out from under the
+   * patient. So on the keyboard, selecting and moving on are two separate keys - which is
+   * what Enter is for.
+   */
+  const keyboardSelect = useRef(false);
   useEffect(() => {
-    setDirection(index >= prevIndex.current ? 1 : -1);
-    prevIndex.current = index;
-  }, [index]);
+    if (openQuestionId === null) return;
+    const open = visible.find((s) => s.id === openQuestionId);
+    if (open === undefined) return;
+    if (!isAnswered(open, answers, meta, explicitNone)) {
+      correcting.current = false;
+      return;
+    }
+    if (correcting.current) return;
+    if (keyboardSelect.current) {
+      keyboardSelect.current = false;
+      return;
+    }
+    const next = nextUnansweredAfter(section, open, answers, meta, explicitNone);
+    if (next !== null) {
+      openQuestion(next.id);
+      setAnnouncement(
+        t("announceOpened", lang, {
+          title: next.key === null ? ui(lang).aboutTitle : questionCopy(lang)[next.key].title,
+        }),
+      );
+      return;
+    }
+    // Nothing left in this section: say so, and name where Next goes.
+    const at = sectionIndexById(section.id);
+    const following = ALL_SECTIONS[at + 1];
+    setAnnouncement(
+      t("announceSectionDone", lang, {
+        next: following === undefined ? t("finishUp", lang) : (sectionLabel(lang)[following.id] ?? ""),
+      }),
+    );
+  }, [answers, meta, explicitNone, openQuestionId, section, visible, openQuestion, lang]);
 
-  // Scroll to top on every step change - otherwise a long grid leaves the next
-  // question's heading off-screen.
+  // Scrolling to the top on a SECTION change, not on every answer: the whole point of the
+  // accordion is that answering does not move the page under the patient.
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: "instant" });
-  }, [currentStepId]);
+    setAnnouncement("");
+  }, [currentSectionId]);
 
-  function goBack() {
-    if (index === 0 && !isReview) router.push("/");
-    else back();
+  /**
+   * Write the nth option of the open card.
+   *
+   * Only the kinds a single keystroke can answer honestly: a single or multi select, and a
+   * yes/no. A table is five rows deep and About You is a name field plus two pickers, so
+   * `optionsForStep` returns nothing for those and this is never reached with one.
+   */
+  function selectByIndex(step: typeof visible[number], i: number) {
+    const options = optionsForStep(step);
+    const option = options[i];
+    if (option === undefined || step.key === null) return;
+
+    if (step.kind === "single") {
+      patch({ [step.key]: option } as Partial<Answers>);
+      return;
+    }
+    if (step.kind === "multi") {
+      const current = answers[step.key as "family_history"];
+      patch({
+        [step.key]: toggleMulti(current, option, EXCLUSIVE_OPTIONS[step.key]),
+      } as Partial<Answers>);
+      return;
+    }
+    // yesno, yesno_describe and consent: index 0 is yes, 1 is no.
+    const yes = i === 0;
+    if (step.key === "past_treatment_side_effects") {
+      patch({
+        past_treatment_side_effects: yes,
+        // "No" must clear the description, or validate.ts rejects the output.
+        past_treatment_describe: yes ? answers.past_treatment_describe : null,
+      });
+      return;
+    }
+    patch({ [step.key]: yes } as Partial<Answers>);
   }
 
+  /**
+   * The keyboard, listened for once at page level rather than per card.
+   *
+   * A keystroke should work wherever focus happens to be inside the section, and the rules
+   * it obeys live in lib/keymap.ts so they can be tested without a DOM. The one rule worth
+   * repeating here: a number selects and never advances.
+   */
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const el = document.activeElement;
+      const typing = el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement;
+      const open = visible.find((q) => q.id === openQuestionId) ?? null;
+      const action = keyAction(e, {
+        optionCount: open === null ? 0 : optionCountForStep(open),
+        openAnswered: open !== null && isAnswered(open, answers, meta, explicitNone),
+        typing,
+      });
+      if (action === null) return;
+      e.preventDefault();
+
+      switch (action.t) {
+        case "select":
+          if (open !== null) {
+            keyboardSelect.current = true;
+            selectByIndex(open, action.index);
+          }
+          return;
+        case "nextQuestion": {
+          if (open === null) return;
+          const target = nextUnansweredAfter(section, open, answers, meta, explicitNone);
+          // Nothing left to open: put focus where the patient is going instead.
+          if (target === null) {
+            document.querySelector<HTMLButtonElement>("footer button:last-of-type")?.focus();
+            return;
+          }
+          correcting.current = false;
+          openQuestion(target.id);
+          return;
+        }
+        case "nextSection":
+          if (check.complete) nextSection();
+          return;
+        case "moveUp":
+        case "moveDown": {
+          if (open === null) return;
+          const target = neighbourQuestion(section, open, meta, action.t === "moveDown" ? 1 : -1);
+          if (target === null) return;
+          // Moving by keyboard onto an answered card is a correction, so it must not then
+          // bounce forward on its own.
+          correcting.current = isAnswered(target, answers, meta, explicitNone);
+          openQuestion(target.id);
+          return;
+        }
+        case "close":
+          openQuestion(null);
+          return;
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [visible, openQuestionId, answers, meta, explicitNone, section, check.complete]);
+
   /*
-    Rendered on both branches (wizard and review) and at page level, outside StepShell:
-    a fixed overlay inside framer-motion's animating question wrapper positions itself
-    against that transform instead of the viewport.
+    Per-section progress for the rail. Computed here rather than inside the rail so the rail
+    stays a presentation component, and memoised on the three inputs that can change it.
+
+    It sits ABOVE the review early-return on purpose: a hook after that branch runs on the
+    section screens and not on the review screen, which is "Rendered fewer hooks than
+    expected" - the browser smoke caught exactly that when this was two lines lower.
+  */
+  const railProgress = useMemo(() => {
+    const out: Record<string, { answered: number; visible: number }> = {};
+    for (const s of ALL_SECTIONS) {
+      out[s.id] = {
+        answered: answeredCount(s, answers, meta, explicitNone),
+        visible: visibleQuestions(s, meta).length,
+      };
+    }
+    return out;
+  }, [answers, meta, explicitNone]);
+
+  /*
+    Rendered on both branches and at page level: a fixed overlay inside an animating
+    wrapper positions itself against that transform rather than the viewport.
   */
   const comfortDialog =
     offerComfort && meta.patient_age !== null ? (
@@ -166,77 +313,83 @@ export default function IntakePage() {
   if (isReview) {
     return (
       <>
-      {comfortDialog}
-      <ReviewScreen
-        answers={answers}
-        meta={meta}
-        explicitNone={explicitNone}
-        onJump={(id) => goTo(id)}
-        onRestart={() => {
-          reset();
-          router.push("/");
-        }}
-      />
+        {comfortDialog}
+        <ReviewScreen
+          answers={answers}
+          meta={meta}
+          explicitNone={explicitNone}
+          onJump={(id) => goToSection(id)}
+          onRestart={() => {
+            reset();
+            router.push("/");
+          }}
+        />
       </>
     );
   }
 
-  if (!step) return null;
-
-  const copy = step.key ? COPY_L[step.key] : null;
-  const title = step.kind === "about" ? UI.aboutTitle : (copy?.title ?? step.key ?? "");
-  // A hint that knows who is reading it, where that changes what the question means.
-  const extra = step.key ? personalNote(step.key, meta, lang) : undefined;
-  const hint = [copy?.hint, extra].filter(Boolean).join(" ") || undefined;
-  // One call decides both whether Next is enabled and what the patient still owes us.
-  const check = validateStep(step, answers, meta, explicitNone, lang);
+  const nextTitle =
+    index === ALL_SECTIONS.length - 1
+      ? null
+      : (sectionLabel(lang)[ALL_SECTIONS[index + 1]!.id] ?? null);
 
   return (
     <>
-    {comfortDialog}
-    <StepShell
-      stepId={step.id}
-      sectionTitle={sectionLabel(lang)[step.sectionId] ?? step.sectionTitle}
-      questionNumber={step.n}
-      title={title}
-      hint={hint}
-      speech={questionSpeech(step, meta, lang)}
-      // Only on question 1: a greeting that repeats on every screen stops being one.
-      welcome={step.n === 1 ? (welcomeLine(meta, lang) ?? undefined) : undefined}
-      personal={personalSummary(meta, lang)}
-      comfort={comfort}
-      onComfort={setComfort}
-      lang={lang}
-      onLang={setLang}
-      // Already been past this step once, so the outstanding list is a reminder rather
-      // than an accusation and can show immediately.
-      revisited={touched[step.id] === true}
-      index={index}
-      total={steps.length}
-      direction={direction}
-      canGoNext={check.complete}
-      outstanding={focusMode ? [] : check.outstanding}
-      onNext={next}
-      onBack={goBack}
-      footerNote={step.kind === "multi" ? UI.multiHint : undefined}
-    >
-      <QuestionBody
-        step={step}
-        answers={answers}
-        meta={meta}
+      {comfortDialog}
+      <SectionShell
+        section={section}
+        index={index}
+        total={ALL_SECTIONS.length}
+        answered={answered}
+        visible={visible.length}
+        nextTitle={nextTitle}
+        outstanding={check.missing.map((s) => shortLabel(s, lang))}
+        canGoNext={check.complete}
+        revisited={touched[section.id] === true}
         lang={lang}
         comfort={comfort}
-        comfortAsked={comfortAsked}
-        explicitNone={explicitNone}
-        patch={patch}
-        setSex={setSex}
-        setAge={setAge}
-        setFirstName={setFirstName}
-        chooseNone={chooseNone}
-        setFocusMode={setFocusMode}
-      />
-    </StepShell>
+        onComfort={setComfort}
+        onLang={setLang}
+        onNext={nextSection}
+        onBack={() => {
+          if (index === 0) router.push("/");
+          else prevSection();
+        }}
+        announcement={announcement}
+        onJumpSection={goToSection}
+        allSections={ALL_SECTIONS}
+        railProgress={railProgress}
+      >
+        {visible.map((step, i) => {
+          const done = isAnswered(step, answers, meta, explicitNone);
+          return (
+          <QuestionCard
+            key={step.id}
+            step={step}
+            index={i + 1}
+            answered={done}
+            state={step.id === openQuestionId ? "open" : done ? "answered" : "waiting"}
+            answers={answers}
+            meta={meta}
+            lang={lang}
+            comfort={comfort}
+            comfortAsked={comfortAsked}
+            explicitNone={explicitNone}
+            patch={patch}
+            setSex={setSex}
+            setAge={setAge}
+            setFirstName={setFirstName}
+            chooseNone={chooseNone}
+            onOpen={() => {
+              // Opening an ALREADY answered card is a correction: mark it so the
+              // auto-open effect leaves the patient where they are.
+              correcting.current = done;
+              openQuestion(step.id);
+            }}
+          />
+          );
+        })}
+      </SectionShell>
     </>
   );
 }
-

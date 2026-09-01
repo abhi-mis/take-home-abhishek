@@ -11,7 +11,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "eval": "tsx --env-file=.env scripts/eval-fixtures.ts",
-    "smoke": "node scripts/smoke-browser.mjs"
+    "smoke": "node scripts/smoke-browser.mjs",
+    "voice": "node scripts/voice-e2e.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.122.0",

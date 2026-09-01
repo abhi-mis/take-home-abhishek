@@ -44,7 +44,8 @@ export function ReviewScreen({
   answers: Answers;
   meta: Meta;
   explicitNone: Record<string, true>;
-  onJump: (stepId: string) => void;
+  /** Takes a SECTION id. Only the declined-consent path uses it; rows open a dialog. */
+  onJump: (sectionId: string) => void;
   onRestart: () => void;
 }) {
   const [showJson, setShowJson] = useState(false);
@@ -80,7 +81,15 @@ export function ReviewScreen({
   if (answers.consent === false) return <Declined lang={lang} onJump={onJump} />;
 
   return (
-    <div className="mx-auto w-full max-w-md px-5 pb-16 pt-8">
+    /*
+      Wider on desktop, and only here.
+
+      The question screens keep a 560px column because a question is prose and prose wants a
+      measure. This screen is a LIST of seventeen short rows, which is the one place the
+      extra width genuinely helps: at 448px it scrolled for about three screens on a 900px
+      display with a thousand pixels going spare beside it.
+    */
+    <div className="mx-auto w-full max-w-md px-5 pb-16 pt-8 lg:max-w-4xl lg:px-8">
       <div className="mb-5 flex justify-end">
         <ComfortToggle comfort={comfort} onChange={setComfort} lang={lang} />
         <LangToggle lang={lang} onChange={setLang} />
@@ -136,7 +145,11 @@ export function ReviewScreen({
         </div>
       ) : null}
 
-      <div className="mt-6 flex flex-col gap-5">
+      {/*
+        Two columns from lg up. `items-start` because the sections have different heights and
+        stretching them to match would put a lot of empty card under the short ones.
+      */}
+      <div className="mt-6 flex flex-col gap-5 lg:grid lg:grid-cols-2 lg:items-start lg:gap-x-6">
         {/*
           About You, first, because that is where it was answered - and because
           `patient_sex` and `patient_age` are in the downloaded JSON, so leaving them off
@@ -218,7 +231,7 @@ export function ReviewScreen({
         ))}
       </div>
 
-      <div className="mt-7 flex flex-col gap-3">
+      <div className="mt-7 flex flex-col gap-3 lg:mx-auto lg:max-w-md">
         <Button
           size="lg"
           disabled={!result.valid}
@@ -375,7 +388,8 @@ function Declined({ lang, onJump }: { lang: Lang; onJump: (id: string) => void }
       </h1>
       <p className="mt-3 text-[15px] leading-relaxed text-muted">{t("declinedBody", lang)}</p>
       <p className="mt-3 text-[13px] leading-relaxed text-muted">{t("declinedNote", lang)}</p>
-      <Button className="mt-7 w-full" size="lg" variant="secondary" onClick={() => onJump("consent")}>
+      <Button className="mt-7 w-full" size="lg" variant="secondary" // Section E, not the question: onJump addresses sections now.
+        onClick={() => onJump("E")}>
         {t("declinedBack", lang)}
       </Button>
     </div>

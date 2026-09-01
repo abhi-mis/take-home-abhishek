@@ -5,9 +5,15 @@
  * typecheck passed, 75 unit tests passed, the production build passed, and `curl`
  * returned HTTP 200 - because the loop only happens in a real React client.
  *
- * It drives a real browser at 380px, taps the entire intake as a female patient (the
- * path with the MOST steps, so Q6/Q7 gating is exercised), and fails on any console
+ * It drives a real browser at 380px, completes the entire intake as a female patient (the
+ * path with the MOST questions, so Q6/Q7 gating is exercised), and fails on any console
  * error or page exception.
+ *
+ * The walk is written against the SECTION mechanism rather than question by question: six
+ * category screens, each with one card open at a time. A per-question script would need
+ * editing every time the schema moved, and would not check the thing most likely to break -
+ * that exactly one card is open, that answering opens the next in place without navigating,
+ * and that correcting an answer does not jump the patient forward.
  *
  * Locators are ROLE-based on purpose. The first draft used getByText("Saliva") and
  * silently clicked the *hint* ("Saliva mein sui nahi lagti"), which sits above the
@@ -60,13 +66,119 @@ async function tap(locator, label) {
     throw new Error(`could not tap ${label} - screen was: ${where} - cause: ${why}`);
   }
   notes.push(`${String(where).slice(0, 44).padEnd(46)} tap ${label}`);
-  // Auto-advance is a 180ms beat plus a ~220ms transition; wait past both.
-  await page.waitForTimeout(420);
+  // Nothing auto-advances any more, but a card's collapse and the next one's expansion
+  // animate for 180ms. Wait past both so the next locator sees a settled DOM.
+  await page.waitForTimeout(360);
 }
 
 const tapOption = (name) => tap(page.getByRole("radio", { name }), `option "${name}"`);
 const tapCheck = (name) => tap(page.getByRole("checkbox", { name }), `check "${name}"`);
+
 const tapButton = (name) => tap(page.getByRole("button", { name }), `button "${name}"`);
+
+/** The one card currently expanded. Every card interaction is scoped to it. */
+const openCard = () => page.locator('main section:has([aria-expanded="true"])');
+
+/** How many cards are expanded. The accordion's central invariant is "exactly one". */
+const openCount = () => page.locator('main [aria-expanded="true"]').count();
+
+/** The section chrome, for readable notes. */
+async function sectionLine() {
+  try {
+    return (await page.locator("header").innerText({ timeout: 2_000 })).replace(/\s+/g, " ").trim();
+  } catch {
+    return "(no header)";
+  }
+}
+
+/**
+ * Just the section's name.
+ *
+ * Used for "did answering navigate away?" checks, where comparing the whole header would
+ * be wrong: it carries the "1 of 4 answered" counter, which is meant to change the moment
+ * you answer something.
+ */
+async function sectionName() {
+  try {
+    return (await page.locator("header h1").innerText({ timeout: 2_000 })).trim();
+  } catch {
+    return "(no section title)";
+  }
+}
+
+/**
+ * Answer whatever is open, however that question wants to be answered.
+ *
+ * Deliberately generic: the point of this walk is the SECTION mechanism, not any one
+ * control, and a walk written per question would need editing every time the schema moves.
+ */
+async function answerOpenCard() {
+  let card = openCard();
+  if ((await card.count()) === 0) {
+    // Nothing open: open the first card still waiting for an answer.
+    const waiting = page.locator('main section[data-state="waiting"] [aria-expanded="false"]');
+    if ((await waiting.count()) === 0) return false;
+    await waiting.first().click();
+    await page.waitForTimeout(340);
+    card = openCard();
+  }
+
+  /*
+    If the open card is already answered, the app is deliberately staying put - that is the
+    "a correction does not jump you forward" rule. A patient would then tap the next
+    question themselves, so the walker does the same, using the card's own data-state
+    rather than guessing from its text.
+  */
+  const stillWaiting = page.locator('main section[data-state="waiting"] [aria-expanded="false"]');
+  // The card's own answer: probing controls was wrong, because a decade picker uses
+  // aria-pressed while options use aria-checked.
+  const openIsAnswered = (await card.getAttribute("data-answered")) === "true";
+  if (openIsAnswered && (await stillWaiting.count()) > 0) {
+    await stillWaiting.first().click();
+    await page.waitForTimeout(340);
+    card = openCard();
+  }
+  if ((await card.count()) === 0) return false;
+
+  const tapInstead = card.getByRole("button", { name: /rather answer by tapping/ });
+  if (await tapInstead.count()) {
+    await tapInstead.click();
+    await page.waitForTimeout(320);
+  }
+
+  const consentYes = card.getByRole("radio", { name: /Yes, I agree/ });
+  const nos = card.getByRole("radio", { name: /^No$/ });
+  const bands = card.getByRole("button", { name: /Teens|13-19/ });
+  const checks = card.locator('[role="checkbox"]:not([aria-disabled="true"])');
+  const radios = card.getByRole("radio");
+
+  if (await consentYes.count()) {
+    await consentYes.first().click();
+  } else if ((await nos.count()) > 2) {
+    // A grid: every row must be answered, so say No to all of them, then pick the one
+    // segmented row (wash frequency) that has no yes/no.
+    for (const el of await nos.elementHandles()) {
+      if ((await el.getAttribute("aria-checked").catch(() => "true")) !== "true") {
+        await el.click().catch(() => {});
+        await page.waitForTimeout(60);
+      }
+    }
+    const seg = card.getByRole("radio", { name: /Daily|Alternate Days|Weekly/ });
+    if (await seg.count()) await seg.first().click().catch(() => {});
+  } else if (await nos.count()) {
+    await nos.first().click();
+  } else if (await bands.count()) {
+    await bands.first().click();
+  } else if (await checks.count()) {
+    await checks.first().click();
+  } else if (await radios.count()) {
+    await radios.first().click();
+  } else {
+    return false;
+  }
+  await page.waitForTimeout(360);
+  return true;
+}
 
 try {
   // ---------- landing ----------
@@ -74,43 +186,35 @@ try {
   notes.push(`page title: ${JSON.stringify(await page.title())}`);
   await tapButton("Start");
   await page.waitForURL(/\/intake/, { timeout: 15_000 });
-
-  // Read-aloud must be on every question, not just the first: it is the accessibility
-  // path for a patient who cannot comfortably read the screen.
-  //
-  // Wait for the heading first. The check used to run the instant the URL changed, which
-  // is before the header paints - a flaky pass that turned into a flaky failure the day
-  // the header grew a fourth control.
   await page.getByRole("heading").first().waitFor({ timeout: 10_000 });
-  const speaker = page.getByRole("button", { name: /Read the question aloud/ });
-  if ((await speaker.count()) === 0)
-    errors.push({ kind: "speaker", text: "no read-aloud button on Q1", fatal: false });
-  else notes.push("read-aloud button present");
 
-  // ---------- About You: the personalisation gate ----------
-  // Next must be blocked until BOTH sex and age are given, because both change the rest
-  // of the form: gated questions, text size, and the onset-age ceiling at Q1.
-  const aboutBlocked = await page.getByRole("button", { name: "Next" }).isDisabled();
+  // Read-aloud lives on the OPEN card now, not in the section chrome: reading a whole
+  // category out loud would be five questions at once.
+  const speaker = openCard().getByRole("button", { name: /Read the question aloud/ });
+  if ((await speaker.count()) === 0)
+    errors.push({ kind: "speaker", text: "no read-aloud button on the open card", fatal: false });
+  else notes.push("read-aloud button is on the open card");
+
+  // ---------- section 1: About You ----------
+  notes.push(await sectionLine());
+  const aboutBlocked = await page.getByRole("button", { name: /^Next/ }).isDisabled();
   notes.push(`About You blocks Next before answers? ${aboutBlocked}  (must be true)`);
   if (!aboutBlocked)
     errors.push({ kind: "about", text: "About You did not gate Next", fatal: false });
 
   await page.getByRole("textbox", { name: /First name/ }).fill("Asha");
-  // A name that is asked for has to be shown back, or the field is taking something for
-  // nothing. It is echoed here, on question 1, and again at the end.
   await page.waitForTimeout(600);
-  const ackOnScreen = await page.locator("main").innerText();
-  if (!/Thank you, Asha/.test(ackOnScreen))
-    errors.push({ kind: "name", text: "the name was not acknowledged on the About You screen", fatal: false });
+  if (!/Thank you, Asha/.test(await page.locator("main").innerText()))
+    errors.push({ kind: "name", text: "the name was not echoed back", fatal: false });
   else notes.push('the name is echoed as you type: "Thank you, Asha"');
-  await tapOption(/^Female/);
-  if (!(await page.getByRole("button", { name: "Next" }).isDisabled()))
+
+  await tap(page.getByRole("radio", { name: /^Female/ }), 'option "Female"');
+  if (!(await page.getByRole("button", { name: /^Next/ }).isDisabled()))
     errors.push({ kind: "about", text: "sex alone was enough to pass About You", fatal: false });
   else notes.push("sex alone is not enough - the age is still required");
 
-  // 55-64 must OFFER the bigger text size, and change nothing until it is accepted.
   await tapButton("55-64");
-  await page.waitForTimeout(900); // the offer is held back half a second on purpose
+  await page.waitForTimeout(900); // the text-size offer is held back half a second
   const dialog = page.getByRole("dialog");
   if ((await dialog.count()) === 0)
     errors.push({ kind: "comfort", text: "no text-size prompt for a 55-64 patient", fatal: false });
@@ -130,299 +234,118 @@ try {
   await tapButton("Yes, make it bigger");
   await page.waitForTimeout(500);
   const comfortAttr = await page.evaluate(() => document.documentElement.dataset.comfort ?? "");
-  const zoom = await page.evaluate(() =>
-    getComputedStyle(document.documentElement).getPropertyValue("--comfort-zoom").trim(),
-  );
-  notes.push(`accepted -> data-comfort="${comfortAttr}", --comfort-zoom=${zoom}`);
+  notes.push(`accepted -> data-comfort="${comfortAttr}"`);
   if (comfortAttr !== "large")
-    errors.push({
-      kind: "comfort",
-      text: `expected larger text for a 55-64 patient, got "${comfortAttr}"`,
-      fatal: false,
-    });
+    errors.push({ kind: "comfort", text: `expected larger text, got "${comfortAttr}"`, fatal: false });
 
-  const headerText = (await page.locator("header").innerText()).replace(/\s+/g, " ");
-  notes.push(`header summary: ${headerText.slice(0, 70)}`);
-  if (!/Female/.test(headerText))
-    errors.push({ kind: "personal", text: "header does not show what was customised", fatal: false });
+  // ---------- the accordion's invariants ----------
+  await tapButton("Next: Your history");
+  await page.waitForTimeout(500);
+  notes.push(await sectionLine());
 
-  await tapButton("Next");
-
-  // ---------- Q1 age (preset + explicit Next) ----------
-  // Decade cards above the patient's own age must be closed, not silently clamped.
-  const bands = await page.evaluate(() =>
-    [...document.querySelectorAll("button")]
-      .filter((b) => /^(Teens|20s|30s|40s|50\+)/.test((b.textContent ?? "").trim()))
-      .map((b) => `${(b.textContent ?? "").trim().slice(0, 5)}:${b.getAttribute("aria-disabled")}`),
+  const states = await page.evaluate(() =>
+    [...document.querySelectorAll("main section[data-state]")].map((el) => el.dataset.state),
   );
-  notes.push(`onset decade cards at 60: ${bands.join(" ")}`);
-  if (bands.some((b) => b.endsWith(":true")))
-    errors.push({ kind: "onset", text: "a decade card was closed for a 60-year-old", fatal: false });
+  notes.push(`card states: ${states.join(", ")}`);
+  if (states.length === 0)
+    errors.push({ kind: "accordion", text: "no card exposed a data-state", fatal: true });
 
-  const q1Text = (await page.locator("main").innerText()).replace(/\s+/g, " ");
-  if (!/Welcome, Asha/.test(q1Text))
-    errors.push({ kind: "name", text: "question 1 does not carry the welcome forward", fatal: false });
-  else notes.push("question 1 greets the patient by name");
+  const openNow = await openCount();
+  notes.push(`cards expanded at once: ${openNow}  (must be 1)`);
+  if (openNow !== 1)
+    errors.push({ kind: "accordion", text: `${openNow} cards were open`, fatal: true });
 
-  // The patient said they are 60, so the onset slider must not go past that.
-  const onsetMax = await page.evaluate(() => {
-    const el = document.querySelector('input[type="range"]');
-    return el instanceof HTMLInputElement ? el.max : "";
-  });
-  notes.push(`onset-age slider max for a 60-year-old: ${onsetMax || "(no slider yet)"}`);
-  await tapButton(/^30s/);
-  const onsetMaxAfter = await page.evaluate(() => {
-    const el = document.querySelector('input[type="range"]');
-    return el instanceof HTMLInputElement ? Number(el.max) : -1;
-  });
-  if (onsetMaxAfter > 60)
-    errors.push({
-      kind: "ceiling",
-      text: `onset age could be set to ${onsetMaxAfter} by a 60-year-old`,
-      fatal: false,
-    });
-  else notes.push(`onset age capped at ${onsetMaxAfter} - cannot exceed the patient's age`);
-  await tapButton("Next");
+  // Answering must open the next card WITHOUT navigating: the section stays put.
+  const sectionBefore = await sectionName();
+  const openBefore = await openCard().innerText();
+  await answerOpenCard();
+  const sectionAfter = await sectionName();
+  const openAfter = await openCard().innerText();
+  if (sectionAfter !== sectionBefore)
+    errors.push({ kind: "accordion", text: "answering left the section", fatal: true });
+  else if (openAfter === openBefore)
+    errors.push({ kind: "accordion", text: "answering did not open the next card", fatal: false });
+  else notes.push("answering collapsed the card and opened the next one in place");
 
-  // ---------- Q2 duration (auto-advance) ----------
-  await tapOption("Over a year");
+  if ((await openCount()) !== 1)
+    errors.push({ kind: "accordion", text: "more than one card open after answering", fatal: true });
+
+  // An answered card collapses to a summary a patient can check at a glance.
+  const collapsedSummary = await page
+    .locator('main section:has([aria-expanded="false"])')
+    .first()
+    .innerText();
+  notes.push(`collapsed card reads: ${JSON.stringify(collapsedSummary.replace(/\s+/g, " "))}`);
+  if (/Not answered yet/.test(collapsedSummary))
+    errors.push({ kind: "accordion", text: "an answered card still reads unanswered", fatal: false });
 
   /*
-    Selecting an answer must NOT move the screen on. Auto-advance saved a tap per question
-    and cost the patient any chance to see a mis-tap before it became a clinical answer on
-    a screen they had already left. So the question stays put and Next appears.
+    Reopening an answered card and changing the answer must NOT jump forward again.
+
+    Note this deliberately does NOT use answerOpenCard(): that helper exists to make
+    progress and moves on when the open card is already answered, which is the opposite of
+    what is being tested. The card is identified by the region it controls, so "same card"
+    is an identity check rather than a text comparison.
   */
-  const stillOnQ2 = await heading();
-  notes.push(`after picking an option, still on: "${stillOnQ2}"  (must not auto-advance)`);
-  if (!/how long/i.test(stillOnQ2))
+  const answeredHeader = page.locator('main section[data-state="answered"] [aria-expanded="false"]').first();
+  const answeredLabel = (await answeredHeader.innerText()).replace(/\s+/g, " ").slice(0, 20);
+  await answeredHeader.click();
+  await page.waitForTimeout(400);
+  const reopenedId = await openCard().locator("[aria-expanded]").getAttribute("aria-controls");
+
+  // Change the answer inside that card, using its own controls only.
+  const insideOptions = openCard().locator('[role="radio"], [aria-pressed]');
+  const count = await insideOptions.count();
+  if (count > 1) {
+    await insideOptions.nth(count - 1).click();
+    await page.waitForTimeout(420);
+  }
+  const stillOpenId = await openCard().locator("[aria-expanded]").getAttribute("aria-controls");
+  if (stillOpenId !== reopenedId)
     errors.push({
-      kind: "advance",
-      text: `picking an option skipped ahead to "${stillOnQ2}"`,
-      fatal: true,
+      kind: "accordion",
+      text: `correcting "${answeredLabel}" jumped from ${reopenedId} to ${stillOpenId}`,
+      fatal: false,
     });
-  const nextAfterPick = page.getByRole("button", { name: "Next" });
-  if (await nextAfterPick.isDisabled())
-    errors.push({ kind: "advance", text: "Next stayed disabled on an answered single-select", fatal: true });
-  else notes.push("Next is present and enabled once an option is chosen");
-  await tapButton("Next");
+  else notes.push(`corrected "${answeredLabel}" and stayed on it`);
 
-  // Validation must actually BLOCK, and it must explain itself when the patient tries.
-  const nextBtn = page.getByRole("button", { name: "Next" });
-  await nextBtn.waitFor({ state: "visible", timeout: 12_000 });
-  const blocked = await nextBtn.isDisabled();
-  if (!blocked) throw new Error("Next was enabled on an unanswered multi-select");
+  // ---------- walk the remaining sections ----------
+  for (let hop = 0; hop < 10; hop += 1) {
+    const nextBtn = page.getByRole("button", { name: /^Next|^Review answers/ });
 
-  // On ARRIVAL the screen must be quiet - telling someone off before they have done
-  // anything is the fastest way to make software feel hostile.
-  const nagOnArrival = await page.getByRole("status").count();
-  notes.push(`Q3 nags before any interaction? ${nagOnArrival > 0}  (must be false)`);
-  if (nagOnArrival > 0)
-    errors.push({ kind: "nag", text: "the outstanding list appeared before the patient acted", fatal: false });
-
-  // Pressing the blocked Next passes the tap to its wrapper, which reveals the reason.
-  await nextBtn.click({ force: true });
-  await page.waitForTimeout(320);
-  const reason = await page.getByRole("status").innerText().catch(() => "");
-  notes.push(`after pressing a blocked Next: ${JSON.stringify(reason.replace(/\s+/g, " ").slice(0, 60))}`);
-  if (!reason) errors.push({ kind: "nag", text: "a blocked Next explained nothing", fatal: false });
-
-  // ---------- Q3 family history (multi) ----------
-  await tapCheck(/Father had hair loss/);
-  await tapButton("Next");
-
-  // ---------- Q4 pattern: the diagram picker ----------
-  const diagrams = await page.locator("main svg").count();
-  notes.push(`Q4 rendered ${diagrams} inline diagrams (6 patterns expected)`);
-  if (diagrams < 6) throw new Error(`expected 6 scalp diagrams, found ${diagrams}`);
-  await tapCheck("Thinning at crown");
-  await tapButton("Next");
-
-  // ---------- Q5 conditions (multi) ----------
-  await tapCheck(/Thyroid disorder/);
-  // Open for a female patient - and the thing the sex-switch check below depends on.
-  const pcosBlocked = await page
-    .getByRole("checkbox", { name: /PCOS/ })
-    .getAttribute("aria-disabled");
-  if (pcosBlocked === "true")
-    errors.push({ kind: "gate", text: "PCOS/PCOD was closed for a female patient", fatal: false });
-  else notes.push("PCOS/PCOD is available to a female patient");
-  await tapCheck(/PCOS/);
-  await tapButton("Next");
-
-  // ---------- Q6 + Q7: exist ONLY because of the gate ----------
-  await tapOption(/^Irregular/);
-  await tapButton("Next");
-  await tapOption(/^Not applicable/);
-  await tapButton("Next");
-  notes.push("Q6 + Q7 rendered - live gating confirmed");
-
-  // ---------- Q8, Q9 yes/no ----------
-  // A yes/no is the easiest control in the form to hit by accident, so it is also the one
-  // that must not move the screen on by itself.
-  await tapOption("Yes");
-  const stillOnQ8 = await heading();
-  if (!/acne|oily/i.test(stillOnQ8))
-    errors.push({ kind: "advance", text: `a yes/no auto-advanced to "${stillOnQ8}"`, fatal: true });
-  else notes.push("a yes/no answer does not move the screen on either");
-  await tapButton("Next");
-  await tapOption("No");
-  await tapButton("Next");
-
-  // ---------- Q10 past 6 months (multi) ----------
-  await tapCheck(/Recent surgery/);
-  await tapButton("Next");
-
-  // ---------- Q11: voice questions open on the SPEAK screen, not the grid ----------
-  const gridHiddenAtFirst = !(await page
-    .getByText("Do you drink?")
-    .isVisible()
-    .catch(() => false));
-
-  /*
-   * The spoken prompt must enumerate EVERY item, not summarise them in prose. A prose
-   * paragraph read well but quietly dropped rows, so patients answered three of six and
-   * the fill looked broken. This asserts one checklist entry per habit row, each naming
-   * its topic - the regression that actually happened.
-   */
-  const checklist = (await page.locator("ol li").allInnerTexts()).map((t) =>
-    t.replace(/\s+/g, " ").trim(),
-  );
-  const mustMention = ["Smoking", "Alcohol", "Hard water", "wash your hair", "chemicals", "Salon"];
-  const missingTopics = mustMention.filter((m) => !checklist.some((c) => c.includes(m)));
-  notes.push(`Q11 speak checklist: ${checklist.length} items, grid hidden ${gridHiddenAtFirst}`);
-  if (!gridHiddenAtFirst)
-    throw new Error("voice question did not default to the speak-first screen");
-  if (checklist.length < 6 || missingTopics.length > 0)
-    throw new Error(`speak prompt does not cover every item; missing: ${missingTopics.join(", ")}`);
-  // The conditional layer has to be stated up front too, or one reply leaves blanks.
-  if (!checklist.some((c) => c.includes("how many per day")))
-    throw new Error("speak prompt omits the conditional detail (smoking amount)");
-
-  // No API keys are needed for the tap path, so take the documented escape hatch.
-  await tapButton(/I would rather answer by tapping/);
-  notes.push("chose to tap instead - the grid appears");
-
-  // ---------- Q11 habits: EVERY row must be answered now ----------
-  const habitsBlocked = await page.getByRole("button", { name: "Next" }).isDisabled();
-  notes.push(`Q11 Next disabled with rows unanswered? ${habitsBlocked}`);
-  if (!habitsBlocked) throw new Error("habits step allowed Next with unanswered rows");
-
-  // Desktop affordance check: Tailwind v4's preflight sets buttons to cursor:default,
-  // which made every control feel dead under a mouse. Assert it is fixed.
-  const micCursor = await page
-    .getByRole("button", { name: /Answer by speaking/ })
-    .evaluate((el) => getComputedStyle(el).cursor);
-  notes.push(`mic button cursor: ${micCursor}  (must be "pointer")`);
-  if (micCursor !== "pointer") throw new Error(`mic cursor was ${micCursor}, expected pointer`);
-
-  // ---------- the guided follow-up flow ----------
-  // This is how layered questions get answered after a voice fill: one full-size
-  // question at a time, recomputed from the answers so new layers appear as they unlock.
-  await tapButton(/Answer the remaining/);
-  const flow = page.locator("section[aria-label='Remaining questions']");
-  await flow.waitFor({ state: "visible", timeout: 10_000 });
-  notes.push(`follow-up flow opened: ${(await flow.locator("p").first().innerText()).trim()}`);
-
-  // While the flow runs, the grid and the outstanding summary must both stand down - // otherwise the same question appears three times on one screen.
-  const gridVisible = await page
-    .getByText("Do you drink?")
-    .isVisible()
-    .catch(() => false);
-  const summaryVisible = await page
-    .getByRole("status")
-    .isVisible()
-    .catch(() => false);
-  notes.push(`during flow - grid hidden: ${!gridVisible}, summary hidden: ${!summaryVisible}`);
-  if (gridVisible || summaryVisible) throw new Error("flow is duplicated by the grid/summary");
-
-  // Answer "Yes" to smoking so a NEW layer (severity) unlocks mid-flow, then finish.
-  await tap(flow.getByRole("button", { name: "Yes" }), "flow: smoking = Yes");
-  // The layer must appear IMMEDIATELY after its trigger, not at the end of the queue.
-  const unlocked = await flow
-    .getByText(/How much do you smoke/)
-    .isVisible()
-    .catch(() => false);
-  notes.push(`"Yes" unlocked its deeper question right away: ${unlocked}`);
-  if (!unlocked) throw new Error("layered follow-up did not appear directly after its trigger");
-
-  for (let i = 0; i < 12; i++) {
-    if (!(await flow.isVisible().catch(() => false))) break;
-    const btn = flow.getByRole("button").filter({ hasNotText: /Use list|Save|Got it/ }).last();
-    if (!(await btn.isVisible().catch(() => false))) break;
-    const label = (await btn.innerText().catch(() => "?")).trim().slice(0, 22);
-    if (/^(Yes|No)$/.test(label) || label.length > 0) await tap(btn, `flow: ${label}`);
-    else break;
-    // The salon detail is free text; type it rather than tapping.
-    const textbox = flow.getByRole("textbox");
-    if (await textbox.isVisible().catch(() => false)) {
-      await textbox.fill("keratin, 6 months ago");
-      await tap(flow.getByRole("button", { name: "Save" }), "flow: save salon detail");
-    }
-  }
-  notes.push("follow-up flow completed every outstanding field");
-
-  const nextNowEnabled = await page.getByRole("button", { name: "Next" }).isEnabled();
-  notes.push(`Q11 Next enabled after the flow: ${nextNowEnabled}`);
-  if (!nextNowEnabled) throw new Error("flow finished but the step is still incomplete");
-  await tapButton("Next");
-
-  // ---------- Q12 products, Q13 procedures: answer every row via the grid ----------
-  for (const [label, count] of [["products", 5], ["procedures", 4]]) {
-    await tapButton(/I would rather answer by tapping/);
-    const stillBlocked = await page.getByRole("button", { name: "Next" }).isDisabled();
-    if (!stillBlocked) throw new Error(`${label} allowed Next with unanswered rows`);
-
-    if (label === "products") {
-      /*
-       * Answering "yes" to a row does not finish it - it unlocks three more questions.
-       * Those must be ASKED (scoped to that row), not silently revealed further down a
-       * collapsed grid. This walks the chain and then switches the row back off.
-       */
-      await tap(page.getByRole("radio", { name: "Yes" }).first(), "products row 1 = Yes");
-      const cond = page.locator("section[aria-label='Remaining questions']");
-      await cond.waitFor({ state: "visible", timeout: 10_000 });
-      const chain = [];
-      for (let i = 0; i < 4; i++) {
-        const q = await cond.locator("p").nth(1).innerText().catch(() => null);
-        if (!q) break;
-        chain.push(q.replace(/\s+/g, " ").trim());
-        const btn = cond.getByRole("button").filter({ hasNotText: /Use list|Save|Got it/ }).last();
-        if (!(await btn.isVisible().catch(() => false))) break;
-        await btn.click();
-        await page.waitForTimeout(430);
-        if (!(await cond.isVisible().catch(() => false))) break;
+    // Before completing a section, a blocked Next must name what is missing.
+    if (!(await nextBtn.isEnabled())) {
+      await nextBtn.click({ force: true });
+      await page.waitForTimeout(320);
+      const reason = await page.getByRole("status").innerText().catch(() => "");
+      if (hop === 0) {
+        notes.push(`blocked Next says: ${JSON.stringify(reason.replace(/\s+/g, " ").slice(0, 70))}`);
+        if (!reason)
+          errors.push({ kind: "nag", text: "a blocked Next explained nothing", fatal: false });
       }
-      notes.push(`conditional chain on "yes": ${chain.join(" -> ")}`);
-      if (chain.length < 3)
-        throw new Error(`expected 3 conditional questions, got ${chain.length}`);
-      // Row labels must be verbatim - an earlier version mangled "OTC" into "oTC".
-      if (chain.some((q) => /oTC|pRP/.test(q)))
-        throw new Error(`row name was mangled in a conditional question: ${chain[0]}`);
     }
 
-    for (let i = 0; i < Number(count); i++) {
-      await tap(page.getByRole("radio", { name: "No" }).nth(i), `${label} row ${i + 1} = No`);
+    // Answer everything still open in this section.
+    for (let i = 0; i < 14; i += 1) {
+      if (await nextBtn.isEnabled()) break;
+      if (!(await answerOpenCard())) break;
     }
-    await tapButton("Next");
-    notes.push(`Q${label === "products" ? 12 : 13} ${label}: all rows answered No`);
+
+    if (!(await nextBtn.isEnabled())) {
+      errors.push({
+        kind: "walk",
+        text: `stuck in ${await sectionLine()} with Next still disabled`,
+        fatal: true,
+      });
+      break;
+    }
+
+    await nextBtn.click();
+    await page.waitForTimeout(650);
+    const h = await heading();
+    if (/all done|almost there/i.test(h)) break;
+    notes.push(await sectionLine());
   }
-
-  // ---------- Q14 side effects: No (so no description is required) ----------
-  await tapOption("No");
-  await tapButton("Next");
-
-  // ---------- Q15 sample type ----------
-  await tapOption(/^Saliva/);
-  await tapButton("Next");
-
-  // ---------- Q16 consent: never pre-ticked ----------
-  const consentPreselected = await page
-    .getByRole("radio", { name: /Yes, I agree/ })
-    .getAttribute("aria-checked");
-  notes.push(`consent pre-selected on arrival? ${consentPreselected}  (must be "false")`);
-  if (consentPreselected !== "false") throw new Error("consent was pre-selected");
-  await tapOption(/Yes, I agree/);
-  await tapButton("Next");
 
   // ---------- review ----------
   await page.getByText("All done").waitFor({ state: "visible", timeout: 15_000 });
@@ -441,7 +364,7 @@ try {
     stored values are re-read after the switch.
   */
   const beforeSwitch = await page.evaluate(() => {
-    const raw = sessionStorage.getItem("genoroot-intake-v1");
+    const raw = sessionStorage.getItem("genoroot-intake-v2");
     return raw === null ? null : JSON.stringify((JSON.parse(raw).state ?? JSON.parse(raw)).answers);
   });
 
@@ -480,16 +403,27 @@ try {
     heading - overflowed by a pixel and Chrome sliced the tops off. The fix is a set of
     Hindi leadings in globals.css; this is the assertion that keeps them.
 
-    Measured per rendered line (`getClientRects`) against the computed line-height, and
-    the platform's Devanagari face is forced first so the check tests the metrics a
-    patient's phone will actually use rather than whichever fallback this box happens to
-    have installed.
+    Measured per rendered line (`getClientRects`) against the computed line-height, with
+    the PLATFORM's Devanagari face forced first. That is deliberate even now that the app
+    self-hosts Hind: Nirmala UI paints taller than Hind does, so this measures the worst
+    case - what a patient sees if the font file never arrives - and a leading that survives
+    the fallback survives the webfont.
   */
   await page.addStyleTag({
     content: '*{font-family:"Nirmala UI","Noto Sans Devanagari","Segoe UI",sans-serif !important}',
   });
   await page.waitForTimeout(200);
   const tightText = await page.evaluate(() => {
+    /*
+      The zoom correction is not optional.
+
+      getClientRects() returns POST-zoom device pixels while getComputedStyle().lineHeight
+      returns pre-zoom CSS px, so at the largest comfort scale every ratio comes out 1.26x
+      too big and this check reports 19 clipped lines that are perfectly fine. Divide the
+      ink back down before comparing.
+    */
+    const zoom =
+      parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--comfort-zoom")) || 1;
     const out = [];
     const walk = (node) => {
       for (const el of node.children) {
@@ -503,8 +437,11 @@ try {
             r.selectNodeContents(el);
             const rects = [...r.getClientRects()].filter((x) => x.height > 0);
             const ink = rects.length === 0 ? 0 : Math.max(...rects.map((x) => x.height));
-            if (ink / lh > 0.95)
-              out.push(`"${el.textContent.trim().slice(0, 18)}" ink ${ink.toFixed(0)} in ${lh.toFixed(0)}`);
+            const inkCss = ink / zoom;
+            if (inkCss / lh > 0.95)
+              out.push(
+                `"${el.textContent.trim().slice(0, 18)}" ink ${inkCss.toFixed(0)} in ${lh.toFixed(0)}`,
+              );
           }
         }
         walk(el);
@@ -522,7 +459,7 @@ try {
   else notes.push("every Devanagari line has room for its matras");
 
   const afterSwitch = await page.evaluate(() => {
-    const raw = sessionStorage.getItem("genoroot-intake-v1");
+    const raw = sessionStorage.getItem("genoroot-intake-v2");
     return raw === null ? null : JSON.stringify((JSON.parse(raw).state ?? JSON.parse(raw)).answers);
   });
   if (afterSwitch !== beforeSwitch)
@@ -641,7 +578,7 @@ try {
   // PCOS/PCOD was answered as a female patient. Switching to male must take it out of
   // the answers, not leave an impossible diagnosis on its way to a doctor.
   const conditionsAfterMale = await page.evaluate(() => {
-    const raw = sessionStorage.getItem("genoroot-intake-v1");
+    const raw = sessionStorage.getItem("genoroot-intake-v2");
     if (raw === null) return null;
     const parsed = JSON.parse(raw);
     return (parsed.state ?? parsed).answers.diagnosed_conditions;

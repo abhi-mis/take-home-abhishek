@@ -39,7 +39,8 @@ Two consequences worth naming:
 - **A gated null is a valid answer, not a missing one.** `validate.ts` treats it as
   resolved. Without this rule, a male patient could never complete the form.
 - **Changing your mind works.** `setSex()` rewrites the answers, not just the meta - switching from female to male *nulls* `menstrual_cycle`, so a stale value can never
-  reach the output. Progress retotals live (17 steps for female, 15 otherwise).
+  reach the output. Section counters retotal live (Health is 5 questions for a female
+  patient, 3 otherwise).
 
 **The sex decision.** Asked once, right before section B, with the reason said out
 loud: *"Kuch sawaal sirf kuch patients pe lagu hote hain, to baaki aapke liye skip kar
@@ -272,6 +273,113 @@ is not, and an extra tap to dismiss a card is ceremony the patient did not ask f
 
 ---
 
+## The grouped intake: six sections, one question open
+
+Seventeen screens of identical chrome is its own kind of fatigue, even when each screen is
+easy. The form is now six category screens - the schema's own taxonomy, which is the one the
+doctor reading the output already uses - and inside a section the questions are cards that
+collapse as they are answered.
+
+The design is specified in `docs/superpowers/specs/2026-09-01-grouped-intake-redesign-design.md`
+and was built to `docs/superpowers/plans/2026-09-01-grouped-intake-redesign.md`.
+
+### The pieces, and why they are separate
+
+- **`lib/sections.ts`** answers every structural question - what is in a section, what this
+  patient can see of it, how much is done, what to open next - and contains no copy and no
+  language. "Answered" delegates to `validateStep`, so a section and the question inside it
+  can never disagree about whether it is done.
+- **`lib/summary.ts`** owns what a collapsed card says. Short labels are new content, not
+  truncation: "Has a doctor diagnosed you with any of these?" cannot be ellipsised into a
+  52px row and stay readable.
+- **`lib/keymap.ts`** turns keys into intentions, purely, so "Enter does nothing while the
+  open question is unanswered" is one testable line instead of a branch buried in a handler.
+  It also owns the multi-select toggle, which the tap path now imports - two copies of
+  "None of these clears everything" would drift, and the drift would be `["Anemia", "None"]`
+  in a clinical record.
+- **`QuestionCard`** renders one question in one of three states and reuses `QuestionBody`
+  for its open contents - the same component the review screen's edit dialog renders. Three
+  surfaces, one implementation of "what does `type: multi` look like".
+
+### Two rules that shaped the interaction
+
+**Answering opens the next card; it never navigates.** This is not the auto-advance that was
+removed: nothing leaves the screen, and the answer stays visible as a summary. On the
+keyboard, though, selecting and moving on are deliberately two different keys. A keyboard
+repeats, and "2 2 2" would answer three questions in a row with each one scrolling out from
+under the patient - the same hazard, through a different input device.
+
+**A correction stays put.** Reopening an answered card and changing it does not jump forward.
+First pass wants momentum; a correction wants to stay where it is. Both halves are asserted
+in the browser smoke.
+
+### Four bugs this work surfaced, and how
+
+Worth recording because of what caught each one.
+
+1. **An invisible tick.** `--done` was added as a CSS variable but never registered as
+   `--color-done` in Tailwind's `@theme`, so `bg-done` did not exist and a white tick sat on
+   a white card. Found by looking at a screenshot; no test could have seen it.
+2. **No `h1` on any section screen.** The smoke printed `(no h1)` beside every step and it
+   was nearly read past. A screen with no heading leaves a screen-reader user nothing to
+   orient by. The section title is the `h1` now, with cards as `h2`.
+3. **`aria-pressed` versus `aria-checked`.** The first "is this answered?" probe inspected
+   controls, and Q1's decade buttons use `aria-pressed` while options use `aria-checked`, so
+   it read false forever. The page already knew the answer, so the card exposes
+   `data-answered` for whether the question has a value and `data-state` for how it is
+   displayed. Two attributes because they are two different facts.
+4. **"Rendered fewer hooks than expected."** The rail's progress `useMemo` was placed below
+   the review screen's early return, so it ran on five branches and not the sixth. The smoke
+   caught it on the run immediately after, which is the entire reason that file exists.
+
+### A measurement bug in the verification itself
+
+The Devanagari clipping guard compared `getClientRects()` against
+`getComputedStyle().lineHeight`. Those are not the same unit under CSS `zoom`: rects come
+back in post-zoom device pixels while the computed line-height stays pre-zoom CSS px. At the
+largest comfort scale the guard therefore reported nineteen clipped lines that were perfectly
+fine. Dividing the ink back down by the zoom factor gives zero, and the correction is now in
+the smoke with the reasoning beside it.
+
+It also found one real fault while being fixed: the language toggle's `हिं` label used
+`leading-none`, and on an ENGLISH page the Devanagari leading rules do not apply, so it sat
+in a 12px line box with no room for its matras.
+
+### Three gaps between the spec and the build, found by asking
+
+Worth recording that the redesign was reported finished twice before it was, and what closed
+the difference was going back to the spec line by line rather than trusting the sense of
+being done.
+
+1. **The landing page still promised "one per screen, in order".** The app had not worked
+   that way since the first section landed. A screen that describes a version of itself that
+   no longer exists is worse than one that says nothing.
+2. **The live-region announcement was specified and never built.** Focus deliberately does
+   not move when a tap opens the next card, and the other half of that decision - something
+   has to SAY a new question appeared - was missing. A screen-reader user answered a question
+   and the form went silent while the next one rendered below them.
+3. **The review screen was never made two columns**, though the spec called for it. At 1440px
+   it now reads in 1.5 screens instead of three.
+
+### Verified
+
+Six sections in both languages at all three text sizes, on a 390px phone and a 1440px
+desktop: no horizontal overflow, no clipped Devanagari, chrome that agrees with its column,
+and no focusable control hidden behind the footer.
+
+**Voice, inside a card, with a real microphone.** `npm run voice` drives Chromium's fake
+capture device with a synthesised WAV, so the recorder, the Sarvam request and the extraction
+are all real. One spoken sentence filled **6 of 6** habit rows including the layered
+follow-up, and "about ten a day" landed on "Moderate 5-10/day" - the inclusive-bound rule
+holding for a spoken word rather than a digit. That was the last path the tap-driven smoke
+could not reach.
+
+**The numeric boundaries, probed live** against the running extract route: 3/day to
+Mild, 5/day and 10/day to Moderate, 12/day to Severe. The 10/day case had been noted as
+outstanding for a while; it was not.
+
+---
+
 ## Two decisions about how an answer gets committed
 
 ### Nothing auto-advances any more
@@ -364,6 +472,33 @@ patient needed. Two mechanisms catch it:
 That last one matters more than it looks. The first version of the walk found zero strings
 because of a quoting difference in the schema file, and every "no missing translations"
 assertion passed perfectly.
+
+### The type
+
+**Plus Jakarta Sans** for Latin, **Hind** for Devanagari, one stack, and headings that
+differ from body text by weight and tracking rather than by family.
+
+That replaced a system-font stack with a serif for the questions, and the reasoning for
+that stack was real: nothing downloads faster than a font already installed, and the one
+screen a patient in a clinic queue must never see unstyled is this one. What changed is the
+mechanism, not the priority - `next/font` fetches both faces at BUILD time, self-hosts them
+from our own origin, subsets them and preloads them. No third-party request, no runtime
+dependency on Google, no flash of unstyled text.
+
+Dropping the serif also fixed something that had been wrong since the app became
+bilingual: `Georgia` and `Palatino` have no Devanagari at all, so every Hindi heading was
+already falling back to a sans while its English twin was a serif. The two languages did
+not look like the same product. One family across both scripts is what makes them look
+designed together rather than translated.
+
+Hind is from Indian Type Foundry and drawn for UI text at small sizes in Indian languages,
+which is exactly the job: 13px option glosses on a cheap phone. Jakarta has no Devanagari
+glyphs, so the browser falls back per character, and the two faces sit at compatible
+weights and x-heights - which is why there is no longer any language-specific font rule.
+
+Two numbers were measured rather than picked: body text gets `-0.006em` of tracking because
+Jakarta ships wide enough to read loose in a paragraph, and headings get `-0.021em`, since
+negative tracking is a function of size and a 13px gloss must keep all of it.
 
 ### Devanagari does not fit a Latin line box
 
@@ -484,7 +619,7 @@ of stillness means they have arrived at an age rather than passed through one. I
 deliberately not scoped to the About You screen either - a fast patient can tap "55-64" and
 **Next** inside those 500ms, and one screen late beats never.
 
-The prompt is mounted at page level rather than inside `StepShell`, because a
+The prompt is mounted at page level rather than inside the section shell, because a
 `position: fixed` overlay inside framer-motion's animating question wrapper positions itself
 against that transform instead of the viewport.
 
@@ -725,7 +860,7 @@ of the UI, so a bad extraction patch can't bypass the interface.
 
 ## What's tested, and what deliberately isn't
 
-**`npm test` - 154 deterministic tests, no API key needed.** These are the dependable
+**`npm test` - 253 deterministic tests, no API key needed.** These are the dependable
 checks: the step builder, sex gating in all four states, every conditional-followup
 rule in both directions, exclusive options, 16-key coverage, the personalisation rules
 (comfort thresholds, the onset-age ceiling, and that a suggestion never writes an answer),
@@ -799,7 +934,7 @@ The fix is three parts, in increasing order of usefulness:
 3. **Two new tests.** `tests/selectors.test.ts` scans the source and rejects any
    `useIntake` selector that calls a function or builds an object or array - and I
    checked it actually catches the original bug plus three variants, rather than
-   passing vacuously. `npm run smoke` drives a real browser through all 17 steps and
+   passing vacuously. `npm run smoke` drives a real browser through all six sections and
    fails on any console error.
 
 The smoke test then caught two of my own bad assumptions, which is the point of running

@@ -9,11 +9,23 @@
  * control rather than a cycling button: a patient who has landed in the wrong language
  * needs to see where to go, not discover it by pressing something twice.
  *
+ * The selected half is a THUMB THAT SLIDES rather than a colour that jumps between two
+ * buttons. It is not decoration: the movement is what says "this control has two states
+ * and you just moved between them", and on a switch whose labels are in two scripts, one
+ * of which the patient may not read, the motion carries more of the meaning than the text
+ * does. A colour swap leaves them checking which word turned dark.
+ *
+ * `layoutId` does the work - framer-motion animates a single element between the two
+ * positions - and the id is per instance, because the landing screen, the wizard header
+ * and the review screen each render one of these and two toggles sharing a layoutId would
+ * try to animate into each other.
+ *
  * It also writes `lang` on <html>, which is what a screen reader uses to pick its voice.
  * Without it, a screen reader reads Devanagari with an English voice - the accessibility
  * equivalent of not translating at all.
  */
-import { useEffect } from "react";
+import { useEffect, useId } from "react";
+import { motion, useReducedMotion } from "framer-motion";
 import { HTML_LANG, LANG_SHORT, LANGS, t, type Lang } from "@/lib/i18n";
 import { cn, tick } from "@/lib/utils";
 
@@ -26,6 +38,14 @@ export function LangToggle({
   onChange: (l: Lang) => void;
   className?: string;
 }) {
+  const thumbId = useId();
+  /**
+   * A patient who has asked their phone to stop animating things has asked this too.
+   * The thumb still moves - it is the state, not an embellishment - it just arrives
+   * immediately instead of travelling.
+   */
+  const reduceMotion = useReducedMotion();
+
   useEffect(() => {
     document.documentElement.lang = HTML_LANG[lang];
   }, [lang]);
@@ -35,7 +55,7 @@ export function LangToggle({
       role="radiogroup"
       aria-label={lang === "hi" ? "भाषा" : "Language"}
       className={cn(
-        "flex shrink-0 items-center gap-0.5 rounded-full border border-line bg-card p-0.5",
+        "relative flex shrink-0 items-center rounded-full border border-line bg-card p-0.5",
         className,
       )}
     >
@@ -55,14 +75,53 @@ export function LangToggle({
               tick();
               onChange(l);
             }}
-            className={cn(
-              "min-h-8 rounded-full px-2 text-[12px] font-bold leading-none transition-colors",
-              active
-                ? "bg-brand text-white"
-                : "text-muted hover:bg-brand-soft hover:text-brand-ink",
-            )}
+            className="relative grid min-h-8 min-w-9 place-items-center rounded-full px-2 transition-transform active:scale-95"
           >
-            {LANG_SHORT[l]}
+            {active ? (
+              <motion.span
+                aria-hidden
+                layoutId={`lang-thumb-${thumbId}`}
+                /*
+                  Tuned by measuring, not by taste. The first spring (stiffness 520) put
+                  the thumb 80% of the way across in 20ms - technically an animation and
+                  visually a jump, which defeats the point of having one. This covers the
+                  36px in about 220ms: slow enough to see, still faster than the tap that
+                  triggered it feels. Damped just short of critical so it settles without
+                  a wobble - a language switch that bounces reads as a toy.
+                */
+                transition={
+                  reduceMotion
+                    ? { duration: 0 }
+                    : { type: "spring", stiffness: 260, damping: 24, mass: 0.9 }
+                }
+                /*
+                  An ink fill, not the accent one. The label sits ON this thumb, and
+                  paper on the terracotta accent is 4.01:1 - under the 4.5:1 text
+                  needs. The source scan in tests/i18n.test.ts cannot catch this
+                  pairing because the fill and the label are sibling elements, so it
+                  is called out here instead.
+                */
+                className="absolute inset-0 rounded-full bg-ink shadow-[0_1px_4px_rgba(28,26,23,0.35)]"
+              />
+            ) : null}
+            {/*
+              Above the thumb, and its colour crossfades on its own timing rather than
+              waiting for the slide - so the label being arrived at is already legible
+              while the thumb is still travelling.
+            */}
+            <span
+              className={cn(
+                /*
+                  Not `leading-none`. This control always shows both scripts, and on an
+                  English page the Devanagari leading rules in globals.css do not apply -
+                  so "हिं" would sit in a 12px line box with no room for its matras.
+                */
+                "relative z-10 text-[12px] font-bold leading-[1.45] transition-colors duration-200",
+                active ? "text-paper" : "text-muted",
+              )}
+            >
+              {LANG_SHORT[l]}
+            </span>
           </button>
         );
       })}

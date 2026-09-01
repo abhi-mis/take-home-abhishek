@@ -308,3 +308,51 @@ describe("no component hard-codes English prose", () => {
     expect(offenders).toEqual([]);
   });
 });
+
+/**
+ * Words never sit on the accent fill. Icons may.
+ *
+ * tests/contrast.test.ts proves the arithmetic: white on the terracotta fill is 4.35:1 and
+ * ink on it is 3.99:1, so neither clears the 4.5:1 that TEXT requires. An icon is a
+ * non-text element and only owes 3:1, which 4.35:1 clears comfortably - so a tick on a
+ * terracotta dot is fine and a label on a terracotta button is not.
+ *
+ * A source scan cannot reliably tell a glyph from a word, so the exceptions are declared
+ * rather than guessed: a usage that is genuinely icon-only carries an `accent-icon-ok`
+ * marker comment. That makes every exception a decision someone made on purpose.
+ *
+ * Known blind spot, stated so nobody trusts this further than it goes: it only sees a fill
+ * and a text colour written on the SAME element. The language toggle paints its thumb on
+ * one element and the label on a sibling, so this test could not have caught it - that one
+ * was found by looking at a screenshot, and the fix is commented at the usage site.
+ */
+describe("no words on the accent fill", () => {
+  const ROOT = process.cwd();
+
+  function walk(dir: string, out: string[] = []): string[] {
+    for (const entry of readdirSync(dir)) {
+      const full = path.join(dir, entry);
+      if (statSync(full).isDirectory()) walk(full, out);
+      else if (entry.endsWith(".tsx")) out.push(full);
+    }
+    return out;
+  }
+
+  it("pairs bg-brand with a light text colour only where an icon is declared", () => {
+    const offenders: string[] = [];
+    const files = [...walk(path.join(ROOT, "components")), ...walk(path.join(ROOT, "app"))];
+    for (const file of files) {
+      const src = readFileSync(file, "utf8");
+      const lines = src.split("\n");
+      lines.forEach((line, i) => {
+        // `bg-brand` exactly: not bg-brand-soft, bg-brand-strong or bg-brand/40.
+        if (!/\bbg-brand(?![-\w/])/.test(line)) return;
+        if (!/\btext-(white|paper)\b/.test(line)) return;
+        const context = [lines[i - 2], lines[i - 1], line, lines[i + 1]].join(" ");
+        if (context.includes("accent-icon-ok")) return;
+        offenders.push(`${path.relative(ROOT, file)}:${i + 1}`);
+      });
+    }
+    expect(offenders).toEqual([]);
+  });
+});

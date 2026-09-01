@@ -63,6 +63,7 @@ export function PatternPicker({
                 <motion.span
                   initial={{ scale: 0.6, opacity: 0 }}
                   animate={{ scale: 1, opacity: 1 }}
+                  /* accent-icon-ok: a tick over the diagram. */
                   className="absolute right-2 top-2 grid size-6 place-items-center rounded-full bg-brand text-white"
                 >
                   <CheckIcon className="size-3.5" />

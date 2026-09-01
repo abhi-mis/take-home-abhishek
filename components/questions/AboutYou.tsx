@@ -193,6 +193,7 @@ export function AboutYou({
                   aria-hidden
                   className={cn(
                     "grid size-6 shrink-0 place-items-center rounded-full border-2 transition-colors",
+                    // accent-icon-ok: the fill holds a tick, never a word.
                     selected ? "border-brand bg-brand text-white" : "border-line",
                   )}
                 >

@@ -144,7 +144,7 @@ export function ResultDialog({
             <button
               type="button"
               onClick={onAnswerRest}
-              className="min-h-[52px] rounded-2xl bg-brand text-[15px] font-bold text-white transition-colors hover:bg-brand-strong active:scale-[0.99]"
+              className="min-h-[52px] rounded-2xl bg-ink text-[15px] font-bold text-paper transition-colors hover:bg-brand-strong active:scale-[0.99]"
             >
               {UI.resultAnswerRest} ({missed})
             </button>
@@ -152,7 +152,7 @@ export function ResultDialog({
             <button
               type="button"
               onClick={onConfirm}
-              className="min-h-[52px] rounded-2xl bg-brand text-[15px] font-bold text-white transition-colors hover:bg-brand-strong active:scale-[0.99]"
+              className="min-h-[52px] rounded-2xl bg-ink text-[15px] font-bold text-paper transition-colors hover:bg-brand-strong active:scale-[0.99]"
             >
               {UI.resultConfirm}
             </button>

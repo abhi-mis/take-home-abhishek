@@ -77,7 +77,7 @@ export function FollowUpFlow({
       aria-label={t("followUpAria", lang)}
     >
       <header className="flex items-center gap-3 border-b border-line bg-brand-soft/60 px-4 py-3">
-        <span className="grid size-7 shrink-0 place-items-center rounded-full bg-brand text-[12px] font-bold text-white tabular-nums">
+        <span className="grid size-7 shrink-0 place-items-center rounded-full bg-ink text-[12px] font-bold text-paper tabular-nums">
           {done + 1}
         </span>
         <div className="min-w-0 flex-1">
@@ -176,7 +176,7 @@ export function FollowUpFlow({
                     onAnswer(current, draft.trim());
                     setDraft("");
                   }}
-                  className="min-h-[52px] cursor-pointer rounded-2xl bg-brand text-[15px] font-bold text-white transition-colors hover:bg-brand-strong disabled:cursor-not-allowed disabled:bg-line disabled:text-muted"
+                  className="min-h-[52px] cursor-pointer rounded-2xl bg-ink text-[15px] font-bold text-paper transition-colors hover:bg-brand-strong disabled:cursor-not-allowed disabled:bg-line disabled:text-muted"
                 >
                   {t("followUpSave", lang)}
                 </button>
@@ -216,6 +216,7 @@ function Complete({
         initial={{ scale: 0.4 }}
         animate={{ scale: 1 }}
         transition={{ type: "spring", stiffness: 340, damping: 16 }}
+        /* accent-icon-ok: a tick, not a word. 4.35:1 clears the 3:1 a glyph owes. */
         className="grid size-9 shrink-0 place-items-center rounded-full bg-brand text-white"
       >
         <CheckIcon className="size-5" />

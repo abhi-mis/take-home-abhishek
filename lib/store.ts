@@ -19,12 +19,24 @@ import {
 } from "./types";
 import { suggestedComfort, type Comfort } from "./patient";
 import type { Lang } from "./i18n";
-import { ALL_STEPS, isStepVisible, visibleSteps } from "./steps";
+import { isStepVisible } from "./steps";
+import { ALL_SECTIONS, firstUnanswered, sectionById, sectionIndexById } from "./sections";
 
 interface IntakeState {
   answers: Answers;
   meta: Meta;
-  currentStepId: string;
+  /**
+   * Which of the six sections is on screen, or "review" past the end. Replaces the old
+   * per-question step id: the flow is addressed a section at a time now.
+   */
+  currentSectionId: string;
+  /**
+   * Which question inside that section is expanded, by step id, or null for all collapsed.
+   *
+   * Persisted deliberately. A patient who refreshes should come back to the card they were
+   * answering rather than to the top of the section wondering where they were.
+   */
+  openQuestionId: string | null;
   touched: Record<string, true>;
   /**
    * UI-only: which "None of these" controls the patient actively chose (Q4, Q10).
@@ -67,9 +79,10 @@ interface IntakeState {
   /** Choose "None of these": clears the array AND records the deliberate choice. */
   chooseNone: (key: string) => void;
   markTouched: (id: string) => void;
-  goTo: (id: string) => void;
-  next: () => void;
-  back: () => void;
+  goToSection: (id: string) => void;
+  openQuestion: (id: string | null) => void;
+  nextSection: () => void;
+  prevSection: () => void;
   reset: () => void;
 }
 
@@ -77,7 +90,7 @@ interface IntakeState {
  * NOTE: this store deliberately exposes NO derived getters (no `steps()`, no
  * `progress()`). A getter that builds an array or object is a trap in Zustand - * `useIntake((s) => s.steps())` returns a fresh reference on every call, never
  * compares equal under Object.is, and re-renders until React throws
- * "Maximum update depth exceeded". Derive with `visibleSteps(meta)` in a `useMemo`
+ * "Maximum update depth exceeded". Derive with `visibleQuestions(section, meta)` in a `useMemo`
  * at the call site instead, keyed on the state it actually depends on.
  */
 
@@ -119,7 +132,8 @@ export const useIntake = create<IntakeState>()(
     (set, get) => ({
       answers: structuredClone(EMPTY_ANSWERS),
       meta: { ...EMPTY_META },
-      currentStepId: ALL_STEPS[0]!.id,
+      currentSectionId: ALL_SECTIONS[0]!.id,
+      openQuestionId: ALL_SECTIONS[0]!.steps[0]?.id ?? null,
       touched: {},
       explicitNone: {},
       lang: "en",
@@ -177,35 +191,63 @@ export const useIntake = create<IntakeState>()(
 
       markTouched: (id) => set((s) => ({ touched: { ...s.touched, [id]: true } })),
 
-      goTo: (id) => set({ currentStepId: id }),
+      /**
+       * Jump to a section and open the first thing still unanswered in it.
+       *
+       * Landing on the first gap rather than the top means arriving at a section never
+       * requires the patient to hunt for where they were - which matters most when they
+       * arrive from the rail or the review screen rather than by pressing Next.
+       */
+      goToSection: (id) =>
+        set((s) => {
+          const section = sectionById(id);
+          if (section === undefined) return {};
+          const open = firstUnanswered(section, s.answers, s.meta, s.explicitNone);
+          return { currentSectionId: id, openQuestionId: open?.id ?? null };
+        }),
 
-      next: () => {
-        const { currentStepId, meta } = get();
-        const steps = visibleSteps(meta);
-        const i = steps.findIndex((s) => s.id === currentStepId);
-        set((s) => ({
-          touched: { ...s.touched, [currentStepId]: true },
-          // Past the last step we land on the review screen.
-          currentStepId: i >= 0 && i < steps.length - 1 ? steps[i + 1]!.id : "review",
-        }));
-      },
+      openQuestion: (id) => set({ openQuestionId: id }),
 
-      back: () => {
-        const { currentStepId, meta } = get();
-        const steps = visibleSteps(meta);
-        if (currentStepId === "review") {
-          set({ currentStepId: steps[steps.length - 1]!.id });
-          return;
-        }
-        const i = steps.findIndex((s) => s.id === currentStepId);
-        if (i > 0) set({ currentStepId: steps[i - 1]!.id });
-      },
+      nextSection: () =>
+        set((s) => {
+          const i = sectionIndexById(s.currentSectionId);
+          const target = ALL_SECTIONS[i + 1];
+          // Past the last section we land on the review screen.
+          if (target === undefined) {
+            return {
+              touched: { ...s.touched, [s.currentSectionId]: true },
+              currentSectionId: "review",
+              openQuestionId: null,
+            };
+          }
+          const open = firstUnanswered(target, s.answers, s.meta, s.explicitNone);
+          return {
+            touched: { ...s.touched, [s.currentSectionId]: true },
+            currentSectionId: target.id,
+            openQuestionId: open?.id ?? null,
+          };
+        }),
+
+      prevSection: () =>
+        set((s) => {
+          if (s.currentSectionId === "review") {
+            const last = ALL_SECTIONS[ALL_SECTIONS.length - 1]!;
+            return { currentSectionId: last.id, openQuestionId: null };
+          }
+          const i = sectionIndexById(s.currentSectionId);
+          const target = ALL_SECTIONS[i - 1];
+          if (target === undefined) return {};
+          // Going back leaves everything collapsed: the patient is reviewing, not answering,
+          // and opening a card for them would put the cursor somewhere they did not ask for.
+          return { currentSectionId: target.id, openQuestionId: null };
+        }),
 
       reset: () =>
         set({
           answers: structuredClone(EMPTY_ANSWERS),
           meta: { ...EMPTY_META },
-          currentStepId: ALL_STEPS[0]!.id,
+          currentSectionId: ALL_SECTIONS[0]!.id,
+          openQuestionId: ALL_SECTIONS[0]!.steps[0]?.id ?? null,
           touched: {},
           explicitNone: {},
           comfort: "standard",
@@ -217,12 +259,19 @@ export const useIntake = create<IntakeState>()(
 
     }),
     {
-      name: "genoroot-intake-v1",
+      /*
+        v2, because the persisted shape changed: currentStepId became currentSectionId plus
+        an openQuestionId. A v1 session half-loading into a v2 store is worse than starting
+        over, and this is sessionStorage - per tab, minutes old at most - so bumping the key
+        costs a patient nothing that a refresh would not already have cost them.
+      */
+      name: "genoroot-intake-v2",
       storage: createJSONStorage(),
       partialize: (s) => ({
         answers: s.answers,
         meta: s.meta,
-        currentStepId: s.currentStepId,
+        currentSectionId: s.currentSectionId,
+        openQuestionId: s.openQuestionId,
         touched: s.touched,
         explicitNone: s.explicitNone,
         // Persisted with the answers rather than in localStorage: comfort is derived

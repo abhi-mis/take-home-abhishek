@@ -70,6 +70,7 @@ export function QuestionSpeaker({
       className={cn(
         "relative grid size-9 shrink-0 cursor-pointer place-items-center rounded-full border transition-colors",
         speaking
+          // accent-icon-ok: a speaker glyph, no label.
           ? "border-brand bg-brand text-white"
           : "border-line bg-card text-muted hover:border-brand/50 hover:text-brand-ink",
         "active:scale-95",

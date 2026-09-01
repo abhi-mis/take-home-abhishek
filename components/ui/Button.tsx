@@ -17,7 +17,9 @@ type Size = "md" | "lg";
 
 const VARIANTS: Record<Variant, string> = {
   primary:
-    "bg-brand text-white shadow-sm hover:bg-brand-strong hover:shadow-md active:bg-brand-strong disabled:bg-line disabled:text-muted disabled:shadow-none disabled:hover:shadow-none",
+    // Ink fill, paper text: 16:1. The accent fill cannot carry a label at all - white on
+    // it is 4.35:1 and ink on it is 3.99:1, both short of the 4.5:1 text needs.
+    "bg-ink text-paper shadow-sm hover:bg-brand-strong hover:text-paper hover:shadow-md active:bg-brand-strong disabled:bg-line disabled:text-muted disabled:shadow-none disabled:hover:shadow-none",
   secondary: "bg-card text-ink border border-line hover:border-brand/50 hover:bg-brand-soft/40 active:bg-paper",
   ghost: "bg-transparent text-muted hover:bg-brand-soft hover:text-brand-ink active:bg-brand-soft",
   danger: "bg-card text-warn border border-warn/30 hover:bg-warn/10 active:bg-warn/5",
@@ -97,7 +99,7 @@ export function OptionCard({
       onClick={blocked ? undefined : onSelect}
       className={cn(
         "flex w-full items-center gap-3 rounded-2xl border-2 px-4 py-3.5 text-left",
-        "min-h-[56px] transition-all duration-100",
+        "tap-md min-h-[56px] transition-all duration-100",
         blocked
           ? "cursor-not-allowed border-dashed border-line bg-card/60"
           : "active:scale-[0.99]",
@@ -117,6 +119,7 @@ export function OptionCard({
           blocked
             ? "border-line/70 bg-line/25"
             : selected
+              // accent-icon-ok: the check box holds a tick.
               ? "border-brand bg-brand text-white"
               : "border-line bg-card",
         )}

@@ -35,7 +35,8 @@ two accelerators:
 Read-aloud needs **no key at all** - it uses the browser's own `speechSynthesis`.
 
 ```bash
-npm test              # 154 deterministic tests, no key needed
+npm test              # 253 deterministic tests, no key needed
+npm run voice         # voice end to end with a real mic, needs both keys and a WAV
 npm run smoke         # real-browser walkthrough of the whole intake (needs a dev server)
 npm run eval          # live extraction eval against the fixtures (needs ANTHROPIC_API_KEY)
 npm run build         # production build
@@ -74,6 +75,76 @@ to the client and nothing is committed - `.env.example` is the only env file in 
 gh repo create genoroot-intake --private --source=. --push
 # then: import to Vercel → set the env vars in the dashboard → deploy
 ```
+
+---
+
+## Six sections, one question open at a time
+
+The form is six category screens, not seventeen. Inside a section every question is a card
+in one of three states:
+
+| State | Renders as | Height |
+| --- | --- | --- |
+| answered | one line: short label, the answer, a tick | ~52px |
+| open | the question, its hint, its options, read-aloud | as needed |
+| waiting | a dimmed one-liner, still tappable | ~52px |
+
+Answering collapses the card and opens the next in place. Nothing navigates, so the answer
+stays on screen as a summary you can reopen, and **Next** moves a whole section: six
+navigations instead of seventeen.
+
+Seventeen screens of identical chrome is its own kind of fatigue. Chunking into the schema's
+own categories keeps the low load of one-question-at-a-time while cutting the trudge, which
+is what the research on form chunking actually supports.
+
+Three carve-outs, each for a reason:
+
+- The three **table questions** (habits, products, treatments) open into the existing
+  voice-first surface unchanged, and their collapsed summary states coverage rather than a
+  value: "5 answered, 2 in use". One value would misrepresent five rows.
+- **About You** is a single always-open card. There is nothing to collapse it against.
+- **Consent** collapses like any other card, but its summary reads "Yes, I agree: sample and
+  genetic analysis" rather than a bare "Yes". A clinical record should not reduce informed
+  consent to a word that could mean anything.
+
+A **correction does not jump you forward.** Reopening an answered card and changing it leaves
+you there: first pass wants momentum, a correction wants to stay put. That distinction is
+asserted in the browser smoke, because it is the kind of nicety a later refactor quietly
+removes.
+
+### Desktop
+
+The same model, composed rather than restructured. Measured before and after at 1440x900:
+
+| | before | after |
+| --- | --- | --- |
+| content column | 448px | 560px, centred |
+| unused width | 992px | rail 262px + margins |
+| header band | 448px, floating mid-page | 560px, inside the column |
+| footer rule | 1425px, full-bleed | 560px, inside the column |
+| chrome agrees with the column | no | yes |
+| focus hidden behind the footer | 0 | 0 |
+
+The answer was never a wider column: 448px is close to the ideal measure for reading and
+stretching the questions would hurt. What the column needed was company, so the rail carries
+the wordmark, the six sections with per-section progress, and the keyboard legend.
+
+**Full keyboard operation.** `1`-`9` select, `Enter` opens the next question, `Shift+Enter`
+the next section, `Up`/`Down` move between cards, `Esc` collapses. Numbers **select only** -
+a keyboard repeats, and "2 2 2" answering three questions in a row is the same hazard that
+had auto-advance removed in the first place. Targets shrink under `pointer: fine` only, never
+by viewport width: a 1280px tablet is still a touch device.
+
+---
+
+## Type
+
+**Plus Jakarta Sans** (Latin) and **Hind** (Devanagari), self-hosted by `next/font` at
+build time - fetched during the build, served from our own origin, subset and preloaded, so
+there is no third-party request and no unstyled flash on a clinic connection. One family
+across both scripts, with headings set apart by weight and tracking rather than a second
+typeface; the serif this replaced had no Devanagari at all, so Hindi headings had been
+quietly falling back to a sans while English ones did not.
 
 ---
 
@@ -339,7 +410,7 @@ solved problem where a hand-rolled version would be worse and slower.
 
 Two tiers, on purpose.
 
-**Deterministic (`npm test`, 154 tests, no key) - the dependable gate.** One test
+**Deterministic (`npm test`, 253 tests, no key) - the dependable gate.** One test
 diffs `lib/schema.ts` against the schema as downloaded from the URL in the brief, so
 "verbatim copy" is proven rather than claimed · step builder and
 schema coverage · sex gating across all four states, including that switching away from
@@ -382,7 +453,8 @@ the production build passed, and `curl` returned 200, because the loop only exis
 live React client.
 
 So now Playwright taps the **entire** intake at 380px as a female patient (the longest
-path, 17 steps), fails on any console error, then asserts the output object, that consent
+path, six sections), fails on any console error, then asserts the accordion's invariants,
+the output object, that consent
 was never pre-selected, and that switching sex back to Male makes Q6 disappear. Two
 follow-ups came out of that bug: the store no longer exposes derived getters at all, and
 `tests/selectors.test.ts` scans the source to reject any selector that calls a function
@@ -436,11 +508,14 @@ app/
   api/transcribe/route.ts   Sarvam proxy (key server-side)
   api/extract/route.ts      structured extraction + schema gate
 components/
-  StepShell.tsx  ProgressBar.tsx  ReviewScreen.tsx  ThemeToggle.tsx
+  SectionShell.tsx  SectionRail.tsx  ProgressBar.tsx  ReviewScreen.tsx  ThemeToggle.tsx
   QuestionSpeaker.tsx        the read-aloud button, on every question
   ComfortToggle.tsx          text-size control (Aa), and the DOM projection of it
   ComfortPrompt.tsx          "would you like larger text?", asked once, previews both
   EditQuestionDialog.tsx     one question, corrected from the review screen
+  SectionShell.tsx           the frame around a whole section, mobile and desktop
+  SectionRail.tsx            desktop: six sections, progress, keyboard legend
+  questions/QuestionCard.tsx one question in one of three states
   questions/QuestionBody.tsx the controls for one question, shared by wizard and dialog
   LangToggle.tsx             EN / हिं, and the <html lang> it writes
   questions/     SingleChoice MultiChoice YesNo NumberStepper AboutYou PatternPicker
@@ -455,6 +530,9 @@ lib/
   questionSpeech.ts what the speaker button reads out, derived from the schema
   patient.ts       personalisation: comfort scale, onset cap, age-aware suggestions
   i18n.ts          the language resolver: one language per render, placeholder filling
+  sections.ts      the six sections: visible questions, counters, what to open next
+  summary.ts       short labels and the one-line answer a collapsed card shows
+  keymap.ts        keys to intentions, plus the multi-select toggle tap and key share
   copy.hi.ts       Hindi for every question, option and UI string
   llm.ts           the model boundary: one callModel(), and the parameter negotiation
   speak.ts         browser speechSynthesis, with barge-in and a no-voice fallback
@@ -464,8 +542,8 @@ lib/
   audio.ts         in-browser 16kHz mono WAV encoding
   copy.ts          all microcopy, in one place
 fixtures/patients/ 12 transcripts (4 held out) + expected answers
-tests/             154 deterministic tests (incl. two source scans: selector stability
-                   and no hard-coded English)
+tests/             253 deterministic tests (incl. three source scans: selector stability,
+                   no hard-coded English, and no words on the accent fill)
 scripts/smoke-browser.mjs  Playwright walkthrough of the full intake
 scripts/eval-fixtures.ts   live extraction eval
 ```
