@@ -35,7 +35,7 @@ two accelerators:
 Read-aloud needs **no key at all** - it uses the browser's own `speechSynthesis`.
 
 ```bash
-npm test              # 152 deterministic tests, no key needed
+npm test              # 154 deterministic tests, no key needed
 npm run smoke         # real-browser walkthrough of the whole intake (needs a dev server)
 npm run eval          # live extraction eval against the fixtures (needs ANTHROPIC_API_KEY)
 npm run build         # production build
@@ -102,6 +102,11 @@ lib/copy.hi.ts     Hindi: the same shapes, typed against the English ones
 lib/i18n.ts        the resolver - one language per render, plus {placeholder} filling
 components/LangToggle.tsx   the switch, and the <html lang> it writes for screen readers
 ```
+
+Nothing is hard-coded in a component any more, and a test reads the source to keep it that
+way: `tests/i18n.test.ts` fails on any English prose sitting in JSX. That guard is what
+found the last three leaks, because a runtime walk cannot reach the post-voice dialog
+without a microphone and an API key - which is exactly where two of them were.
 
 Two things carry the weight. Each Hindi dictionary is typed as
 `Record<keyof typeof ENGLISH, string>`, so **forgetting a translation fails `tsc`** rather
@@ -334,7 +339,7 @@ solved problem where a hand-rolled version would be worse and slower.
 
 Two tiers, on purpose.
 
-**Deterministic (`npm test`, 152 tests, no key) - the dependable gate.** One test
+**Deterministic (`npm test`, 154 tests, no key) - the dependable gate.** One test
 diffs `lib/schema.ts` against the schema as downloaded from the URL in the brief, so
 "verbatim copy" is proven rather than claimed · step builder and
 schema coverage · sex gating across all four states, including that switching away from
@@ -435,6 +440,8 @@ components/
   QuestionSpeaker.tsx        the read-aloud button, on every question
   ComfortToggle.tsx          text-size control (Aa), and the DOM projection of it
   ComfortPrompt.tsx          "would you like larger text?", asked once, previews both
+  EditQuestionDialog.tsx     one question, corrected from the review screen
+  questions/QuestionBody.tsx the controls for one question, shared by wizard and dialog
   LangToggle.tsx             EN / हिं, and the <html lang> it writes
   questions/     SingleChoice MultiChoice YesNo NumberStepper AboutYou PatternPicker
                  Consent YesNoDescribe VoiceMatrix VoicePanel SpeakFirst ResultDialog
@@ -457,7 +464,8 @@ lib/
   audio.ts         in-browser 16kHz mono WAV encoding
   copy.ts          all microcopy, in one place
 fixtures/patients/ 12 transcripts (4 held out) + expected answers
-tests/             152 deterministic tests (incl. a selector-stability source scan)
+tests/             154 deterministic tests (incl. two source scans: selector stability
+                   and no hard-coded English)
 scripts/smoke-browser.mjs  Playwright walkthrough of the full intake
 scripts/eval-fixtures.ts   live extraction eval
 ```

@@ -34,15 +34,7 @@ import { EXCLUSIVE_OPTIONS, hasNoneEscape, type Answers, type Meta } from "@/lib
 import { StepShell } from "@/components/StepShell";
 import { ComfortPrompt } from "@/components/ComfortPrompt";
 import { ReviewScreen } from "@/components/ReviewScreen";
-import { SingleChoice } from "@/components/questions/SingleChoice";
-import { MultiChoice } from "@/components/questions/MultiChoice";
-import { YesNo } from "@/components/questions/YesNo";
-import { NumberStepper } from "@/components/questions/NumberStepper";
-import { AboutYou } from "@/components/questions/AboutYou";
-import { Consent } from "@/components/questions/Consent";
-import { VoiceMatrix } from "@/components/questions/VoiceMatrix";
-import { YesNoDescribe } from "@/components/questions/YesNoDescribe";
-import { PatternPicker } from "@/components/questions/PatternPicker";
+import { QuestionBody } from "@/components/questions/QuestionBody";
 
 export default function IntakePage() {
   const router = useRouter();
@@ -226,179 +218,25 @@ export default function IntakePage() {
       outstanding={focusMode ? [] : check.outstanding}
       onNext={next}
       onBack={goBack}
-      // Auto-advancing kinds own their own progression, so no Next button is shown.
-      hideNext={AUTO_ADVANCE.has(step.kind)}
       footerNote={step.kind === "multi" ? UI.multiHint : undefined}
     >
-      {renderStep({
-        step,
-        answers,
-        meta,
-        COPY_L,
-        patch,
-        setSex,
-        setAge,
-        setFirstName,
-        comfort,
-        comfortAsked,
-        lang,
-        next,
-        chooseNone,
-        explicitNone,
-        setFocusMode,
-      })}
+      <QuestionBody
+        step={step}
+        answers={answers}
+        meta={meta}
+        lang={lang}
+        comfort={comfort}
+        comfortAsked={comfortAsked}
+        explicitNone={explicitNone}
+        patch={patch}
+        setSex={setSex}
+        setAge={setAge}
+        setFirstName={setFirstName}
+        chooseNone={chooseNone}
+        setFocusMode={setFocusMode}
+      />
     </StepShell>
     </>
   );
 }
 
-// About You is NOT auto-advance: it has three inputs, and jumping forward the instant
-// one of them is touched would strand the other two.
-const AUTO_ADVANCE = new Set(["single", "yesno"]);
-
-interface RenderArgs {
-  step: Step;
-  answers: Answers;
-  meta: Meta;
-  /** The question copy in the patient's language, resolved once by the page. */
-  COPY_L: ReturnType<typeof questionCopy>;
-  patch: (p: Partial<Answers>) => void;
-  setSex: ReturnType<typeof useIntake.getState>["setSex"];
-  setAge: (age: number) => void;
-  setFirstName: (name: string | null) => void;
-  comfort: Comfort;
-  comfortAsked: boolean;
-  lang: Lang;
-  next: () => void;
-  chooseNone: (key: string) => void;
-  explicitNone: Record<string, true>;
-  setFocusMode: (focused: boolean) => void;
-}
-
-function renderStep({
-  step,
-  answers,
-  meta,
-  COPY_L,
-  patch,
-  setSex,
-  setAge,
-  setFirstName,
-  comfort,
-  comfortAsked,
-  lang,
-  next,
-  chooseNone,
-  explicitNone,
-  setFocusMode,
-}: RenderArgs) {
-  switch (step.kind) {
-    case "about":
-      return (
-        <AboutYou
-          lang={lang}
-          firstName={meta.first_name}
-          sex={meta.patient_sex}
-          age={meta.patient_age}
-          comfort={comfort}
-          comfortAsked={comfortAsked}
-          onFirstName={setFirstName}
-          onSex={setSex}
-          onAge={setAge}
-        />
-      );
-
-    case "number":
-      return (
-        <NumberStepper
-          lang={lang}
-          value={answers.age_hair_loss_began}
-          // Cannot have started after the age they just told us they are.
-          max={maxOnsetAge(meta)}
-          onChange={(v) => patch({ age_hair_loss_began: v })}
-        />
-      );
-
-    case "single": {
-      const key = step.key as QuestionKey;
-      const q = getQuestion(key);
-      return (
-        <SingleChoice
-          lang={lang}
-          options={"options" in q ? q.options : []}
-          gloss={COPY_L[key]?.gloss}
-          withIcons
-          value={answers[key as "duration"]}
-          suggestion={suggestionFor(key, answers, meta, lang)}
-          onChange={(v) => patch({ [key]: v } as Partial<Answers>)}
-          onAdvance={next}
-        />
-      );
-    }
-
-    case "multi": {
-      const key = step.key as QuestionKey;
-
-      // Q4 is the picture question - a grid of scalp diagrams rather than a text list,
-      // because patients recognise the shape long before the clinical term.
-      if (key === "pattern") {
-        return (
-          <PatternPicker
-          lang={lang}
-            values={answers.pattern}
-            noneChosen={explicitNone.pattern === true}
-            onChange={(v) => patch({ pattern: v })}
-            onChooseNone={() => chooseNone("pattern")}
-          />
-        );
-      }
-
-      const q = getQuestion(key);
-      return (
-        <MultiChoice
-          lang={lang}
-          options={"options" in q ? q.options : []}
-          gloss={COPY_L[key]?.gloss}
-          // PCOS/PCOD to a male patient: shown, greyed, and unpressable. See lib/patient.
-          unavailable={unavailableOptions(key, "options" in q ? q.options : [], meta, lang)}
-          exclusive={EXCLUSIVE_OPTIONS[key]}
-          noneLabel={hasNoneEscape(key) ? ui(lang).none : undefined}
-          noneChosen={explicitNone[key] === true}
-          onChooseNone={() => chooseNone(key)}
-          withIcons
-          values={answers[key as "family_history"]}
-          onChange={(v) => patch({ [key]: v } as Partial<Answers>)}
-        />
-      );
-    }
-
-    case "yesno": {
-      const key = step.key as "adult_acne_oily_skin";
-      return (
-        <YesNo
-          lang={lang}
-          value={answers[key]}
-          onChange={(v) => patch({ [key]: v } as Partial<Answers>)}
-          onAdvance={next}
-        />
-      );
-    }
-
-    case "yesno_describe":
-      return <YesNoDescribe answers={answers} patch={patch} lang={lang} />;
-
-    case "table":
-      return (
-        <VoiceMatrix
-          lang={lang}
-          questionKey={step.key as "habits" | "products" | "procedures"}
-          answers={answers}
-          patch={patch}
-          setFocusMode={setFocusMode}
-        />
-      );
-
-    case "consent":
-      return <Consent value={answers.consent} onChange={(v) => patch({ consent: v })} lang={lang} />;
-  }
-}

@@ -1,17 +1,18 @@
 "use client";
 
 /**
- * Q8, Q9 - two big side-by-side buttons, thumb-reachable, auto-advancing.
+ * Q8, Q9 - two big side-by-side buttons, thumb-reachable.
  * Also reused inside the habits and products grids as a compact inline pair.
+ *
+ * No longer auto-advancing: see the note in SingleChoice. A yes/no is the easiest control
+ * in the form to hit by accident, which makes it the worst one to let move the screen on.
  */
-import { useEffect, useState } from "react";
 import { cn, tick } from "@/lib/utils";
 import { ui, type Lang } from "@/lib/i18n";
 
 export function YesNo({
   value,
   onChange,
-  onAdvance,
   lang,
   size = "lg",
   yesLabel,
@@ -19,7 +20,6 @@ export function YesNo({
 }: {
   value: boolean | null;
   onChange: (v: boolean) => void;
-  onAdvance?: () => void;
   lang: Lang;
   size?: "lg" | "sm";
   /** Overrides for the grids ("I use this"); default to plain yes / no. */
@@ -28,15 +28,7 @@ export function YesNo({
 }) {
   const yes = yesLabel ?? ui(lang).yes;
   const no = noLabel ?? ui(lang).no;
-  const [pending, setPending] = useState<boolean | null>(null);
-
-  useEffect(() => {
-    if (pending === null || !onAdvance) return;
-    const t = setTimeout(onAdvance, 180);
-    return () => clearTimeout(t);
-  }, [pending, onAdvance]);
-
-  const shown = pending ?? value;
+  const shown = value;
 
   return (
     <div role="radiogroup" className={cn("grid grid-cols-2", size === "lg" ? "gap-3" : "gap-2")}>
@@ -52,7 +44,6 @@ export function YesNo({
           onClick={() => {
             tick();
             onChange(v);
-            setPending(v);
           }}
           className={cn(
             "rounded-2xl border-2 font-semibold transition-all duration-100 active:scale-[0.98]",

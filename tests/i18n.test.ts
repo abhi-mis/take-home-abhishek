@@ -13,6 +13,8 @@
  * also the test that keeps the invariant honest: language is presentation, and no answer
  * is ever translated on its way into the output.
  */
+import { readFileSync, readdirSync, statSync } from "node:fs";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { INTAKE_SCHEMA, QUESTIONS } from "@/lib/schema";
 import { COPY, SPEAK_PROMPTS, UI_COPY } from "@/lib/copy";
@@ -217,5 +219,92 @@ describe("placeholder substitution", () => {
     // placeholders are named rather than positional.
     expect(t("progressAria", "hi", { n: 3, total: 17 })).toBe("17 में से सवाल 3");
     expect(t("progressAria", "en", { n: 3, total: 17 })).toBe("Question 3 of 17");
+  });
+});
+
+/**
+ * The guard that actually found the leaks.
+ *
+ * A runtime walk can only check the screens it can reach, and it cannot reach the
+ * post-voice confirmation dialog without a microphone and an API key - which is exactly
+ * where two untranslated sentences were sitting ("You did not mention (3)" and "…and 2
+ * more"). A third was a template literal on the review screen.
+ *
+ * So this reads the source instead and enforces the rule directly: no component may
+ * contain English prose. Every patient-visible string goes through `t()`, `ui()` or
+ * `optionLabel()`, which is what makes the type system able to see it.
+ */
+describe("no component hard-codes English prose", () => {
+  const ROOT = process.cwd();
+
+  function walk(dir: string, out: string[] = []): string[] {
+    for (const entry of readdirSync(dir)) {
+      const full = path.join(dir, entry);
+      if (statSync(full).isDirectory()) walk(full, out);
+      else if (entry.endsWith(".tsx")) out.push(full);
+    }
+    return out;
+  }
+
+  /** Comments explain the copy decisions in English, on purpose. */
+  function stripComments(src: string): string {
+    return src
+      .replace(/\{\/\*[\s\S]*?\*\/\}/g, "")
+      .replace(/\/\*[\s\S]*?\*\//g, "")
+      .replace(/(^|[^:])\/\/.*$/gm, "$1");
+  }
+
+  /**
+   * Words that stay Latin in both languages: the product name, clinical abbreviations
+   * patients say in English, and the two glyph labels.
+   */
+  const LATIN_OK = /^(GenoRoot|PCOS|PCOD|PRP|GFC|iPRF|DNA|JSON|Aa|EN|Yes|No)$/i;
+
+  const files = [
+    ...walk(path.join(ROOT, "components")),
+    ...walk(path.join(ROOT, "app")),
+  ];
+
+  it("scans a realistic number of components", () => {
+    expect(files.length).toBeGreaterThan(15);
+  });
+
+  /**
+   * Prose, as distinct from code that happens to sit between a `>` and a `<`.
+   *
+   * The naive version of this test flagged eighty lines of TypeScript, because generics
+   * and arrow functions are full of angle brackets. Requiring the candidate to contain
+   * none of `= ; { } [ ] " <` after expressions are stripped is what separates a sentence
+   * a patient reads from a fragment of a type annotation.
+   */
+  const looksLikeCode = /[=;{}\[\]"<>]/;
+
+  it("has no English sentence sitting in JSX", () => {
+    const offenders: string[] = [];
+    for (const file of files) {
+      const src = stripComments(readFileSync(file, "utf8"));
+      // JSX text nodes: between > and <, with {expressions} allowed inside.
+      for (const m of src.matchAll(/>((?:[^<>]|\{[^{}]*\})+?)</g)) {
+        const raw = m[1] ?? "";
+        // Drop expressions and HTML entities, which are not prose.
+        const plain = (raw.replace(/\{[^{}]*\}/g, " ").replace(/&[a-z]+;/g, " ") ?? "").trim();
+        if (plain.length === 0 || looksLikeCode.test(plain)) continue;
+        // Unbalanced parentheses mean an expression was stripped out of the middle of a
+        // call, not that a patient is being shown a sentence: `patch({...} as Partial<T>)`
+        // leaves "patch( as Partial" behind. Real copy balances its brackets.
+        const opens = (plain.match(/\(/g) ?? []).length;
+        const closes = (plain.match(/\)/g) ?? []).length;
+        if (opens !== closes) continue;
+        const words = [...plain.matchAll(/[A-Za-z][A-Za-z']{2,}/g)]
+          .map((w) => w[0])
+          .filter((w) => !LATIN_OK.test(w));
+        // Two or more real words in a row is prose; one is a stray identifier fragment
+        // left behind by the expression stripping.
+        if (words.length >= 2) {
+          offenders.push(`${path.relative(ROOT, file)}: ${plain.replace(/\s+/g, " ").slice(0, 60)}`);
+        }
+      }
+    }
+    expect(offenders).toEqual([]);
   });
 });

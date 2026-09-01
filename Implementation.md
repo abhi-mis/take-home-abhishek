@@ -57,9 +57,9 @@ Each question picks the cheapest modality rather than sharing one control.
 - **Q1 age** - decade presets first (Teens/20s/30s/40s/50+), fine-tune revealed after.
   Onset age is a *memory*, not a fact; asking for a number opens a numeric keypad over
   the form. One tap, then an optional nudge.
-- **Q2 / Q8 / Q9 / Q15 - auto-advance.** Tapping the answer *is* the Next
-  tap, after a 180ms beat so the choice visibly registers. These steps hide the Next
-  button entirely: 16 questions cost ~16 taps, not 32.
+- **Q2 / Q8 / Q9 / Q15 - select, then confirm.** These auto-advanced once, which cost 16
+  taps instead of 32 and is the trade this form no longer makes. See "Nothing
+  auto-advances any more" below.
 - **Q4 is pictures.** Six inline-SVG scalp diagrams with the affected zone shaded, in
   a two-column grid. One head outline and one visual language across all six (five
   top-down, plus loose strands for shedding) so they are genuinely comparable - an
@@ -272,6 +272,54 @@ is not, and an extra tap to dismiss a card is ceremony the patient did not ask f
 
 ---
 
+## Two decisions about how an answer gets committed
+
+### Nothing auto-advances any more
+
+Tapping an option on a single-select or a yes/no used to write the answer AND move to the
+next question after a 180ms beat. It turned a 16-question form into 16 taps instead of 32,
+which is a real saving, and it was the wrong trade for a medical intake.
+
+The costs are not symmetric. One extra tap is a mild inconvenience. A mis-tap that both
+records an answer and leaves the screen is a wrong answer in a clinical record, on a screen
+the patient has already left - and the thumb-sized targets that make the form easy to use
+are the same targets that make a stray tap likely. So every question now shows **Next**,
+the answer is selected and confirmed in two separate actions, and `hideNext` is gone.
+
+The smoke test asserts the new rule directly on both kinds - after picking an option the
+heading must be unchanged and Next must be enabled - because "does not advance" is the sort
+of behaviour that a future convenience change would quietly undo.
+
+### Corrections happen on the review screen, not back in the form
+
+Tapping a row on the review screen used to navigate into the wizard at that question. That
+is the obvious implementation and it is wrong at the end of a form: a patient checking
+sixteen answers wants to change ONE, and being dropped back into the wizard loses their
+place, with the only way out being Next through everything after it or a Back button that
+reads like undoing.
+
+So a row now opens that single question in a dialog over the review screen. Answer it, tap
+**Done**, and the row updates underneath. Structurally that meant extracting
+`components/questions/QuestionBody.tsx` - the `step.kind` switch that used to live in the
+wizard page - so both callers render the same controls. Two implementations of "what does
+`type: multi` look like" is exactly the kind of duplication that drifts apart.
+
+Three details worth the words:
+
+- **The three table questions open on the grid, not the speak screen.** Voice is the point
+  of those questions in the wizard, but someone who tapped one row to fix it should not be
+  asked to describe all six items out loud again. `VoiceMatrix` takes an `initialStage`.
+- **Done is never blocked.** If the question is still incomplete the dialog says so and
+  still closes: the patient opened it to make a correction and must be able to get out. The
+  review row then reads "not answered yet" and the download stays disabled, which is the
+  same truth told where they can already see it.
+- **About You needed a row of its own.** It had never been in the review list, because the
+  old jump-into-the-wizard behaviour let Back reach it. With editing in place that path
+  disappeared, so sex and age are now a row like any other - which is more honest anyway,
+  since `patient_sex` and `patient_age` are in the JSON the doctor receives.
+
+---
+
 ## Bilingual, without a second app
 
 The form is English or Hindi, chosen with a header switch, and the whole screen commits to
@@ -294,6 +342,12 @@ The smoke test asserts both halves of that on the review screen: no Latin words 
 
 ### How a missing translation fails
 
+The first pass at this shipped three leaks: "You did not mention (3)" and "…and 2 more" in
+the post-voice dialog, and an "N item(s) still need attention." template on the review
+screen. None were found by walking the app in Hindi, because the runtime walk cannot reach
+that dialog without a microphone and an API key. They were found by reading the source, so
+that is now a test.
+
 The real failure mode of a bilingual form is not a clumsy sentence, it is one English
 sentence surviving on an otherwise Hindi screen - which is precisely the sentence the
 patient needed. Two mechanisms catch it:
@@ -310,6 +364,43 @@ patient needed. Two mechanisms catch it:
 That last one matters more than it looks. The first version of the walk found zero strings
 because of a quoting difference in the schema file, and every "no missing translations"
 assertion passed perfectly.
+
+### Devanagari does not fit a Latin line box
+
+The bug that made this visible: in Hindi, the tops of the matras on "हाँ" and "नहीं" were
+sliced flat, and so were the ones on the question titles.
+
+Measured rather than guessed. Against the platform Devanagari face, an 18px line paints
+24px of ink where Tailwind's `text-lg` allots 28px - two pixels of clearance top and
+bottom, which is inside the rounding error of a different font version, a different device
+pixel ratio, or Chrome clipping painted text to the inline box. The 25px question title was
+worse: 33px of ink in a 30.5px box from `leading-[1.22]`, so it did not merely risk
+clipping, it overflowed.
+
+Every line-height in the app had been chosen by eye against English, and 1.2 is a normal
+English heading and a cramped Devanagari one. So `<html lang="hi">` - which LangToggle
+already sets for screen readers - now also drops the Latin-tuned leadings:
+
+```css
+:root[lang="hi"]   { line-height: 1.65 }
+:root[lang="hi"] * { line-height: inherit }   /* ignore every leading utility */
+```
+
+`* { line-height: inherit }` is blunt on purpose. It is the only way to say "these
+utilities do not apply to this script" without listing them, and listing them is how the
+next one gets missed - which is exactly what happened when I tried: a heading rule at 1.42
+still clipped, 1.55 fixed the 25px title and left the 23px review heading at 94% of its
+line box, because Devanagari ink does not scale as neatly with size as Latin does. Headings
+now inherit the same figure as everything else, and a Hindi question is airier than its
+English counterpart, which is simply what the script wants.
+
+The guard is in the smoke test rather than a unit test, because whether a glyph fits
+depends on the font the platform picked, which no unit test can see. It walks every text
+node on the Hindi review screen, compares the ink of each rendered line
+(`getClientRects()`) against the computed line-height, and fails above 95%. It forces the
+Windows Devanagari face first, so it measures the metrics a patient's phone will use rather
+than whichever fallback the test box happens to have. That check found a heading my own
+by-hand audit had missed.
 
 ### The parts that are not just strings
 
@@ -624,7 +715,8 @@ record twice (*"...aur main biotin bhi leta hoon"*) without losing round one.
    a genuinely empty answer count while an unvisited question can't slip through.
 
 The Review screen renders the download button **only when both pass**. Anything
-unresolved becomes a tap-to-jump link back to that question, not an error message.
+unresolved becomes a link that opens that question in a dialog on the review screen, not an
+error message.
 
 The gating rule and the Q14 conditional are re-checked in `validate.ts` independently
 of the UI, so a bad extraction patch can't bypass the interface.
@@ -633,7 +725,7 @@ of the UI, so a bad extraction patch can't bypass the interface.
 
 ## What's tested, and what deliberately isn't
 
-**`npm test` - 152 deterministic tests, no API key needed.** These are the dependable
+**`npm test` - 154 deterministic tests, no API key needed.** These are the dependable
 checks: the step builder, sex gating in all four states, every conditional-followup
 rule in both directions, exclusive options, 16-key coverage, the personalisation rules
 (comfort thresholds, the onset-age ceiling, and that a suggestion never writes an answer),

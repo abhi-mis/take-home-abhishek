@@ -251,3 +251,59 @@ input[type="range"]:active {
 .no-scrollbar {
   scrollbar-width: none;
 }
+
+/*
+  ---------------------------------------------------------------------------
+  Devanagari needs a taller line than Latin does
+  ---------------------------------------------------------------------------
+
+  Every line-height in this app was chosen by eye against English. Measured against the
+  platform Devanagari face, the tight ones leave about two pixels of clearance above an
+  18px glyph and the 25px question title overflows its line box by one. Latin never uses
+  that space; Devanagari puts matras there - the chandrabindu on "हाँ", the ii-matra and
+  anusvara on "नहीं" - and two pixels is inside the rounding error of a different font
+  version, a different device pixel ratio, or Chrome clipping painted text to the inline
+  box. The result was the top of those marks sliced flat.
+
+  The fix is not a patch per utility. It is that a Latin-tuned leading is simply the wrong
+  input for this script: 1.2 is a normal English heading and a cramped Devanagari one.
+  So when the form is in Hindi - `<html lang="hi">`, written by LangToggle - every
+  Latin-tuned line-height is dropped and the script gets leadings suited to it.
+
+  `* { line-height: inherit }` is deliberately blunt: it is the only way to say "ignore
+  the leading utilities" without listing them, and listing them is how the next one gets
+  missed. These rules sit outside `@layer`, so they beat Tailwind's layered utilities on
+  cascade order without `!important`.
+
+  Scoped to Hindi rather than applied globally, because the English layout was tuned at
+  those exact line-heights and there is no reason to loosen it for a script that fits.
+*/
+:root[lang="hi"] {
+  line-height: 1.6;
+}
+
+:root[lang="hi"] * {
+  line-height: inherit;
+}
+
+/*
+  Headings deliberately do NOT get a tighter figure.
+  
+  Three attempts landed here. 1.42 looks generous beside the 1.22 the English title uses
+  and still clipped; 1.55 fixed the 25px question title and left the 23px review heading
+  at 94% of its line box, because Devanagari ink does not scale as neatly with font size
+  as Latin does - "सब हो गया," paints 34px tall at 23px, thanks to a matra above and a
+  descender below in the same line. Chasing that per size is how the next one gets missed,
+  so headings inherit the same 1.65 as everything else. A three-line question is airier
+  than its English counterpart, which is simply what this script wants.
+*/
+
+/*
+  The display serif has no Devanagari coverage - Georgia and Palatino are Latin-only - so
+  Hindi headings already fall back to the platform's Devanagari face per character. Naming
+  that face makes the fallback deliberate rather than accidental.
+*/
+:root[lang="hi"] .font-display {
+  font-family: "Nirmala UI", "Noto Serif Devanagari", "Noto Sans Devanagari",
+    "Kohinoor Devanagari", var(--font-display);
+}

@@ -121,7 +121,7 @@ export function ResultDialog({
           {missed > 0 ? (
             <div className="mt-4 rounded-xl border border-dashed border-warn/45 bg-warn/[0.05] p-3">
               <p className="text-[11px] font-bold uppercase tracking-wide text-warn">
-                You did not mention ({missed})
+                {t("resultNotMentioned", lang, { n: missed })}
               </p>
               <ul className="mt-1.5 flex flex-col gap-1">
                 {outstanding.slice(0, 6).map((f) => (
@@ -131,7 +131,7 @@ export function ResultDialog({
                 ))}
                 {missed > 6 ? (
                   <li className="text-[12.5px] italic text-warn/80">
-                    …and {missed - 6} more
+                    {t("resultAndMore", lang, { n: missed - 6 })}
                   </li>
                 ) : null}
               </ul>

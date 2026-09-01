@@ -260,7 +260,7 @@ export const UI_COPY = {
   recordFilled: "Filled in - please check below",
   recordLanguages: "English, Hindi, or a mix - however you normally speak.",
   reviewTitle: "All done",
-  reviewBody: "Here is your completed form. Tap any answer to change it.",
+  reviewBody: "Here is your completed form. Tap any answer to fix it without leaving this screen.",
   reviewIncomplete: "Almost there",
   download: "Download JSON",
   downloadBlocked: "Finish the items above first",

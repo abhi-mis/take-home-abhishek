@@ -8,8 +8,9 @@
  * both a keyboard and the mic. Voice here is speak-or-type in the literal sense:
  * the same field receives either.
  *
- * No auto-advance on the yes/no, because tapping "Yes" reveals a required field
- * directly below it - advancing would hide the thing the patient now has to fill.
+ * Nothing here advances on its own - no question does any more - which matters most on
+ * this one: tapping "Yes" reveals a required field directly below it, and advancing would
+ * hide the very thing the patient now has to fill.
  */
 import { AnimatePresence, motion } from "framer-motion";
 import type { Answers } from "@/lib/types";

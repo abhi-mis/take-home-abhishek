@@ -3,16 +3,19 @@
 /**
  * Q2 duration, Q6 menstrual, Q7 pregnancy, Q15 sample type.
  *
- * Auto-advance: picking an option writes the answer and moves on after a 180ms beat
- *  - long enough that the patient sees their choice register, short enough that it
- * never feels like waiting. That beat is why these steps hide the Next button.
+ * These used to auto-advance: tapping an option wrote the answer and moved on after a
+ * 180ms beat, which turned a 16-question form into 16 taps instead of 32. That saving was
+ * real and it was the wrong trade for a medical form. The cost is asymmetric - one extra
+ * tap is a mild inconvenience, while a mis-tap that both records an answer and leaves the
+ * screen is a wrong answer in a clinical record that the patient never sees again.
+ *
+ * So the answer is now selected and confirmed separately, and Next is always on screen.
  *
  * `suggestion` is the "pre-select and confirm" affordance (used by Q6). It renders a
  * one-tap accept banner above the list. It never writes to the store on its own:
  * a suggestion the patient ignores must leave the answer untouched, or the output
  * would contain something nobody said.
  */
-import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { OptionCard } from "../ui/Button";
 import { OptionIcon, hasOptionIcon } from "./OptionIcons";
@@ -27,7 +30,6 @@ export function SingleChoice({
   lang,
   withIcons = false,
   onChange,
-  onAdvance,
 }: {
   options: readonly string[];
   value: string | null;
@@ -36,23 +38,13 @@ export function SingleChoice({
   lang: Lang;
   withIcons?: boolean;
   onChange: (v: string) => void;
-  onAdvance?: () => void;
 }) {
-  const [pending, setPending] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (pending === null || !onAdvance) return;
-    const t = setTimeout(onAdvance, 180);
-    return () => clearTimeout(t);
-  }, [pending, onAdvance]);
-
   function choose(opt: string) {
     tick();
     onChange(opt);
-    setPending(opt);
   }
 
-  const showSuggestion = suggestion !== undefined && value === null && pending === null;
+  const showSuggestion = suggestion !== undefined && value === null;
 
   return (
     <div className="flex flex-col gap-4">
@@ -80,7 +72,7 @@ export function SingleChoice({
             label={optionLabel(opt, lang)}
             gloss={gloss?.[opt]}
             icon={withIcons && hasOptionIcon(opt) ? <OptionIcon option={opt} /> : undefined}
-            selected={(pending ?? value) === opt}
+            selected={value === opt}
             onSelect={() => choose(opt)}
           />
         ))}

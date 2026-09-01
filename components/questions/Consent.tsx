@@ -60,7 +60,6 @@ export function Consent({
         <p className="mb-3 text-[15px] font-semibold leading-snug text-ink">
           {t("consentQuestion", lang)}
         </p>
-        {/* No onAdvance: consent is the one answer that must not auto-advance. */}
         <YesNo
           value={value}
           onChange={onChange}

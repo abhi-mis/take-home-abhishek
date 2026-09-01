@@ -187,6 +187,25 @@ try {
   // ---------- Q2 duration (auto-advance) ----------
   await tapOption("Over a year");
 
+  /*
+    Selecting an answer must NOT move the screen on. Auto-advance saved a tap per question
+    and cost the patient any chance to see a mis-tap before it became a clinical answer on
+    a screen they had already left. So the question stays put and Next appears.
+  */
+  const stillOnQ2 = await heading();
+  notes.push(`after picking an option, still on: "${stillOnQ2}"  (must not auto-advance)`);
+  if (!/how long/i.test(stillOnQ2))
+    errors.push({
+      kind: "advance",
+      text: `picking an option skipped ahead to "${stillOnQ2}"`,
+      fatal: true,
+    });
+  const nextAfterPick = page.getByRole("button", { name: "Next" });
+  if (await nextAfterPick.isDisabled())
+    errors.push({ kind: "advance", text: "Next stayed disabled on an answered single-select", fatal: true });
+  else notes.push("Next is present and enabled once an option is chosen");
+  await tapButton("Next");
+
   // Validation must actually BLOCK, and it must explain itself when the patient tries.
   const nextBtn = page.getByRole("button", { name: "Next" });
   await nextBtn.waitFor({ state: "visible", timeout: 12_000 });
@@ -232,12 +251,22 @@ try {
 
   // ---------- Q6 + Q7: exist ONLY because of the gate ----------
   await tapOption(/^Irregular/);
+  await tapButton("Next");
   await tapOption(/^Not applicable/);
+  await tapButton("Next");
   notes.push("Q6 + Q7 rendered - live gating confirmed");
 
   // ---------- Q8, Q9 yes/no ----------
+  // A yes/no is the easiest control in the form to hit by accident, so it is also the one
+  // that must not move the screen on by itself.
   await tapOption("Yes");
+  const stillOnQ8 = await heading();
+  if (!/acne|oily/i.test(stillOnQ8))
+    errors.push({ kind: "advance", text: `a yes/no auto-advanced to "${stillOnQ8}"`, fatal: true });
+  else notes.push("a yes/no answer does not move the screen on either");
+  await tapButton("Next");
   await tapOption("No");
+  await tapButton("Next");
 
   // ---------- Q10 past 6 months (multi) ----------
   await tapCheck(/Recent surgery/);
@@ -384,6 +413,7 @@ try {
 
   // ---------- Q15 sample type ----------
   await tapOption(/^Saliva/);
+  await tapButton("Next");
 
   // ---------- Q16 consent: never pre-ticked ----------
   const consentPreselected = await page
@@ -441,6 +471,55 @@ try {
       fatal: false,
     });
   else notes.push("Hindi review screen has no English text left on it");
+
+  /*
+    Does any Devanagari text sit too tight in its line box?
+
+    Latin-tuned line-heights clip this script: a 25px Devanagari line paints about 33px
+    tall once matras and conjuncts are counted, so `leading-[1.22]` - a normal English
+    heading - overflowed by a pixel and Chrome sliced the tops off. The fix is a set of
+    Hindi leadings in globals.css; this is the assertion that keeps them.
+
+    Measured per rendered line (`getClientRects`) against the computed line-height, and
+    the platform's Devanagari face is forced first so the check tests the metrics a
+    patient's phone will actually use rather than whichever fallback this box happens to
+    have installed.
+  */
+  await page.addStyleTag({
+    content: '*{font-family:"Nirmala UI","Noto Sans Devanagari","Segoe UI",sans-serif !important}',
+  });
+  await page.waitForTimeout(200);
+  const tightText = await page.evaluate(() => {
+    const out = [];
+    const walk = (node) => {
+      for (const el of node.children) {
+        const hasOwnText = [...el.childNodes].some(
+          (n) => n.nodeType === 3 && n.textContent.trim().length > 0,
+        );
+        if (hasOwnText && /[\u0900-\u097F]/.test(el.textContent)) {
+          const lh = parseFloat(getComputedStyle(el).lineHeight);
+          if (!Number.isNaN(lh)) {
+            const r = document.createRange();
+            r.selectNodeContents(el);
+            const rects = [...r.getClientRects()].filter((x) => x.height > 0);
+            const ink = rects.length === 0 ? 0 : Math.max(...rects.map((x) => x.height));
+            if (ink / lh > 0.95)
+              out.push(`"${el.textContent.trim().slice(0, 18)}" ink ${ink.toFixed(0)} in ${lh.toFixed(0)}`);
+          }
+        }
+        walk(el);
+      }
+    };
+    walk(document.body);
+    return out;
+  });
+  if (tightText.length > 0)
+    errors.push({
+      kind: "i18n",
+      text: `Devanagari at risk of clipping: ${tightText.slice(0, 4).join("; ")}`,
+      fatal: false,
+    });
+  else notes.push("every Devanagari line has room for its matras");
 
   const afterSwitch = await page.evaluate(() => {
     const raw = sessionStorage.getItem("genoroot-intake-v1");
@@ -512,21 +591,52 @@ try {
   if (a.menstrual_cycle === null) throw new Error("female patient got a null menstrual_cycle");
   if (a.consent !== true) throw new Error("consent did not record as true");
 
-  // ---------- gating in the other direction ----------
-  // Go back to About You, switch to Male, and confirm Q6/Q7 vanish AND their stored
-  // answers are nulled rather than left stale.
-  await page.getByRole("button", { name: /menstrual_cycle|How are your periods/ }).first().click();
+  // ---------- correcting an answer WITHOUT leaving the review screen ----------
+  /*
+    Tapping a row opens that one question in a dialog. This is the behaviour the review
+    screen exists for: a patient checking sixteen answers wants to change one, and the old
+    version sent them back into the wizard and lost their place.
+  */
+  await page.getByRole("button", { name: /How long has it been going on/ }).first().click();
   await page.waitForTimeout(500);
-  // About You is now step 0, so walk back to it rather than counting taps.
-  while (!/about you/i.test(await heading())) {
-    const back = page.getByRole("button", { name: "Back" });
-    if ((await back.count()) === 0) break;
-    await back.click();
-    await page.waitForTimeout(320);
-  }
-  notes.push(`walked Back to: ${await heading()}`);
-  await tapOption(/^Male/);
-  notes.push("switched sex to Male");
+  const dialogOpen = await page.getByRole("dialog").count();
+  notes.push(`tapping a review row opened a dialog? ${dialogOpen > 0}  (must be true)`);
+  if (dialogOpen === 0)
+    errors.push({ kind: "edit", text: "tapping a review row did not open the edit dialog", fatal: true });
+
+  // Still on the review screen behind it - the whole point.
+  const behind = await page.getByRole("heading").first().innerText();
+  if (!/all done|almost there/i.test(behind))
+    errors.push({
+      kind: "edit",
+      text: `the edit dialog navigated away instead of opening in place: "${behind}"`,
+      fatal: false,
+    });
+  else notes.push("the review screen is still underneath the dialog");
+
+  // Change the answer inside the dialog and confirm the row updates.
+  await page.getByRole("dialog").getByRole("radio", { name: /^6-12 months/ }).click();
+  await page.waitForTimeout(250);
+  await page.getByRole("dialog").getByRole("button", { name: /^Done$/ }).click();
+  await page.waitForTimeout(450);
+  const editedRow = await page
+    .getByRole("button", { name: /How long has it been going on/ })
+    .first()
+    .innerText();
+  notes.push(`row after editing in place: ${JSON.stringify(editedRow.replace(/\s+/g, " "))}`);
+  if (!/6-12 months/.test(editedRow))
+    errors.push({ kind: "edit", text: "the corrected answer did not reach the review row", fatal: false });
+
+  // ---------- gating in the other direction ----------
+  // Open About You from its own review row, switch to Male, and confirm Q6/Q7 are gated
+  // away AND their stored answers are nulled rather than left stale.
+  await page.getByRole("button", { name: /Sex and age/ }).first().click();
+  await page.waitForTimeout(500);
+  await page.getByRole("dialog").getByRole("radio", { name: /^Male/ }).click();
+  await page.waitForTimeout(300);
+  await page.getByRole("dialog").getByRole("button", { name: /^Done$/ }).click();
+  await page.waitForTimeout(450);
+  notes.push("switched sex to Male from the review screen");
 
   // PCOS/PCOD was answered as a female patient. Switching to male must take it out of
   // the answers, not leave an impossible diagnosis on its way to a doctor.
@@ -546,12 +656,23 @@ try {
       fatal: false,
     });
 
-  const stillAsksPeriods = await page
-    .getByRole("radio", { name: /^Irregular/ })
-    .isVisible()
-    .catch(() => false);
-  notes.push(`Q6 still shown after switching to Male? ${stillAsksPeriods}  (must be false)`);
-  if (stillAsksPeriods) throw new Error("Q6 still rendered for a male patient");
+  /*
+    On the review screen the Q6 row is still LISTED - a null a doctor can see explained is
+    better than a question that vanished - so the assertion is about what it now says. It
+    must read as never asked rather than still carrying "Irregular".
+  */
+  const q6Row = (
+    await page.getByRole("button", { name: /How are your periods/ }).first().innerText()
+  ).replace(/\s+/g, " ");
+  notes.push(`Q6 row after switching to Male: ${JSON.stringify(q6Row)}`);
+  if (/Irregular/.test(q6Row))
+    throw new Error("Q6 still shows a female-only answer for a male patient");
+  if (!/skipped, never asked/.test(q6Row))
+    errors.push({
+      kind: "gate",
+      text: `the gated Q6 row does not explain itself: "${q6Row}"`,
+      fatal: false,
+    });
 } catch (e) {
   errors.push({ kind: "walkthrough", text: String(e).slice(0, 400), fatal: true });
   try {

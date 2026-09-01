@@ -7,8 +7,16 @@
  *    every gated null explained rather than hidden. This is the thing being graded,
  *    so it is on screen and inspectable, not buried in a download.
  * 2. Gate the download on validate() - shape + all-16 coverage. If anything is
- *    unresolved, the failing questions become tap-to-jump links instead of an error.
+ *    unresolved, the failing questions become links that open that question.
  * 3. Handle the decline path: consent === false produces no JSON at all.
+ *
+ * CORRECTIONS HAPPEN HERE, NOT BACK IN THE FORM. Tapping a row opens that one question in
+ * a dialog over this screen. The first version navigated back into the wizard, which is
+ * the obvious implementation and the wrong behaviour: a patient reviewing sixteen answers
+ * wants to fix one, and being dropped back into the form loses their place and makes the
+ * way out either Next through everything after it or a Back button that reads like
+ * undoing. The only exception is the declined-consent path, which really is a different
+ * screen.
  */
 import { useMemo, useState } from "react";
 import { motion } from "framer-motion";
@@ -22,7 +30,9 @@ import { ThemeToggle } from "./ThemeToggle";
 import { ComfortToggle } from "./ComfortToggle";
 import { LangToggle } from "./LangToggle";
 import { useIntake } from "@/lib/store";
-import { doneTitle } from "@/lib/patient";
+import { doneTitle, personalSummary } from "@/lib/patient";
+import { EditQuestionDialog } from "./EditQuestionDialog";
+import { ALL_STEPS } from "@/lib/steps";
 
 export function ReviewScreen({
   answers,
@@ -38,11 +48,19 @@ export function ReviewScreen({
   onRestart: () => void;
 }) {
   const [showJson, setShowJson] = useState(false);
+  /** Which question is open for correction, by step id. */
+  const [editing, setEditing] = useState<string | null>(null);
   // One field per selector: a selector that builds a value re-renders forever.
   const comfort = useIntake((st) => st.comfort);
   const setComfort = useIntake((st) => st.setComfort);
+  const comfortAsked = useIntake((st) => st.comfortAsked);
   const lang = useIntake((st) => st.lang);
   const setLang = useIntake((st) => st.setLang);
+  const patch = useIntake((st) => st.patch);
+  const setSex = useIntake((st) => st.setSex);
+  const setAge = useIntake((st) => st.setAge);
+  const setFirstName = useIntake((st) => st.setFirstName);
+  const chooseNone = useIntake((st) => st.chooseNone);
   const UI = ui(lang);
   const COPY_L = questionCopy(lang);
 
@@ -51,6 +69,13 @@ export function ReviewScreen({
     [answers, meta, explicitNone],
   );
   const output = useMemo(() => buildOutput(answers, meta), [answers, meta]);
+
+  /*
+    The step being corrected, looked up from ALL_STEPS rather than the visible list: a
+    question can be reviewed even in a state where gating would hide it, and the dialog
+    should show what the row shows.
+  */
+  const editStep = editing === null ? null : (ALL_STEPS.find((s) => s.id === editing) ?? null);
 
   if (answers.consent === false) return <Declined lang={lang} onJump={onJump} />;
 
@@ -79,7 +104,9 @@ export function ReviewScreen({
             <p className="text-[13.5px] text-muted">
               {result.valid
                 ? UI.reviewBody
-                : `${result.missing.length + result.issues.length} item(s) still need attention.`}
+                : t("reviewNeedAttention", lang, {
+                    n: result.missing.length + result.issues.length,
+                  })}
             </p>
           </div>
         </div>
@@ -93,7 +120,7 @@ export function ReviewScreen({
               <li key={key}>
                 <button
                   type="button"
-                  onClick={() => onJump(key)}
+                  onClick={() => setEditing(key)}
                   className="min-h-[44px] text-left text-[14px] font-semibold text-warn underline decoration-warn/40 underline-offset-2 transition-colors hover:decoration-warn"
                 >
                   {COPY_L[key as keyof typeof COPY_L]?.title ?? key} →
@@ -110,6 +137,43 @@ export function ReviewScreen({
       ) : null}
 
       <div className="mt-6 flex flex-col gap-5">
+        {/*
+          About You, first, because that is where it was answered - and because
+          `patient_sex` and `patient_age` are in the downloaded JSON, so leaving them off
+          this screen would mean showing the patient less than the doctor gets.
+        */}
+        <section>
+          <h2 className="mb-2 text-[11px] font-bold uppercase tracking-[0.12em] text-muted">
+            0 · {sectionLabel(lang)["0"] ?? ""}
+          </h2>
+          <div className="overflow-hidden rounded-2xl border border-line bg-card">
+            <button
+              type="button"
+              onClick={() => setEditing(ALL_STEPS[0]!.id)}
+              className="flex w-full items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-brand-soft/40 active:bg-paper"
+            >
+              <span aria-hidden className="w-5 shrink-0 pt-0.5 text-[12px] font-bold text-brand/50">
+                ·
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-[12.5px] font-medium leading-snug text-muted">
+                  {t("aboutRowLabel", lang)}
+                </span>
+                <span className="mt-0.5 block text-[14px] font-semibold leading-snug text-ink">
+                  {personalSummary(meta, lang) === "" ? (
+                    <Missing lang={lang} />
+                  ) : (
+                    personalSummary(meta, lang)
+                  )}
+                </span>
+              </span>
+              <span aria-hidden className="pt-1 text-muted">
+                ›
+              </span>
+            </button>
+          </div>
+        </section>
+
         {INTAKE_SCHEMA.sections.map((section) => (
           <section key={section.id}>
             <h2 className="mb-2 text-[11px] font-bold uppercase tracking-[0.12em] text-muted">
@@ -120,7 +184,7 @@ export function ReviewScreen({
                 <button
                   key={q.key}
                   type="button"
-                  onClick={() => onJump(q.key)}
+                  onClick={() => setEditing(q.key)}
                   className={cn(
                     "flex w-full items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-brand-soft/40 active:bg-paper",
                     i > 0 && "border-t border-line",
@@ -169,6 +233,24 @@ export function ReviewScreen({
           {UI.restart}
         </Button>
       </div>
+
+      {editStep !== null ? (
+        <EditQuestionDialog
+          step={editStep}
+          answers={answers}
+          meta={meta}
+          lang={lang}
+          comfort={comfort}
+          comfortAsked={comfortAsked}
+          explicitNone={explicitNone}
+          patch={patch}
+          setSex={setSex}
+          setAge={setAge}
+          setFirstName={setFirstName}
+          chooseNone={chooseNone}
+          onClose={() => setEditing(null)}
+        />
+      ) : null}
 
       {showJson ? (
         <pre className="mt-4 overflow-x-auto rounded-2xl border border-line bg-code-bg p-4 text-[11.5px] leading-relaxed text-code-fg">

@@ -66,12 +66,19 @@ export function VoiceMatrix({
   answers,
   patch,
   lang,
+  initialStage = "speak",
   setFocusMode,
 }: {
   questionKey: "habits" | "products" | "procedures";
   answers: Answers;
   patch: (p: Partial<Answers>) => void;
   lang: Lang;
+  /**
+   * Where the question opens. "speak" in the wizard, because voice is the entire point of
+   * these three; "form" in the review dialog, where someone who tapped one row to correct
+   * it should not be asked to describe all six items out loud again.
+   */
+  initialStage?: "speak" | "form";
   /**
    * Reported UP to the page: "this step is presenting its own focused UI, so stand
    * down the shared chrome". True on the speak screen and during the follow-up flow.
@@ -95,7 +102,7 @@ export function VoiceMatrix({
    * A patient who chose to tap, or whose mic/API failed, goes straight to "form" and
    * never sees the other two.
    */
-  const [stage, setStage] = useState<"speak" | "result" | "form">("speak");
+  const [stage, setStage] = useState<"speak" | "result" | "form">(initialStage);
   const [flowOpen, setFlowOpen] = useState(false);
   /**
    * When set, the follow-up flow is limited to ONE item: the row (or habit field) whose
@@ -241,7 +248,7 @@ export function VoiceMatrix({
       {confirmed && !flowOpen ? (
         <p className="mb-4 flex items-center gap-2 rounded-2xl border border-brand/35 bg-brand-soft/50 px-4 py-2.5 text-[13px] font-semibold text-brand-ink">
           <CheckIcon className="size-4 shrink-0" />
-          {ui(lang).confirmedBanner} - you can still change anything below.
+          {t("confirmedTail", lang, { banner: ui(lang).confirmedBanner })}
         </p>
       ) : null}
 
