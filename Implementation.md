@@ -315,6 +315,27 @@ Two decisions inside that:
   patient's age, so the next person to pick up a shared clinic phone must not inherit it.
   Forgetting it is correct behaviour, not a missing feature.
 
+### A name asked for is a name shown back
+
+The first version collected a first name and then used it in exactly one place: the
+"continue where you left off" button, which a first-time patient never sees. That is the
+worst of both worlds - the patient paid the cost of typing it and got nothing back, and the
+field reads as collection for its own sake.
+
+It now appears three times and nowhere else: echoed under the input as it is typed
+("Thank you, Asha"), carried into question 1 as a welcome, and closing the review ("All
+done, Asha"). Question 1's read-aloud speaks the welcome as well, because the speaker
+button's contract is that it reads what is on the screen - a patient who cannot see the
+screen must not be getting a different form.
+
+Two details worth the words. The echo is a single paragraph that changes its text, not two
+that cross-fade: the animated version waited for the old line to exit before mounting the
+new one, so the acknowledgement arrived most of a second after typing stopped and read as
+lag rather than as a response. And the welcome sits on question 1 rather than on the screen
+where the name was typed, so it reads as the form carrying something forward instead of a
+field congratulating itself. `tests/patient.test.ts` covers both the named and the
+skipped-name paths, and the smoke asserts all three appearances.
+
 ### The bound that makes the age question clinical rather than cosmetic
 
 `maxOnsetAge()` caps Q1 at the patient's current age. Without it a 45-year-old can slide
@@ -336,20 +357,42 @@ This also replaced a genuinely bad inference. The old version guessed from
 post-menopausal" - which is a weak proxy wearing a helpful hat. With a real age it is an
 honest offer.
 
-### Two things that made it stop looking generated
+### What made it stop looking generated
 
 Not personalisation exactly, but the same complaint:
 
 - **The questions are set in a serif** (a system stack - no webfont to download on a bad
-  clinic connection), with the question number in a rail to its left. The first attempt put
-  the number behind the title as a large ghost numeral: it looked designed in a mockup and
-  muddy in practice, because directly behind the first word of a question is precisely
-  where you cannot afford noise.
+  clinic connection), with the question number in a small badge pinned to the title's first
+  line. That badge is the third attempt. A watermark numeral behind the title was muddy,
+  because directly behind the first word of a question is precisely where you cannot afford
+  noise; a numeral above a hairline rail replaced it and then failed at the largest scale,
+  where a three-line title left the rail running down beside it looking like a stray tick
+  mark. A badge is the same shape at every scale, which is the property that actually
+  mattered.
 - **Validation stopped nagging on arrival.** The outstanding list used to render the moment
   a question appeared, so a patient reaching Q1 was told in warning red that something was
   missing before they had done anything. It now waits until they press a blocked **Next**
   (the disabled button passes the tap to its wrapper) or return to a step they have already
   been through. The smoke test asserts both halves: silent on arrival, explicit once asked.
+- **The review screen stopped printing field names.** Every row read `AGE_HAIR_LOSS_BEGAN`
+  over the answer - the identifier a developer needs, shown to a patient on the final
+  screen. It now reads the question back in the patient's own words, and the keys stay
+  where they belong, in the JSON below.
+
+### The one layout that could not survive the largest scale
+
+Zoom shrinks the usable width in CSS pixels: a 380px phone becomes 301, and inside a
+padded card a table row's label was left with about 110 of them beside its fixed 124px
+Yes/No pair. "Topical Minoxidil (solution/foam)" then shredded into five lines next to two
+buttons, which was the ugliest thing in the app at 26%.
+
+At that scale only, the row stacks - label first, full-width control under it - through two
+CSS rules keyed on `data-comfort` rather than a media query, because the trigger is the
+patient's chosen scale and not the device. Same markup, same components, and the
+two-column version is untouched at the sizes where it reads well. The landing screen got
+the same treatment from the other direction: its **Start** button is now sticky rather than
+merely bottom-aligned, because at 26% the intro is taller than the viewport and the only
+button on the screen had fallen below the fold.
 
 ---
 
@@ -464,7 +507,7 @@ of the UI, so a bad extraction patch can't bypass the interface.
 
 ## What's tested, and what deliberately isn't
 
-**`npm test` - 126 deterministic tests, no API key needed.** These are the dependable
+**`npm test` - 127 deterministic tests, no API key needed.** These are the dependable
 checks: the step builder, sex gating in all four states, every conditional-followup
 rule in both directions, exclusive options, 16-key coverage, the personalisation rules
 (comfort thresholds, the onset-age ceiling, and that a suggestion never writes an answer),

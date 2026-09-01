@@ -27,7 +27,7 @@ export default function Home() {
   useEffect(() => setMounted(true), []); // avoid a hydration mismatch on resume state
 
   return (
-    <div className="mx-auto flex min-h-dvh w-full max-w-md flex-col justify-between px-6 py-10">
+    <div className="mx-auto flex min-h-dvh w-full max-w-md flex-col px-6 py-10">
       <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}>
         <div className="mb-6 flex items-center justify-end gap-2">
           {/* Reachable before the form even starts, for anyone who needs it now. */}
@@ -77,7 +77,14 @@ export default function Home() {
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.12 }}
-        className="flex flex-col gap-3"
+        /*
+          Sticky, not just bottom-aligned. At the largest text size the intro and the
+          four-item list are taller than the viewport, so a bottom-aligned Start button
+          sat below the fold - the one screen where a patient must not have to hunt for
+          the only button. Sticking it to the bottom edge keeps it in reach while the
+          rest of the page scrolls behind it, the same way the wizard's footer behaves.
+        */
+        className="sticky bottom-0 mt-auto -mx-6 flex flex-col gap-3 bg-paper/95 px-6 pb-1 pt-5 backdrop-blur"
       >
         {mounted && answered > 0 ? (
           <>
@@ -99,9 +106,6 @@ export default function Home() {
             </Button>
           </Link>
         )}
-        <p className="text-center text-[11.5px] leading-relaxed text-muted">
-          {UI_COPY.landingPrivacy}
-        </p>
       </motion.div>
     </div>
   );

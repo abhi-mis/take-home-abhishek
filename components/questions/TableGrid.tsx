@@ -67,14 +67,14 @@ export function TableGrid({
                 className="flash-fill pointer-events-none absolute inset-0 bg-brand-soft"
               />
             ) : null}
-            <div className="relative flex items-start gap-3">
+            <div className="row-split relative flex items-start gap-3">
               <div className="min-w-0 flex-1">
                 <p className="text-[14.5px] font-semibold leading-tight text-ink">{row}</p>
                 {rowGloss?.[row] ? (
                   <p className="mt-0.5 text-[12.5px] leading-snug text-muted">{rowGloss[row]}</p>
                 ) : null}
               </div>
-              <div className="w-[124px] shrink-0">
+              <div className="row-control w-[124px] shrink-0">
                 <YesNo
                   size="sm"
                   value={(entry[flagKey] as boolean | null) ?? null}

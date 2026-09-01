@@ -15,12 +15,13 @@ import {
   COMFORT_ZOOM,
   ageBand,
   cleanFirstName,
-  greeting,
+  doneTitle,
   maxOnsetAge,
   personalNote,
   personalSummary,
   suggestedComfort,
   suggestionFor,
+  welcomeLine,
 } from "@/lib/patient";
 import { EMPTY_ANSWERS, EMPTY_META, type Meta } from "@/lib/types";
 
@@ -142,27 +143,32 @@ describe("first name handling", () => {
     expect((cleanFirstName("a".repeat(200)) ?? "").length).toBeLessThanOrEqual(24);
   });
 
-  it("greets with a name when there is one, and reads correctly without", () => {
-    expect(greeting(meta({ first_name: "Asha" }))).toContain("Asha");
-    expect(greeting(meta())).toBe("Let us begin.");
+  it("shows the name back to the patient once it is given", () => {
+    // A name that is asked for and never shown is a field taking something for nothing.
+    expect(welcomeLine(meta({ first_name: "Asha" }))).toBe("Welcome, Asha");
+    expect(doneTitle(meta({ first_name: "Asha" }), "All done")).toBe("All done, Asha");
+  });
+
+  it("reads correctly when the patient skipped the name", () => {
+    expect(welcomeLine(meta())).toBeNull();
+    expect(doneTitle(meta(), "All done")).toBe("All done");
   });
 });
 
 describe("the header summary", () => {
   it("says what was customised", () => {
-    const line = personalSummary(meta({ patient_sex: "female", patient_age: 58 }), "large");
+    const line = personalSummary(meta({ patient_sex: "female", patient_age: 58 }));
     expect(line).toContain("Female");
     expect(line).toContain("58");
-    expect(line).toContain("larger text");
   });
 
-  it("stays quiet about a scale nobody changed", () => {
-    expect(personalSummary(meta({ patient_sex: "male", patient_age: 30 }), "standard")).toBe(
-      "Male · 30",
-    );
+  it("leaves the text scale to the Aa button, which cannot truncate", () => {
+    // It used to read "Female · 70 · largest text", which is exactly the string that
+    // truncated in a one-line header at the largest scale.
+    expect(personalSummary(meta({ patient_sex: "male", patient_age: 30 }))).toBe("Male · 30");
   });
 
   it("is empty before anything is known", () => {
-    expect(personalSummary(meta(), "standard")).toBe("");
+    expect(personalSummary(meta())).toBe("");
   });
 });

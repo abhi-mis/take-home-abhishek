@@ -28,6 +28,7 @@ export function StepShell({
   title,
   hint,
   speech,
+  welcome,
   personal,
   comfort,
   onComfort,
@@ -49,6 +50,8 @@ export function StepShell({
   title: string;
   /** The full question, options included, for the read-aloud button. */
   speech: string;
+  /** "Welcome, Anjali" on the first question only. Absent when no name was given. */
+  welcome?: string;
   /** "Female · 58 · larger text" - proof that the first screen changed something. */
   personal: string;
   comfort: Comfort;
@@ -125,23 +128,39 @@ export function StepShell({
 {/*
               The question, typeset rather than printed.
 
-              The number sits in its own rail to the left rather than as a watermark
-              behind the text. The watermark version looked designed in a mockup and
-              muddy in practice - a serif numeral directly behind the first word of a
-              question is exactly where you cannot afford noise. A rail gives the same
-              sense of place, never collides at any text size, and costs one border.
+              Third attempt at the number, and the first one that survives every text
+              size. A watermark behind the title was muddy; a numeral above a hairline
+              rail was worse at the largest scale, where a three-line title left the
+              rail running down beside it looking like a stray tick mark. A badge pinned
+              to the first line cannot do either: it is the same shape at every scale.
+
+              `min-w-7 px-1.5` rather than a fixed circle because Q10 to Q16 are two
+              digits and a clipped "16" is worse than a slightly wider pill.
             */}
-            <div className="flex gap-3.5">
+            {/*
+              The name, said back to the patient once. It sits on the first question
+              rather than on the screen where it was typed, so it reads as the form
+              carrying something forward rather than as a field confirming itself.
+            */}
+            {welcome ? (
+              <motion.p
+                initial={{ opacity: 0, y: -4 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.1 }}
+                className="mb-3 inline-flex items-center gap-2 rounded-full bg-brand-soft px-3 py-1.5 text-[12.5px] font-bold text-brand-ink"
+              >
+                <span aria-hidden className="size-1.5 rounded-full bg-brand" />
+                {welcome}
+              </motion.p>
+            ) : null}
+            <div className="flex items-start gap-3">
               {questionNumber !== null ? (
-                <div
+                <span
                   aria-hidden
-                  className="flex shrink-0 flex-col items-center gap-2 pt-1.5"
+                  className="mt-[5px] grid h-7 min-w-7 shrink-0 place-items-center rounded-full bg-brand-soft px-1.5 font-display text-[13px] font-bold leading-none tabular-nums text-brand-ink"
                 >
-                  <span className="font-display text-[15px] font-bold leading-none text-brand">
-                    {questionNumber}
-                  </span>
-                  <span className="w-px flex-1 bg-gradient-to-b from-brand/35 to-transparent" />
-                </div>
+                  {questionNumber}
+                </span>
               ) : null}
               <h1 className="font-display text-[25px] font-bold leading-[1.22] text-ink">
                 {title}
@@ -238,10 +257,30 @@ export function StepShell({
   );
 }
 
+/*
+  Why this chevron looked like a sliver, measured rather than guessed: the button is a
+  flex row, the svg had no `shrink-0`, and flex therefore squeezed an 18px-wide box down
+  to 6.06px. `preserveAspectRatio` then scaled the whole glyph to fit that width, so it
+  drew at about a third of its intended size with a correspondingly hairline stroke.
+
+  `shrink-0` is the fix. The rest is proportion: the path spanned only 10 of the viewBox's
+  20 units, so even at full width it drew at half the box, and it now fills 12 of 20 in an
+  18px box - roughly the cap height of the 16px semibold label beside it - with the stroke
+  thickened to match that label's weight.
+*/
 function BackArrow() {
   return (
-    <svg viewBox="0 0 20 20" fill="none" aria-hidden className="size-4" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
-      <path d="M11.5 5 6.5 10l5 5" />
+    <svg
+      viewBox="0 0 20 20"
+      fill="none"
+      aria-hidden
+      className="size-[18px] shrink-0"
+      stroke="currentColor"
+      strokeWidth={2.75}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M12.25 4 6 10l6.25 6" />
     </svg>
   );
 }

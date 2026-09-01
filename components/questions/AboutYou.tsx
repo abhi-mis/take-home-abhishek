@@ -29,6 +29,7 @@ import {
   AGE_MIN,
   COMFORT_LABEL,
   cleanFirstName,
+  nameAck,
   suggestedComfort,
   type Comfort,
 } from "@/lib/patient";
@@ -107,8 +108,28 @@ export function AboutYou({
             "focus:border-brand focus:outline-none",
           )}
         />
-        <p className="mt-1.5 text-[12px] leading-snug text-muted">
-          Stays on this phone. It is not part of the form your doctor receives.
+        {/*
+          The input, echoed. A name typed into a field that never says it back is a form
+          taking something for nothing - and this is also the only honest place to say
+          what happens to it, next to the box it was typed into.
+        */}
+        {/*
+          One paragraph that changes its words, not two that cross-fade. The animated
+          version waited for the old line to exit before mounting the new one, so the
+          acknowledgement landed most of a second after the patient stopped typing - long
+          enough to read as lag rather than as a response.
+        */}
+        <p
+          className={cn(
+            "mt-1.5 leading-snug",
+            firstName === null
+              ? "text-[12px] text-muted"
+              : "text-[12.5px] font-medium text-brand-ink",
+          )}
+        >
+          {firstName === null
+            ? "Optional, and it is not part of the form your doctor receives."
+            : nameAck(firstName)}
         </p>
       </section>
 

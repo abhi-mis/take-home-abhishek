@@ -76,7 +76,7 @@ export function FollowUpFlow({
           {done + 1}
         </span>
         <div className="min-w-0 flex-1">
-          <p className="text-[13px] font-bold uppercase tracking-wide text-brand-ink">
+          <p className="text-[13px] font-bold uppercase leading-snug tracking-wide text-brand-ink">
             {title ?? `Just ${fields.length} to go`}
           </p>
           <div className="mt-1.5 flex gap-1" aria-hidden>

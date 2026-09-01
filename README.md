@@ -35,7 +35,7 @@ two accelerators:
 Read-aloud needs **no key at all** - it uses the browser's own `speechSynthesis`.
 
 ```bash
-npm test              # 126 deterministic tests, no key needed
+npm test              # 127 deterministic tests, no key needed
 npm run smoke         # real-browser walkthrough of the whole intake (needs a dev server)
 npm run eval          # live extraction eval against the fixtures (needs ANTHROPIC_API_KEY)
 npm run build         # production build
@@ -89,10 +89,14 @@ of them changes the rest of the form. That is the whole reason it is allowed to 
 | **age 52+** | Q6 offers *Menopausal*; 50+ offers *Not applicable* on Q7. Offers, rendered as a prompt the patient has to accept - never a pre-filled answer. |
 | **sex: female** | Q6 and Q7 appear. Q9 is reframed as a hirsutism screen ("on the chin, upper lip, chest or stomach") because that is what it is asking a female patient. |
 | **sex: male / not stated** | Q6 and Q7 are skipped, and any stored answers are nulled rather than left stale. |
-| **a name** | on-screen copy uses it. It is deliberately **not** in the downloaded JSON - a warmer form is not a reason to put a patient's name in a clinical file. `patient_sex` and `patient_age` are, because both make the answers interpretable. |
+| **a name** | it is shown back three times: echoed under the field as it is typed ("Thank you, Asha"), carried into question 1 as a welcome, and used to close the review ("All done, Asha"). The read-aloud button speaks the welcome too, so the ear and the eye get the same form. It is deliberately **not** in the downloaded JSON - a warmer form is not a reason to put a patient's name in a clinical file. `patient_sex` and `patient_age` are, because both make the answers interpretable. |
 
-The header shows what was customised (`Female · 60 · larger text`), so it is a setting the
-patient can see and change rather than something the app did to them quietly.
+The header shows what was customised (`Female · 60`) beside a highlighted **Aa** button, so
+it is a setting the patient can see and change rather than something the app did to them
+quietly. The scale used to be spelled out in that line too, and it was the one string that
+broke at 26% zoom: a single-line header beside three controls truncated it to
+`Female · 70 · largest t...`, which reads as a bug. The button already says which step it
+is on, so the line dropped what was duplicated.
 
 **Why zoom rather than a font scale.** Zoom reflows and takes the *tap targets* with it.
 Bigger text on 44px buttons helps someone who cannot read the screen and does nothing for
@@ -276,7 +280,7 @@ solved problem where a hand-rolled version would be worse and slower.
 
 Two tiers, on purpose.
 
-**Deterministic (`npm test`, 126 tests, no key) - the dependable gate.** One test
+**Deterministic (`npm test`, 127 tests, no key) - the dependable gate.** One test
 diffs `lib/schema.ts` against the schema as downloaded from the URL in the brief, so
 "verbatim copy" is proven rather than claimed · step builder and
 schema coverage · sex gating across all four states, including that switching away from
@@ -395,7 +399,7 @@ lib/
   audio.ts         in-browser 16kHz mono WAV encoding
   copy.ts          all microcopy, in one place
 fixtures/patients/ 12 transcripts (4 held out) + expected answers
-tests/             126 deterministic tests (incl. a selector-stability source scan)
+tests/             127 deterministic tests (incl. a selector-stability source scan)
 scripts/smoke-browser.mjs  Playwright walkthrough of the full intake
 scripts/eval-fixtures.ts   live extraction eval
 ```

@@ -21,6 +21,7 @@ import { cn, downloadJson } from "@/lib/utils";
 import { ThemeToggle } from "./ThemeToggle";
 import { ComfortToggle } from "./ComfortToggle";
 import { useIntake } from "@/lib/store";
+import { doneTitle } from "@/lib/patient";
 
 export function ReviewScreen({
   answers,
@@ -65,8 +66,9 @@ export function ReviewScreen({
             {result.valid ? <CheckIcon className="size-6" /> : <span className="text-lg">!</span>}
           </span>
           <div>
-            <h1 className="text-[22px] font-bold leading-tight text-ink">
-              {result.valid ? UI_COPY.reviewTitle : UI_COPY.reviewIncomplete}
+            <h1 className="font-display text-[23px] font-bold leading-tight text-ink">
+              {/* "All done, Anjali" - the last of the three places the name appears. */}
+              {doneTitle(meta, result.valid ? UI_COPY.reviewTitle : UI_COPY.reviewIncomplete)}
             </h1>
             <p className="text-[13.5px] text-muted">
               {result.valid
@@ -122,8 +124,15 @@ export function ReviewScreen({
                     {q.n}
                   </span>
                   <span className="min-w-0 flex-1">
-                    <span className="block text-[12px] font-medium uppercase tracking-wide text-muted">
-                      {q.key}
+                    {/*
+                      The patient's own question, not the schema key. This row used to
+                      read "AGE_HAIR_LOSS_BEGAN" over the answer, which is the field name
+                      a developer needs and the last thing a patient should be shown on
+                      the final screen - it made the summary look machine-generated. The
+                      key is still exactly what goes into the JSON below.
+                    */}
+                    <span className="block text-[12.5px] font-medium leading-snug text-muted">
+                      {COPY[q.key as keyof typeof COPY]?.title ?? q.key}
                     </span>
                     <span className="mt-0.5 block text-[14px] font-semibold leading-snug text-ink">
                       {renderAnswer(q.key, answers, meta)}
@@ -162,8 +171,7 @@ export function ReviewScreen({
       ) : null}
 
       <p className="mt-6 text-center text-[11.5px] leading-relaxed text-muted">
-        {QUESTIONS.length} questions · shape and coverage checked by Zod before download.
-        Nothing is stored on a server.
+        {QUESTIONS.length} questions · shape and coverage checked before download.
       </p>
     </div>
   );
@@ -255,7 +263,7 @@ function Missing() {
 function Declined({ onJump }: { onJump: (id: string) => void }) {
   return (
     <div className="mx-auto w-full max-w-md px-5 pt-16">
-      <h1 className="text-[22px] font-bold leading-tight text-ink">
+      <h1 className="font-display text-[23px] font-bold leading-tight text-ink">
         Understood - no genetic test.
       </h1>
       <p className="mt-3 text-[15px] leading-relaxed text-muted">

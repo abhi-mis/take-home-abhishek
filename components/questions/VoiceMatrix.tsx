@@ -269,7 +269,10 @@ export function VoiceMatrix({
           </span>
           <span className="min-w-0 flex-1">
             <span className="block text-[14px] font-bold leading-snug text-brand-ink">
-              Answer the remaining {outstanding.length} one at a time
+              {/* "the remaining 1 one at a time" is not a sentence. */}
+              {outstanding.length === 1
+                ? "Answer the last one now"
+                : `Answer the remaining ${outstanding.length} one at a time`}
             </span>
             <span className="mt-0.5 block text-[12px] leading-snug text-muted">
               Quicker than finding them in the list below

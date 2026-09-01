@@ -95,13 +95,42 @@ export function cleanFirstName(raw: string): string | null {
   return name.length === 0 ? null : name;
 }
 
-/** "Let us begin, Anjali." - or the same sentence without the name. */
-export function greeting(meta: Meta): string {
-  return meta.first_name === null ? "Let us begin." : `Let us begin, ${meta.first_name}.`;
+/**
+ * The three places a name is allowed to appear, and nowhere else.
+ *
+ * Asking for something and then never showing it back is the worst of both worlds: the
+ * patient paid the cost of typing it and got nothing, and the field reads as data
+ * collection for its own sake. So the name is echoed the instant it is typed, again as a
+ * welcome on the first question, and once more at the end. It still never reaches the
+ * JSON - see the note in lib/types.ts.
+ */
+
+/** Echoed under the name field while the patient is still on that screen. */
+export function nameAck(name: string): string {
+  return `Thank you, ${name}. We will use this on screen only.`;
 }
 
-/** The one-line summary of what was customised, shown in the header. */
-export function personalSummary(meta: Meta, comfort: Comfort): string {
+/** "Welcome, Anjali" - null when no name was given, so the caller renders nothing. */
+export function welcomeLine(meta: Meta): string | null {
+  return meta.first_name === null ? null : `Welcome, ${meta.first_name}`;
+}
+
+/** The closing heading: "All done, Anjali", or the plain version without a name. */
+export function doneTitle(meta: Meta, fallback: string): string {
+  return meta.first_name === null ? fallback : `${fallback}, ${meta.first_name}`;
+}
+
+/**
+ * The one-line summary of what was customised, shown in the header.
+ *
+ * It used to end with the comfort scale ("Female · 70 · largest text") and that was the
+ * one thing on the screen that broke at the largest text size: the header is a single
+ * line beside three controls, so it truncated to "Female · 70 · largest t...", which
+ * reads as a bug rather than as a setting. The scale is already stated by the Aa button
+ * sitting an inch to the right - it turns brand-coloured and its label says which step it
+ * is on - so the line keeps only what nothing else shows.
+ */
+export function personalSummary(meta: Meta): string {
   const bits: string[] = [];
   if (meta.patient_sex !== null) {
     bits.push(
@@ -109,7 +138,6 @@ export function personalSummary(meta: Meta, comfort: Comfort): string {
     );
   }
   if (meta.patient_age !== null) bits.push(`${meta.patient_age}`);
-  if (comfort !== "standard") bits.push(COMFORT_LABEL[comfort].toLowerCase());
   return bits.join(" · ");
 }
 

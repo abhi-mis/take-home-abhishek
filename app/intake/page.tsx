@@ -23,6 +23,7 @@ import {
   maxOnsetAge,
   personalNote,
   personalSummary,
+  welcomeLine,
   suggestionFor,
   type Comfort,
 } from "@/lib/patient";
@@ -150,7 +151,9 @@ export default function IntakePage() {
       title={title}
       hint={hint}
       speech={questionSpeech(step, meta)}
-      personal={personalSummary(meta, comfort)}
+      // Only on question 1: a greeting that repeats on every screen stops being one.
+      welcome={step.n === 1 ? (welcomeLine(meta) ?? undefined) : undefined}
+      personal={personalSummary(meta)}
       comfort={comfort}
       onComfort={setComfort}
       // Already been past this step once, so the outstanding list is a reminder rather

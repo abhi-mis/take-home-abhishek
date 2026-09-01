@@ -127,6 +127,29 @@ body {
   min-height: calc(100dvh / var(--comfort-zoom));
 }
 
+/*
+  One layout that cannot survive the largest scale, and the fix for it.
+
+  Zoom shrinks the usable width in CSS pixels: a 380px phone becomes 301, and inside a
+  padded card a table row's label is left with about 110 of them beside its fixed 124px
+  Yes/No pair. "Topical Minoxidil (solution/foam)" then shreds into five lines next to two
+  buttons - the single ugliest thing in the app at 26%.
+
+  So at that scale only, the row stacks: label first, full-width control under it. Same
+  markup, same components, and the two-column version is untouched at the sizes where it
+  reads well. Keyed off `data-comfort` rather than a media query on purpose - the trigger
+  is the patient's chosen scale, not the device.
+*/
+:root[data-comfort="xl"] .row-split {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.625rem;
+}
+
+:root[data-comfort="xl"] .row-split > .row-control {
+  width: 100%;
+}
+
 body {
   /*
     A single warm wash from the top rather than a flat fill. It is two gradient stops and

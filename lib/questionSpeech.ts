@@ -16,7 +16,7 @@
 import { getQuestion, type QuestionKey } from "./schema";
 import { COPY, SPEAK_PROMPTS, UI_COPY } from "./copy";
 import { hasNoneEscape, type Meta } from "./types";
-import { personalNote } from "./patient";
+import { personalNote, welcomeLine } from "./patient";
 import type { Step } from "./steps";
 
 /**
@@ -56,7 +56,14 @@ export function questionSpeech(step: Step, meta: Meta): string {
   const key = step.key;
   if (key === null) return "";
   const copy = COPY[key];
-  const parts: string[] = [copy?.title ?? key];
+  const parts: string[] = [];
+  // Question 1 prints a welcome, so question 1 speaks it. The button reads the screen; if
+  // the two ever diverge, a patient who cannot see the screen is getting a different form.
+  if (step.n === 1) {
+    const hello = welcomeLine(meta);
+    if (hello !== null) parts.push(`${hello}.`);
+  }
+  parts.push(copy?.title ?? key);
 
   const hint = SPOKEN_HINT[key] ?? copy?.hint;
   if (hint) parts.push(hint);
