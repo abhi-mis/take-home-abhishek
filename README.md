@@ -35,7 +35,7 @@ two accelerators:
 Read-aloud needs **no key at all** - it uses the browser's own `speechSynthesis`.
 
 ```bash
-npm test              # 127 deterministic tests, no key needed
+npm test              # 129 deterministic tests, no key needed
 npm run smoke         # real-browser walkthrough of the whole intake (needs a dev server)
 npm run eval          # live extraction eval against the fixtures (needs ANTHROPIC_API_KEY)
 npm run build         # production build
@@ -84,7 +84,7 @@ of them changes the rest of the form. That is the whole reason it is allowed to 
 
 | Given | What actually changes |
 | --- | --- |
-| **age 55-69** | text and every tap target scale up 12%; 70+ scales 26%. Automatic, and overridable with the **Aa** button in the header. |
+| **age 55-69** | the form ASKS: "Would you like larger text?", with both sizes previewed side by side. Yes scales text and every tap target up 12% (70+ scales 26%); no leaves it exactly as it was. Asked once, either answer final, and the **Aa** button changes it any time. |
 | **age, any** | Q1's onset-age slider is capped at it. A 45-year-old can no longer record "hair loss began at 60", and lowering the age later pulls a now-impossible onset answer down with it. |
 | **age 52+** | Q6 offers *Menopausal*; 50+ offers *Not applicable* on Q7. Offers, rendered as a prompt the patient has to accept - never a pre-filled answer. |
 | **sex: female** | Q6 and Q7 appear. Q9 is reframed as a hirsutism screen ("on the chin, upper lip, chest or stomach") because that is what it is asking a female patient. |
@@ -103,6 +103,15 @@ Bigger text on 44px buttons helps someone who cannot read the screen and does no
 someone whose hands are unsteady - and unsteady hands are the more common reason a form
 gets abandoned. It is also exactly what browser zoom does, so it is a proven interaction
 rather than an invention.
+
+**Why it asks instead of just doing it.** The first version applied the bigger scale the
+moment an age of 55 or over was entered. It worked, and it was still wrong: a screen that
+resizes itself under someone who did not ask is a thing being done TO them, and a
+60-year-old with good eyesight reads it as the form deciding they are old. The prompt costs
+one tap and removes both readings - and because it previews both sizes, the patient is
+choosing between two things they can see rather than agreeing to an adjective. Declining is
+recorded separately from choosing, so "no thank you" is never mistaken for "not asked yet"
+and the prompt cannot come back.
 
 **Comfort lives with the answers, not in localStorage.** It is derived from *this*
 patient's age, so on a shared clinic phone the next person must not inherit it.
@@ -280,7 +289,7 @@ solved problem where a hand-rolled version would be worse and slower.
 
 Two tiers, on purpose.
 
-**Deterministic (`npm test`, 127 tests, no key) - the dependable gate.** One test
+**Deterministic (`npm test`, 129 tests, no key) - the dependable gate.** One test
 diffs `lib/schema.ts` against the schema as downloaded from the URL in the brief, so
 "verbatim copy" is proven rather than claimed · step builder and
 schema coverage · sex gating across all four states, including that switching away from
@@ -380,6 +389,7 @@ components/
   StepShell.tsx  ProgressBar.tsx  ReviewScreen.tsx  ThemeToggle.tsx
   QuestionSpeaker.tsx        the read-aloud button, on every question
   ComfortToggle.tsx          text-size control (Aa), and the DOM projection of it
+  ComfortPrompt.tsx          "would you like larger text?", asked once, previews both
   questions/     SingleChoice MultiChoice YesNo NumberStepper AboutYou PatternPicker
                  Consent YesNoDescribe VoiceMatrix VoicePanel SpeakFirst ResultDialog
                  FollowUpFlow HabitsGrid TableGrid ScalpDiagram
@@ -399,7 +409,7 @@ lib/
   audio.ts         in-browser 16kHz mono WAV encoding
   copy.ts          all microcopy, in one place
 fixtures/patients/ 12 transcripts (4 held out) + expected answers
-tests/             127 deterministic tests (incl. a selector-stability source scan)
+tests/             129 deterministic tests (incl. a selector-stability source scan)
 scripts/smoke-browser.mjs  Playwright walkthrough of the full intake
 scripts/eval-fixtures.ts   live extraction eval
 ```

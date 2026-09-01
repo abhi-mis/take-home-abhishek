@@ -19,6 +19,7 @@ import {
   maxOnsetAge,
   personalNote,
   personalSummary,
+  shouldOfferComfort,
   suggestedComfort,
   suggestionFor,
   welcomeLine,
@@ -43,6 +44,22 @@ describe("comfort scale", () => {
     expect(COMFORT_ZOOM.standard).toBe(1);
     expect(COMFORT_ZOOM.large).toBeGreaterThan(COMFORT_ZOOM.standard);
     expect(COMFORT_ZOOM.xl).toBeGreaterThan(COMFORT_ZOOM.large);
+  });
+
+  it("offers the bigger size, and only when there is one to offer", () => {
+    // The prompt is the whole mechanism now: nothing resizes without an answer.
+    expect(shouldOfferComfort(meta({ patient_age: 60 }), false, false)).toBe(true);
+    expect(shouldOfferComfort(meta({ patient_age: 72 }), false, false)).toBe(true);
+    expect(shouldOfferComfort(meta({ patient_age: 41 }), false, false)).toBe(false);
+    expect(shouldOfferComfort(meta(), false, false)).toBe(false);
+  });
+
+  it("never asks twice, whichever way the patient answered", () => {
+    // Declining leaves the scale at standard, which is why "asked" has to be tracked
+    // separately from "chosen" - otherwise a "no thank you" prompt returns forever.
+    expect(shouldOfferComfort(meta({ patient_age: 60 }), false, true)).toBe(false);
+    expect(shouldOfferComfort(meta({ patient_age: 60 }), true, false)).toBe(false);
+    expect(shouldOfferComfort(meta({ patient_age: 60 }), true, true)).toBe(false);
   });
 
   it("names the bands for copy", () => {

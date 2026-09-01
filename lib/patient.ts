@@ -41,13 +41,17 @@ export const COMFORT_LABEL: Record<Comfort, string> = {
 };
 
 /**
- * The default comfort scale for an age, applied automatically and always overridable.
+ * The comfort scale this age is OFFERED. It is never applied without an answer.
  *
  * Presbyopia is near-universal from the mid-40s and most people in a clinic queue do not
- * have their reading glasses. 55 is where the default flips, not because 55 is a
- * cliff-edge but because a default has to sit somewhere, and the cost of getting it
- * slightly wrong is asymmetric: bigger text mildly annoys someone who did not need it,
- * while small text can stop someone finishing the form at all.
+ * have their reading glasses. 55 is where the offer starts, not because 55 is a
+ * cliff-edge but because the threshold has to sit somewhere.
+ *
+ * It used to apply itself the moment an age was entered, and that was wrong for one
+ * specific reason: resizing the whole screen under someone who did not ask for it is a
+ * thing being done TO them, and a 60-year-old with perfect eyesight reads it as the form
+ * deciding they are old. So the form asks - once, in plain words, with a preview of both
+ * sizes - and does nothing at all until they answer. See `shouldOfferComfort` below.
  *
  * Implemented as page zoom rather than a font-size scale, deliberately: zoom scales the
  * TAP TARGETS too. Larger text with 44px buttons helps someone who cannot read the
@@ -58,6 +62,27 @@ export function suggestedComfort(age: number | null): Comfort {
   if (age >= 70) return "xl";
   if (age >= 55) return "large";
   return "standard";
+}
+
+/**
+ * Should the form ask about text size right now?
+ *
+ * Pure, and the single source of truth for a decision that would otherwise be spread
+ * across an effect and two components. Every clause is a case that has to be right:
+ *
+ *  - there has to be something to offer (`suggestedComfort` above standard);
+ *  - `chosen` means the patient already used the Aa button, and offering them something
+ *    they have already decided is worse than not offering at all;
+ *  - `asked` means they have answered this prompt once, either way. A prompt that
+ *    reappears is a prompt that gets dismissed without being read.
+ */
+export function shouldOfferComfort(
+  meta: Meta,
+  chosen: boolean,
+  asked: boolean,
+): boolean {
+  if (chosen || asked) return false;
+  return suggestedComfort(meta.patient_age) !== "standard";
 }
 
 export const AGE_MIN = 16;

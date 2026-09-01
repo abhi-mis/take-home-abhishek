@@ -297,11 +297,39 @@ age decides how big the type is, and a form cannot resize itself at question 6. 
 moved, the abruptness turned out to be solvable with copy and a name field rather than with
 placement.
 
-### The comfort scale
+### The comfort scale, and why it is a question
 
-55 flips the default to 12% larger, 70 to 26%, and the **Aa** button in the header
-overrides either - after which the automatic default stops applying, because a default that
-keeps overriding a deliberate choice is a bug with good intentions.
+55 offers 12% larger, 70 offers 26%, and the **Aa** button in the header sets it directly
+at any time - after which nothing offers anything again, because a default that keeps
+overriding a deliberate choice is a bug with good intentions.
+
+It began as an automatic default: enter 60, the screen grows. That demoed well and was the
+wrong call. Resizing the whole form under someone who did not ask for it is a thing being
+done TO them, and a 60-year-old with good eyesight reads it as the app deciding they are
+old. So it asks - once - and applies nothing until answered.
+
+Three things make the prompt fair rather than an obstacle:
+
+- **It previews both sizes.** "Larger text" is an adjective; two lines of a real question
+  from the form, rendered at the two scales with the same factor the app applies, is the
+  actual choice. The patient is comparing things they can see.
+- **Both answers are one tap and equally weighted.** "No, keep it as it is" is a button,
+  not a dismissal X in a corner, and Escape and the backdrop record that same answer -
+  every exit is an answer rather than a deferral.
+- **It asks once.** `comfortAsked` is tracked separately from `comfortChosen` for exactly
+  one reason: declining leaves the scale at standard, which is indistinguishable from never
+  having been asked unless it is recorded. Without that flag the prompt returns on the next
+  render and becomes the thing patients tap past without reading.
+
+The offer is also held back 500ms. An age can be set by dragging a slider through 55, and a
+dialog that appears mid-drag has interrupted the control the patient is using; half a second
+of stillness means they have arrived at an age rather than passed through one. It is
+deliberately not scoped to the About You screen either - a fast patient can tap "55-64" and
+**Next** inside those 500ms, and one screen late beats never.
+
+The prompt is mounted at page level rather than inside `StepShell`, because a
+`position: fixed` overlay inside framer-motion's animating question wrapper positions itself
+against that transform instead of the viewport.
 
 Two decisions inside that:
 
@@ -507,7 +535,7 @@ of the UI, so a bad extraction patch can't bypass the interface.
 
 ## What's tested, and what deliberately isn't
 
-**`npm test` - 127 deterministic tests, no API key needed.** These are the dependable
+**`npm test` - 129 deterministic tests, no API key needed.** These are the dependable
 checks: the step builder, sex gating in all four states, every conditional-followup
 rule in both directions, exclusive options, 16-key coverage, the personalisation rules
 (comfort thresholds, the onset-age ceiling, and that a suggestion never writes an answer),

@@ -57,7 +57,7 @@ export function AboutYou({
   sex,
   age,
   comfort,
-  comfortChosen,
+  comfortAsked,
   onFirstName,
   onSex,
   onAge,
@@ -66,7 +66,8 @@ export function AboutYou({
   sex: PatientSex | null;
   age: number | null;
   comfort: Comfort;
-  comfortChosen: boolean;
+  /** True once the text-size prompt has been answered, either way. */
+  comfortAsked: boolean;
   onFirstName: (name: string | null) => void;
   onSex: (v: PatientSex) => void;
   onAge: (v: number) => void;
@@ -84,7 +85,20 @@ export function AboutYou({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [draftName]);
 
-  const willScale = age !== null && suggestedComfort(age) !== "standard" && !comfortChosen;
+  /**
+   * What to say under the age control, if anything.
+   *
+   * Three states, and the quiet one matters most: while the patient is eligible for the
+   * text-size offer but has not been asked yet, this says NOTHING. The dialog is arriving
+   * in half a second and announcing it first would be the form talking over itself.
+   */
+  const suggested = suggestedComfort(age);
+  const scaleNote =
+    comfort !== "standard"
+      ? `${COMFORT_LABEL[comfort]} is on for the rest of the form.`
+      : comfortAsked && suggested !== "standard"
+        ? "Text size is unchanged, as you asked."
+        : null;
   useEffect(() => {
     lastAnnounced.current = comfort;
   }, [comfort]);
@@ -253,22 +267,24 @@ export function AboutYou({
         </AnimatePresence>
 
         {/*
-          The payoff, live. This is the difference between an age question that feels
-          nosy and one that visibly works for the person answering it.
+          The state of the text size, after the patient has decided it. Not a promise
+          about what the form is going to do - the answer they already gave, said back,
+          with the way to change it.
         */}
         <AnimatePresence initial={false}>
-          {willScale ? (
+          {scaleNote !== null ? (
             <motion.p
               initial={{ opacity: 0, y: -6 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0 }}
               className="mt-3 flex items-start gap-2.5 rounded-2xl border border-brand/30 bg-brand-soft/60 px-3.5 py-3 text-[13.5px] leading-snug text-brand-ink"
             >
-              <span aria-hidden className="mt-[1px] text-[15px] font-bold">Aa</span>
+              <span aria-hidden className="mt-[1px] text-[15px] font-bold">
+                Aa
+              </span>
               <span>
-                <span className="font-bold">{COMFORT_LABEL[suggestedComfort(age)]}</span> is on, so
-                everything from here is bigger and easier to tap. You can change it any time with
-                the <span className="font-bold">Aa</span> button at the top.
+                <span className="font-bold">{scaleNote}</span> Change it any time with the{" "}
+                <span className="font-bold">Aa</span> button at the top.
               </span>
             </motion.p>
           ) : null}

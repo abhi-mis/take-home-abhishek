@@ -38,12 +38,24 @@ interface IntakeState {
    */
   comfort: Comfort;
   comfortChosen: boolean;
+  /**
+   * Has the patient answered the "would you like larger text?" prompt, either way?
+   *
+   * Separate from `comfortChosen` on purpose: declining leaves the scale at standard,
+   * which is indistinguishable from never having been asked unless it is recorded. Both
+   * flags block the prompt; only one of them means "the patient picked a size".
+   */
+  comfortAsked: boolean;
 
   patch: (p: Partial<Answers>) => void;
   setSex: (sex: PatientSex) => void;
   setAge: (age: number) => void;
   setFirstName: (name: string | null) => void;
   setComfort: (c: Comfort) => void;
+  /** Answers the text-size prompt: yes, scale it up to the size their age suggests. */
+  acceptComfort: () => void;
+  /** Answers the text-size prompt: no, leave it exactly as it is. */
+  declineComfort: () => void;
   /** Choose "None of these": clears the array AND records the deliberate choice. */
   chooseNone: (key: string) => void;
   markTouched: (id: string) => void;
@@ -92,6 +104,7 @@ export const useIntake = create<IntakeState>()(
       explicitNone: {},
       comfort: "standard",
       comfortChosen: false,
+      comfortAsked: false,
 
       patch: (p) =>
         set((s) => {
@@ -119,13 +132,25 @@ export const useIntake = create<IntakeState>()(
         set((s) => ({
           meta: { ...s.meta, patient_age: age },
           answers: clampOnsetAge(s.answers, age),
-          // The age-driven default applies until the patient overrides it themselves.
-          comfort: s.comfortChosen ? s.comfort : suggestedComfort(age),
+          // Deliberately does NOT touch `comfort`. An age used to resize the screen on
+          // the spot; now it only makes the form eligible to ask. See ComfortPrompt.
         })),
 
       setFirstName: (name) => set((s) => ({ meta: { ...s.meta, first_name: name } })),
 
-      setComfort: (c) => set({ comfort: c, comfortChosen: true }),
+      // Using the Aa button is itself an answer to the question, so it closes the prompt.
+      setComfort: (c) => set({ comfort: c, comfortChosen: true, comfortAsked: true }),
+
+      acceptComfort: () =>
+        set((s) => ({
+          comfort: suggestedComfort(s.meta.patient_age),
+          comfortChosen: true,
+          comfortAsked: true,
+        })),
+
+      // No scale change, but the answer is recorded: without this, "no thank you" is
+      // indistinguishable from "not asked yet" and the prompt returns on every render.
+      declineComfort: () => set({ comfortAsked: true }),
 
       markTouched: (id) => set((s) => ({ touched: { ...s.touched, [id]: true } })),
 
@@ -162,6 +187,7 @@ export const useIntake = create<IntakeState>()(
           explicitNone: {},
           comfort: "standard",
           comfortChosen: false,
+          comfortAsked: false,
         }),
 
     }),
@@ -179,6 +205,7 @@ export const useIntake = create<IntakeState>()(
         // inherit it. sessionStorage forgetting it is the correct behaviour.
         comfort: s.comfort,
         comfortChosen: s.comfortChosen,
+        comfortAsked: s.comfortAsked,
       }),
     },
   ),

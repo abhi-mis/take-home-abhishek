@@ -91,18 +91,44 @@ try {
     errors.push({ kind: "about", text: "About You did not gate Next", fatal: false });
 
   await page.getByRole("textbox", { name: /First name/ }).fill("Asha");
+  // A name that is asked for has to be shown back, or the field is taking something for
+  // nothing. It is echoed here, on question 1, and again at the end.
+  await page.waitForTimeout(600);
+  const ackOnScreen = await page.locator("main").innerText();
+  if (!/Thank you, Asha/.test(ackOnScreen))
+    errors.push({ kind: "name", text: "the name was not acknowledged on the About You screen", fatal: false });
+  else notes.push('the name is echoed as you type: "Thank you, Asha"');
   await tapOption(/^Female/);
   if (!(await page.getByRole("button", { name: "Next" }).isDisabled()))
     errors.push({ kind: "about", text: "sex alone was enough to pass About You", fatal: false });
   else notes.push("sex alone is not enough - the age is still required");
 
-  // 55-64 must switch the comfort scale on, visibly.
+  // 55-64 must OFFER the bigger text size, and change nothing until it is accepted.
   await tapButton("55-64");
+  await page.waitForTimeout(900); // the offer is held back half a second on purpose
+  const dialog = page.getByRole("dialog");
+  if ((await dialog.count()) === 0)
+    errors.push({ kind: "comfort", text: "no text-size prompt for a 55-64 patient", fatal: false });
+  else notes.push("text-size prompt offered, with both sizes previewed");
+
+  const zoomBefore = await page.evaluate(() =>
+    getComputedStyle(document.documentElement).getPropertyValue("--comfort-zoom").trim(),
+  );
+  if (zoomBefore !== "1")
+    errors.push({
+      kind: "comfort",
+      text: `the page resized before the patient answered (zoom ${zoomBefore})`,
+      fatal: false,
+    });
+  else notes.push("nothing resized while the prompt was still unanswered");
+
+  await tapButton("Yes, make it bigger");
+  await page.waitForTimeout(500);
   const comfortAttr = await page.evaluate(() => document.documentElement.dataset.comfort ?? "");
   const zoom = await page.evaluate(() =>
     getComputedStyle(document.documentElement).getPropertyValue("--comfort-zoom").trim(),
   );
-  notes.push(`age 55-64 -> data-comfort="${comfortAttr}", --comfort-zoom=${zoom}`);
+  notes.push(`accepted -> data-comfort="${comfortAttr}", --comfort-zoom=${zoom}`);
   if (comfortAttr !== "large")
     errors.push({
       kind: "comfort",
@@ -118,6 +144,11 @@ try {
   await tapButton("Next");
 
   // ---------- Q1 age (preset + explicit Next) ----------
+  const q1Text = (await page.locator("main").innerText()).replace(/\s+/g, " ");
+  if (!/Welcome, Asha/.test(q1Text))
+    errors.push({ kind: "name", text: "question 1 does not carry the welcome forward", fatal: false });
+  else notes.push("question 1 greets the patient by name");
+
   // The patient said they are 60, so the onset slider must not go past that.
   const onsetMax = await page.evaluate(() => {
     const el = document.querySelector('input[type="range"]');
@@ -343,6 +374,10 @@ try {
   // ---------- review ----------
   await page.getByText("All done").waitFor({ state: "visible", timeout: 15_000 });
   notes.push("reached the Review screen");
+  const reviewHeading = await page.getByRole("heading").first().innerText();
+  if (!/Asha/.test(reviewHeading))
+    errors.push({ kind: "name", text: `review heading dropped the name: "${reviewHeading}"`, fatal: false });
+  else notes.push(`review closes with the name: "${reviewHeading}"`);
 
   // ---------- theme toggle: system -> light -> dark ----------
   const themeBtn = page.getByRole("button", { name: /Appearance/ }).first();

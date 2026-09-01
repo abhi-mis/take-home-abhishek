@@ -22,6 +22,8 @@ import { questionSpeech } from "@/lib/questionSpeech";
 import {
   maxOnsetAge,
   personalNote,
+  shouldOfferComfort,
+  suggestedComfort,
   personalSummary,
   welcomeLine,
   suggestionFor,
@@ -29,6 +31,7 @@ import {
 } from "@/lib/patient";
 import { EXCLUSIVE_OPTIONS, hasNoneEscape, type Answers, type Meta } from "@/lib/types";
 import { StepShell } from "@/components/StepShell";
+import { ComfortPrompt } from "@/components/ComfortPrompt";
 import { ReviewScreen } from "@/components/ReviewScreen";
 import { SingleChoice } from "@/components/questions/SingleChoice";
 import { MultiChoice } from "@/components/questions/MultiChoice";
@@ -60,11 +63,37 @@ export default function IntakePage() {
   const setFirstName = useIntake((s) => s.setFirstName);
   const setComfort = useIntake((s) => s.setComfort);
   const comfortChosen = useIntake((s) => s.comfortChosen);
+  const comfortAsked = useIntake((s) => s.comfortAsked);
+  const acceptComfort = useIntake((s) => s.acceptComfort);
+  const declineComfort = useIntake((s) => s.declineComfort);
   const next = useIntake((s) => s.next);
   const back = useIntake((s) => s.back);
   const goTo = useIntake((s) => s.goTo);
   const chooseNone = useIntake((s) => s.chooseNone);
   const reset = useIntake((s) => s.reset);
+
+  /**
+   * The text-size offer, held back for a beat.
+   *
+   * The delay is the whole reason this is an effect rather than a render-time flag: an
+   * age can be set by dragging a slider through 55, and a dialog that appears mid-drag
+   * has interrupted the very control the patient is using. Half a second of stillness
+   * means they have arrived at an age rather than passed through one.
+   *
+   * It is not scoped to the About You step on purpose. A fast patient can tap "55-64"
+   * and Next inside those 500ms, and the offer still has to reach them - one screen
+   * later is late, never is a bug.
+   */
+  const [offerComfort, setOfferComfort] = useState(false);
+  const eligible = shouldOfferComfort(meta, comfortChosen, comfortAsked);
+  useEffect(() => {
+    if (!eligible) {
+      setOfferComfort(false);
+      return;
+    }
+    const t = setTimeout(() => setOfferComfort(true), 500);
+    return () => clearTimeout(t);
+  }, [eligible, meta.patient_age]);
 
   // Derived OUTSIDE the store, memoised on `meta` - the only input gating can depend
   // on. Same live-recompute behaviour, but a stable reference between sex changes.
@@ -118,8 +147,25 @@ export default function IntakePage() {
     else back();
   }
 
+  /*
+    Rendered on both branches (wizard and review) and at page level, outside StepShell:
+    a fixed overlay inside framer-motion's animating question wrapper positions itself
+    against that transform instead of the viewport.
+  */
+  const comfortDialog =
+    offerComfort && meta.patient_age !== null ? (
+      <ComfortPrompt
+        age={meta.patient_age}
+        target={suggestedComfort(meta.patient_age)}
+        onAccept={acceptComfort}
+        onDecline={declineComfort}
+      />
+    ) : null;
+
   if (isReview) {
     return (
+      <>
+      {comfortDialog}
       <ReviewScreen
         answers={answers}
         meta={meta}
@@ -130,6 +176,7 @@ export default function IntakePage() {
           router.push("/");
         }}
       />
+      </>
     );
   }
 
@@ -144,6 +191,8 @@ export default function IntakePage() {
   const check = validateStep(step, answers, meta, explicitNone);
 
   return (
+    <>
+    {comfortDialog}
     <StepShell
       stepId={step.id}
       sectionTitle={SECTION_LABEL[step.sectionId] ?? step.sectionTitle}
@@ -179,13 +228,14 @@ export default function IntakePage() {
         setAge,
         setFirstName,
         comfort,
-        comfortChosen,
+        comfortAsked,
         next,
         chooseNone,
         explicitNone,
         setFocusMode,
       })}
     </StepShell>
+    </>
   );
 }
 
@@ -202,7 +252,7 @@ interface RenderArgs {
   setAge: (age: number) => void;
   setFirstName: (name: string | null) => void;
   comfort: Comfort;
-  comfortChosen: boolean;
+  comfortAsked: boolean;
   next: () => void;
   chooseNone: (key: string) => void;
   explicitNone: Record<string, true>;
@@ -218,7 +268,7 @@ function renderStep({
   setAge,
   setFirstName,
   comfort,
-  comfortChosen,
+  comfortAsked,
   next,
   chooseNone,
   explicitNone,
@@ -232,7 +282,7 @@ function renderStep({
           sex={meta.patient_sex}
           age={meta.patient_age}
           comfort={comfort}
-          comfortChosen={comfortChosen}
+          comfortAsked={comfortAsked}
           onFirstName={setFirstName}
           onSex={setSex}
           onAge={setAge}
