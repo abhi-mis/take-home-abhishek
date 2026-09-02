@@ -157,8 +157,16 @@ function isResolved(
   meta: Meta,
   explicitNone: Record<string, true>,
 ): boolean {
-  // Gated null is a valid, resolved answer for a non-female patient.
   if (key === "menstrual_cycle" || key === "pregnancy_related") {
+    /*
+      A gated null is a resolved answer for a patient we know is not female. It is NOT a
+      resolved answer while sex is unknown, and the difference matters more than it looks:
+      this branch used to return true for `patient_sex === null`, so a patient who skipped
+      the sex question could complete everything else and unlock the download - handing a
+      doctor a file with `patient_sex: null` and two nulls beside it that could mean "does
+      not apply" or "never asked". Unknown is not the same as not applicable.
+    */
+    if (meta.patient_sex === null) return false;
     if (meta.patient_sex !== "female") return true;
     return a[key] !== null;
   }

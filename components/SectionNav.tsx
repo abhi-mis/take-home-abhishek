@@ -9,14 +9,26 @@
  * inset to make room, which is what makes the app read as an application on a desktop
  * instead of a website with a wide margin.
  *
- * Every step is reachable. This is the patient's own form, not a wizard that owns them, and
- * someone who remembers getting a treatment date wrong should be able to go straight back to
- * Treatments rather than press Back five times. A step that cannot be completed yet is still
- * a link, because there is nothing dangerous about reading ahead.
+ * Every step is reachable, with one exception. This is the patient's own form, not a wizard
+ * that owns them, and someone who remembers getting a treatment date wrong should be able to go
+ * straight back to Treatments rather than press Back five times. A step that cannot be
+ * completed yet is still a link, because there is nothing dangerous about reading ahead.
+ *
+ * `lockedTo` is the exception: while the sex question is unanswered, the other five steps are
+ * not links at all. Disabling the Next button alone was not enforcement - the sidebar was a
+ * way straight past it, which is precisely what a patient found. If an answer is required then
+ * every route out has to agree, or it is not required, it is merely inconvenient.
  *
  * The current step gets a filled left edge as well as a background: colour alone is not a
  * state (WCAG 1.4.1), and on a form a patient may be filling in at a stranger's desk, the
  * shape is what carries at a glance.
+ *
+ * It used to carry a keyboard legend - 1-9 to choose, Enter for the next question, Shift+Enter
+ * for the next section - on the reasoning that a shortcut nobody knows about is not a feature.
+ * That reasoning was right and the conclusion was wrong: this is a patient filling in a medical
+ * form, usually on a phone, and nobody was pressing Shift+Enter. The legend is gone and so are
+ * the shortcuts behind it. Ordinary keyboard operation is untouched, because it was never ours:
+ * Tab moves between controls and Enter or Space presses one, which is the browser's doing.
  */
 import { sectionLabel, t, type Lang } from "@/lib/i18n";
 import type { Section } from "@/lib/sections";
@@ -35,6 +47,7 @@ export function SectionNav({
   progress,
   lang,
   onJump,
+  lockedTo,
 }: {
   sections: Section[];
   currentId: string;
@@ -42,6 +55,8 @@ export function SectionNav({
   progress: Record<string, NavProgress>;
   lang: Lang;
   onJump: (id: string) => void;
+  /** While set, only this section may be navigated to. */
+  lockedTo?: string;
 }) {
   const labels = sectionLabel(lang);
   const totalAnswered = sections.reduce((n, s) => n + (progress[s.id]?.answered ?? 0), 0);
@@ -60,19 +75,33 @@ export function SectionNav({
           {t("landingKickerRail", lang)}
         </p>
 
+        {/*
+          Why the other steps are greyed out. A lock with no explanation is the thing this
+          form is trying not to be, and the reason is the same sentence the blocked Next
+          carries - said once here, next to what it applies to.
+        */}
+        {lockedTo === undefined ? null : (
+          <p className="mb-2 px-2.5 text-[11.5px] font-medium leading-snug text-brand-ink">
+            {t("sexRequiredShort", lang)}
+          </p>
+        )}
+
         {sections.map((s, i) => {
           const p = progress[s.id] ?? { answered: 0, visible: 0 };
           const done = p.visible > 0 && p.answered === p.visible;
           const current = s.id === currentId;
+          const locked = lockedTo !== undefined && s.id !== lockedTo;
           return (
             <button
               key={s.id}
               type="button"
               aria-current={current ? "step" : undefined}
+              disabled={locked}
               onClick={() => onJump(s.id)}
               className={cn(
                 "group relative flex items-center gap-3 rounded-xl py-2.5 pl-3.5 pr-3 text-left transition-colors",
-                current ? "bg-brand-soft/70" : "hover:bg-brand-soft/30",
+                current ? "bg-brand-soft/70" : locked ? "opacity-40" : "hover:bg-brand-soft/30",
+                locked && "cursor-not-allowed",
               )}
             >
               {/* The shape half of "you are here". */}
@@ -148,37 +177,8 @@ export function SectionNav({
           <span className="min-w-0">{t("saveNote", lang)}</span>
         </p>
 
-        {/*
-          The keyboard legend is on screen rather than in a help page, because a shortcut
-          nobody knows about is not a feature. It only renders here, where a keyboard is
-          likely.
-        */}
-        <dl className="mt-4 flex flex-col gap-1.5 text-[11px] text-muted">
-          <Row keys={["1", "9"]} label={t("keysChoose", lang)} joiner="-" />
-          <Row keys={["Enter"]} label={t("keysNextQuestion", lang)} />
-          <Row keys={["Shift", "Enter"]} label={t("keysNextSection", lang)} joiner="+" />
-          <Row keys={["Up", "Down"]} label={t("keysMove", lang)} joiner="/" />
-        </dl>
       </div>
     </nav>
-  );
-}
-
-function Row({ keys, label, joiner }: { keys: string[]; label: string; joiner?: string }) {
-  return (
-    <div className="flex items-center gap-2">
-      <dt className="flex shrink-0 items-center gap-1">
-        {keys.map((k, i) => (
-          <span key={k} className="flex items-center gap-1">
-            {i > 0 && joiner !== undefined ? <span aria-hidden>{joiner}</span> : null}
-            <kbd className="rounded border border-line bg-card px-1.5 py-0.5 text-[10px] font-semibold text-ink">
-              {k}
-            </kbd>
-          </span>
-        ))}
-      </dt>
-      <dd className="min-w-0 leading-snug">{label}</dd>
-    </div>
   );
 }
 

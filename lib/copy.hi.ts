@@ -427,6 +427,10 @@ export const TEXT_EN = {
   canComeBack: "You can come back to these",
   canComeBackN: "{n} you can come back to",
   // The way out of a card that cannot know when the patient has finished with it.
+  // The single blocking message in the form. See sexMissing in lib/patient.ts.
+  sexRequired: "Please answer this one first - it decides which questions apply to you.",
+  // The sidebar version: the full sentence there pushed the six steps into a scroll.
+  sexRequiredShort: "Answer this first to continue",
   pickMore: "Pick as many as apply",
   doneWithThis: "Done, next question",
   jsonTitle: "The form your doctor receives",
@@ -541,10 +545,6 @@ export const TEXT_EN = {
   railNav: "Sections",
   announceOpened: "Next question: {title}",
   announceSectionDone: "All answered. {next} is ready.",
-  keysChoose: "choose",
-  keysNextQuestion: "next question",
-  keysNextSection: "next section",
-  keysMove: "move between questions",
   saveNote: "Answers save as you go. You can stop and come back on this phone.",
   resultNotMentioned: "You did not mention ({n})",
   resultAndMore: "…and {n} more",
@@ -763,6 +763,8 @@ export const TEXT_HI: Record<TextKey, string> = {
 
   canComeBack: "इन्हें बाद में भी भर सकते हैं",
   canComeBackN: "{n} बाद में भर सकते हैं",
+  sexRequired: "पहले यह बताएँ - इससे तय होता है कि कौन से सवाल आप पर लागू होते हैं।",
+  sexRequiredShort: "आगे बढ़ने के लिए पहले यह भरें",
   pickMore: "जितने लागू हों, चुनें",
   doneWithThis: "हो गया, अगला सवाल",
   jsonTitle: "आपके डॉक्टर को यही फ़ॉर्म मिलेगा",
@@ -862,10 +864,6 @@ export const TEXT_HI: Record<TextKey, string> = {
   railNav: "भाग",
   announceOpened: "अगला सवाल: {title}",
   announceSectionDone: "सब भर गए। {next} तैयार है।",
-  keysChoose: "चुनें",
-  keysNextQuestion: "अगला सवाल",
-  keysNextSection: "अगला भाग",
-  keysMove: "सवालों के बीच जाएँ",
   saveNote: "जवाब अपने आप सेव होते रहते हैं। आप रुककर इसी फ़ोन पर वापस आ सकते हैं।",
   resultNotMentioned: "इनके बारे में आपने कुछ नहीं कहा ({n})",
   resultAndMore: "…और {n} बाकी",

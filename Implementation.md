@@ -386,7 +386,58 @@ wrapping, and nothing overflowing at any width.
 
 ---
 
-## Nothing is required to move on
+## One required answer: the sex question
+
+Almost nothing is required. The exception is sex, and it is worth setting out why it is not an
+inconsistency.
+
+Every other question can be left blank because a form that refuses to advance produces a guess,
+and a guess is a wrong entry in a clinical record that nobody can distinguish from a real
+answer. Sex is different in kind: it is not an answer so much as the thing that decides which
+questions exist. Q6 (periods) and Q7 (pregnancy-related) are asked only of a female patient and
+emitted as `null` otherwise - so without it the file a doctor opens carries two nulls that could
+mean "does not apply" or "we never found out". One is a clinical fact. The other is a gap in the
+record, wearing the same shape.
+
+**It closed a real hole in the download gate.** `isResolved` treated the gated pair as answered
+whenever `patient_sex !== "female"`, and `null` satisfies that test - so a patient who skipped
+the sex question could answer everything else and unlock the download, emitting
+`patient_sex: null` with two unexplained nulls beside it. Unknown is not the same as not
+applicable, and the validator now says so.
+
+Three surfaces enforce or report it, and only one of them blocks:
+
+| surface | behaviour |
+| --- | --- |
+| About You's Next | disabled, with the reason on screen: "Please answer this one first - it decides which questions apply to you." |
+| every other section's Next | unaffected, still free |
+| the age beside it | never blocks, still reported as outstanding |
+| the download | refuses, because the two gated questions are now genuinely unresolved |
+| the review screen | lists About You as outstanding, and the row links to it |
+
+The gate is keyed on the section CONTAINING the about step rather than on the section id, so
+moving About You somewhere else cannot leave the rule pointing at the wrong screen. And the
+button is never disabled silently - the sentence explaining it renders above the actions, which
+is what the previous blanket gate was rightly criticised for not doing.
+
+Measured, with nothing else answered:
+
+```
+About You, nothing answered   Next disabled, reason shown
+after choosing a sex          Next enabled       <- the age is still blank
+Your history                  Next enabled
+Health                        Next enabled
+Sample & consent              Next enabled
+```
+
+One thing the review screen needed for this: its outstanding links address steps by `step.id`,
+not `step.key`. About You is the synthetic first step and has no key at all, and the two happen
+to be the same string for the sixteen real questions - exactly the kind of coincidence that
+works until the one row where it does not.
+
+---
+
+## Nothing else is required to move on
 
 Next is never disabled. A patient can leave any question unanswered, walk through all six
 sections, and reach the review screen with gaps in the form.
@@ -821,11 +872,14 @@ and was built to `docs/superpowers/plans/2026-09-01-grouped-intake-redesign.md`.
 - **`lib/summary.ts`** owns what a collapsed card says. Short labels are new content, not
   truncation: "Has a doctor diagnosed you with any of these?" cannot be ellipsised into a
   52px row and stay readable.
-- **`lib/keymap.ts`** turns keys into intentions, purely, so "Enter does nothing while the
-  open question is unanswered" is one testable line instead of a branch buried in a handler.
-  It also owns the multi-select toggle, which the tap path now imports - two copies of
-  "None of these clears everything" would drift, and the drift would be `["Anemia", "None"]`
-  in a clinical record.
+- **`lib/multiSelect.ts`** owns what a checkbox tap does, including the exclusive-option rule:
+  two copies of "None of these clears everything" would drift, and the drift would be
+  `["Anemia", "None"]` in a clinical record. It was `lib/keymap.ts`, which also turned key
+  presses into intentions for a layer of custom shortcuts (`1`-`9` to select, `Enter` for the
+  next question) documented by a legend in the sidebar. Both are gone: the reasoning for the
+  legend was that a shortcut nobody knows about is not a feature, and the honest conclusion
+  from that, for a patient filling in a form on a phone, was to remove the shortcuts rather
+  than to keep advertising them. Ordinary keyboard access never depended on them.
 - **`QuestionCard`** renders one question in one of three states and reuses `QuestionBody`
   for its open contents - the same component the review screen's edit dialog renders. Three
   surfaces, one implementation of "what does `type: multi` look like".
@@ -1434,7 +1488,7 @@ of the UI, so a bad extraction patch can't bypass the interface.
 
 ## What's tested, and what deliberately isn't
 
-**`npm test` - 271 deterministic tests, no API key needed.** These are the dependable
+**`npm test` - 259 deterministic tests, no API key needed.** These are the dependable
 checks: the step builder, sex gating in all four states, every conditional-followup
 rule in both directions, exclusive options, 16-key coverage, the personalisation rules
 (comfort thresholds, the onset-age ceiling, and that a suggestion never writes an answer),

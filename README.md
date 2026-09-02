@@ -35,7 +35,7 @@ two accelerators:
 Read-aloud needs **no key at all** - it uses the browser's own `speechSynthesis`.
 
 ```bash
-npm test              # 271 deterministic tests, no key needed
+npm test              # 259 deterministic tests, no key needed
 npm run smoke         # real-browser walkthrough of the whole intake (needs a dev server)
 npm run eval          # live extraction eval against the fixtures (needs ANTHROPIC_API_KEY)
 npm run build         # production build
@@ -126,13 +126,14 @@ The same model, composed rather than restructured. Measured before and after at 
 
 The answer was never a wider column: 448px is close to the ideal measure for reading and
 stretching the questions would hurt. What the column needed was company, so the rail carries
-the wordmark, the six sections with per-section progress, and the keyboard legend.
+the wordmark, the six sections with per-section progress, and where the answers are saved.
 
-**Full keyboard operation.** `1`-`9` select, `Enter` opens the next question, `Shift+Enter`
-the next section, `Up`/`Down` move between cards, `Esc` collapses. Numbers **select only** -
-a keyboard repeats, and "2 2 2" answering three questions in a row is the same hazard that
-had auto-advance removed in the first place. Targets shrink under `pointer: fine` only, never
-by viewport width: a 1280px tablet is still a touch device.
+**Keyboard operation is the browser's.** Tab moves between controls and Enter or Space presses
+one, which is all a set of real `<button>`s needs. There was a custom layer on top - `1`-`9` to
+select, `Enter` for the next question, `Shift+Enter` for the next section, with a legend in the
+sidebar - and it came out: this is a patient filling in a medical form, usually on a phone, and
+nobody was pressing Shift+Enter. Targets shrink under `pointer: fine` only, never by viewport
+width: a 1280px tablet is still a touch device.
 
 ---
 
@@ -303,11 +304,12 @@ or Telugu build is a second map rather than a rewrite. The extraction prompt sti
 handles Hindi and Hinglish *speech* - UI language and spoken-input language are
 different things, and a patient reading English may still answer the mic in Hindi.
 
-**Nothing is required to move on; the DOWNLOAD is what is gated.** `validateStep()` in
+**One answer is required - the sex question. Otherwise the DOWNLOAD is what is gated.** `validateStep()` in
 `lib/steps.ts` is still the single source of "is this answered", and it is now used to
 report rather than to block:
 
-- Next always works. A patient can leave a question blank and come back to it, because a
+- Next always works, with one exception: the sex question, which decides which questions
+  exist at all. Everything else a patient can leave blank and come back to, because a
   form that refuses to advance until someone answers whether they are pregnant produces a
   guess, and a guess is a wrong entry in a clinical record.
 - The section says "you can come back to these" and names them, quietly, once the patient
@@ -402,7 +404,7 @@ slower.
 
 Two tiers, on purpose.
 
-**Deterministic (`npm test`, 271 tests, no key) - the dependable gate.** One test
+**Deterministic (`npm test`, 259 tests, no key) - the dependable gate.** One test
 diffs `lib/schema.ts` against the schema as downloaded from the URL in the brief, so
 "verbatim copy" is proven rather than claimed · step builder and
 schema coverage · sex gating across all four states, including that switching away from
@@ -528,7 +530,7 @@ lib/
   i18n.ts          the language resolver: one language per render, placeholder filling
   sections.ts      the six sections: visible questions, counters, what to open next
   summary.ts       short labels and the one-line answer a collapsed card shows
-  keymap.ts        keys to intentions, plus the multi-select toggle tap and key share
+  multiSelect.ts   what a checkbox tap does, including the exclusive-option rule
   copy.hi.ts       Hindi for every question, option and UI string
   llm.ts           the model boundary: one callModel(), and the parameter negotiation
   speak.ts         browser speechSynthesis, with barge-in and a no-voice fallback

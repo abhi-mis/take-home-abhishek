@@ -37,9 +37,7 @@ import {
 } from "@/lib/sections";
 import { questionCopy, sectionLabel, t, ui } from "@/lib/i18n";
 import { shortLabel } from "@/lib/summary";
-import { shouldOfferComfort, suggestedComfort } from "@/lib/patient";
-import { keyAction, optionCountForStep, optionsForStep, toggleMulti } from "@/lib/keymap";
-import { neighbourQuestion } from "@/lib/sections";
+import { sexMissing, shouldOfferComfort, suggestedComfort } from "@/lib/patient";
 import { EXCLUSIVE_OPTIONS, type Answers } from "@/lib/types";
 import { SectionShell } from "@/components/SectionShell";
 import { ComfortPrompt } from "@/components/ComfortPrompt";
@@ -104,6 +102,14 @@ export default function IntakePage() {
 
   // Derived OUTSIDE the store and memoised on the only inputs gating depends on.
   const visible = useMemo(() => visibleQuestions(section, meta), [section, meta]);
+  /*
+    Which section holds the sex question. Found by looking for the about step rather than
+    hardcoding "0", so moving About You cannot leave the one required answer enforced on the
+    wrong screen.
+  */
+  const aboutSectionId = ALL_SECTIONS.find((sec) =>
+    sec.steps.some((step) => step.kind === "about"),
+  )?.id;
   const check = validateSection(section, answers, meta, explicitNone);
   const answered = visible.length - check.missing.length;
 
@@ -129,16 +135,6 @@ export default function IntakePage() {
    */
   const [announcement, setAnnouncement] = useState("");
   const correcting = useRef(false);
-  /**
-   * Set when an answer came from a NUMBER KEY, to stop the auto-open for that change.
-   *
-   * Tapping option 2 and having the next card open is the accordion working. Pressing "2"
-   * and having it open is the same thing until you consider that a keyboard repeats: "2 2 2"
-   * would answer three different questions in a row, each one scrolling out from under the
-   * patient. So on the keyboard, selecting and moving on are two separate keys - which is
-   * what Enter is for.
-   */
-  const keyboardSelect = useRef(false);
   useEffect(() => {
     if (openQuestionId === null) return;
     const open = visible.find((s) => s.id === openQuestionId);
@@ -155,10 +151,6 @@ export default function IntakePage() {
     */
     if (!advancesOnAnswer(open)) return;
     if (correcting.current) return;
-    if (keyboardSelect.current) {
-      keyboardSelect.current = false;
-      return;
-    }
     const next = nextUnansweredAfter(section, open, answers, meta, explicitNone);
     if (next !== null) {
       openQuestion(next.id);
@@ -179,123 +171,25 @@ export default function IntakePage() {
     );
   }, [answers, meta, explicitNone, openQuestionId, section, visible, openQuestion, lang]);
 
+  /*
+    A session that predates this rule, or one restored from sessionStorage mid-form, can be
+    sitting on any section with no sex answered - a state the UI can no longer produce but can
+    still be handed. Send it back to the question rather than leaving the requirement true in
+    one place and unenforced in another.
+  */
+  useEffect(() => {
+    if (aboutSectionId === undefined) return;
+    if (!sexMissing(meta)) return;
+    if (currentSectionId === aboutSectionId) return;
+    goToSection(aboutSectionId);
+  }, [meta, currentSectionId, aboutSectionId, goToSection]);
+
   // Scrolling to the top on a SECTION change, not on every answer: the whole point of the
   // accordion is that answering does not move the page under the patient.
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: "instant" });
     setAnnouncement("");
   }, [currentSectionId]);
-
-  /**
-   * Write the nth option of the open card.
-   *
-   * Only the kinds a single keystroke can answer honestly: a single or multi select, and a
-   * yes/no. A table is five rows deep and About You is a name field plus two pickers, so
-   * `optionsForStep` returns nothing for those and this is never reached with one.
-   */
-  function selectByIndex(step: typeof visible[number], i: number) {
-    const options = optionsForStep(step);
-    const option = options[i];
-    if (option === undefined || step.key === null) return;
-
-    if (step.kind === "single") {
-      patch({ [step.key]: option } as Partial<Answers>);
-      return;
-    }
-    if (step.kind === "multi") {
-      const current = answers[step.key as "family_history"];
-      patch({
-        [step.key]: toggleMulti(current, option, EXCLUSIVE_OPTIONS[step.key]),
-      } as Partial<Answers>);
-      return;
-    }
-    // yesno, yesno_describe and consent: index 0 is yes, 1 is no.
-    const yes = i === 0;
-    if (step.key === "past_treatment_side_effects") {
-      patch({
-        past_treatment_side_effects: yes,
-        // "No" must clear the description, or validate.ts rejects the output.
-        past_treatment_describe: yes ? answers.past_treatment_describe : null,
-      });
-      return;
-    }
-    patch({ [step.key]: yes } as Partial<Answers>);
-  }
-
-  /**
-   * The keyboard, listened for once at page level rather than per card.
-   *
-   * A keystroke should work wherever focus happens to be inside the section, and the rules
-   * it obeys live in lib/keymap.ts so they can be tested without a DOM. The one rule worth
-   * repeating here: a number selects and never advances.
-   */
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      const el = document.activeElement;
-      const typing = el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement;
-      const open = visible.find((q) => q.id === openQuestionId) ?? null;
-      const action = keyAction(e, {
-        optionCount: open === null ? 0 : optionCountForStep(open),
-        openAnswered: open !== null && isAnswered(open, answers, meta, explicitNone),
-        typing,
-      });
-      if (action === null) return;
-      e.preventDefault();
-
-      switch (action.t) {
-        case "select":
-          if (open !== null) {
-            keyboardSelect.current = true;
-            selectByIndex(open, action.index);
-          }
-          return;
-        case "nextQuestion": {
-          if (open === null) return;
-          const target = nextUnansweredAfter(section, open, answers, meta, explicitNone);
-          // Nothing left to open: put focus where the patient is going instead.
-          if (target === null) {
-            /*
-              The RENDERED one. Back and Next exist twice - once in the desktop column, once
-              in the phone's fixed bar - with one side `display: none` at any given width, so
-              `querySelector` returns whichever comes first in the document rather than the
-              one on screen. On a phone that was the hidden desktop button, and focusing a
-              `display: none` element is a silent no-op: Enter on a finished section moved
-              focus nowhere at all. `getClientRects()` is empty exactly when an element is
-              not rendered, and unlike `offsetParent` it does not also go null on fixed
-              positioning - which the phone bar uses.
-            */
-            [...document.querySelectorAll<HTMLButtonElement>("[data-next-action]")]
-              .find((b) => b.getClientRects().length > 0)
-              ?.focus();
-            return;
-          }
-          correcting.current = false;
-          openQuestion(target.id);
-          return;
-        }
-        case "nextSection":
-          // Unconditional, like the button: Shift+Enter is the patient asking to move on.
-          nextSection();
-          return;
-        case "moveUp":
-        case "moveDown": {
-          if (open === null) return;
-          const target = neighbourQuestion(section, open, meta, action.t === "moveDown" ? 1 : -1);
-          if (target === null) return;
-          // Moving by keyboard onto an answered card is a correction, so it must not then
-          // bounce forward on its own.
-          correcting.current = isAnswered(target, answers, meta, explicitNone);
-          openQuestion(target.id);
-          return;
-        }
-        case "close":
-          openQuestion(null);
-          return;
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [visible, openQuestionId, answers, meta, explicitNone, section, check.complete]);
 
   /*
     Per-section progress for the rail. Computed here rather than inside the rail so the rail
@@ -349,6 +243,22 @@ export default function IntakePage() {
     );
   }
 
+  /*
+    The only gate in the form: this section asks for sex, and it has not been answered.
+    Keyed on the section CONTAINING the about step rather than on its id, so moving About You
+    somewhere else cannot leave the rule pointing at the wrong screen.
+  */
+  /*
+    While the sex is unanswered, the section holding it is the only place to be: the Next
+    button is disabled AND the sidebar will not navigate anywhere else. Disabling one route
+    is not a requirement, it is an inconvenience - a patient found the other one immediately.
+  */
+  const lockedTo = sexMissing(meta) ? aboutSectionId : undefined;
+  const blockedReason =
+    visible.some((step) => step.kind === "about") && sexMissing(meta)
+      ? t("sexRequired", lang)
+      : undefined;
+
   const nextTitle =
     index === ALL_SECTIONS.length - 1
       ? null
@@ -365,6 +275,7 @@ export default function IntakePage() {
         visible={visible.length}
         nextTitle={nextTitle}
         outstanding={check.missing.map((s) => shortLabel(s, lang))}
+        blockedReason={blockedReason}
         revisited={touched[section.id] === true}
         lang={lang}
         comfort={comfort}
@@ -379,6 +290,7 @@ export default function IntakePage() {
         onJumpSection={goToSection}
         allSections={ALL_SECTIONS}
         railProgress={railProgress}
+        lockedTo={lockedTo}
       >
         {visible.map((step, i) => {
           const done = isAnswered(step, answers, meta, explicitNone);

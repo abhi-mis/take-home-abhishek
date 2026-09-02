@@ -85,7 +85,7 @@ export function ReviewScreen({
    */
   const outstanding = useMemo(
     () =>
-      ALL_STEPS.filter((step) => step.key !== null && isStepVisible(step, meta))
+      ALL_STEPS.filter((step) => isStepVisible(step, meta))
         .map((step) => ({ step, check: validateStep(step, answers, meta, explicitNone, lang) }))
         .filter(({ check }) => !check.complete),
     [answers, meta, explicitNone, lang],
@@ -161,12 +161,24 @@ export function ReviewScreen({
           <ul className="flex flex-col gap-3">
             {outstanding.map(({ step, check }) => (
               <li key={step.id}>
+                {/*
+                  Addressed by `step.id`, not by `step.key`.
+
+                  About You has no key at all - it is the synthetic first step - and it now
+                  appears in this list, because the one required answer lives on it. The two
+                  happen to be the same string for the sixteen real questions (`id: q.key`),
+                  which is exactly the kind of coincidence that works until the one row where
+                  it does not.
+                */}
                 <button
                   type="button"
-                  onClick={() => setEditing(step.key as string)}
+                  onClick={() => setEditing(step.id)}
                   className="min-h-[44px] text-left text-[14px] font-semibold text-warn underline decoration-warn/40 underline-offset-2 transition-colors hover:decoration-warn"
                 >
-                  {COPY_L[step.key as keyof typeof COPY_L]?.title ?? step.key} →
+                  {step.key === null
+                    ? t("aboutRowLabel", lang)
+                    : (COPY_L[step.key as keyof typeof COPY_L]?.title ?? step.key)}{" "}
+                  →
                 </button>
                 {/*
                   What is missing INSIDE that question, which is the part the links alone

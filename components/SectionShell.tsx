@@ -20,8 +20,11 @@
  * rem breakpoint moves with the user's font size, so the two together put ordinary desktops
  * below `lg` and handed them the mobile layout.
  *
- * NOTHING BLOCKS NEXT. A patient can leave any question unanswered and move on, and the
- * outstanding list under a section is a note rather than a gate: "you can come back to these".
+ * ALMOST NOTHING BLOCKS NEXT. A patient can leave any question unanswered and move on, and
+ * the outstanding list under a section is a note rather than a gate: "you can come back to
+ * these". The single exception is the sex question, for the reason set out beside `sexMissing`
+ * in lib/patient.ts: it is not an answer so much as the thing that decides which questions
+ * exist, and skipping it puts two unexplained nulls in the file a doctor reads.
  *
  * That is a real decision, not a relaxation. A hair-loss intake asks about pregnancy, alcohol
  * and smoking; some of those a patient will not want to answer at a reception desk with
@@ -49,6 +52,7 @@ export function SectionShell({
   visible,
   nextTitle,
   outstanding,
+  blockedReason,
   revisited,
   lang,
   comfort,
@@ -60,6 +64,7 @@ export function SectionShell({
   onJumpSection,
   allSections,
   railProgress,
+  lockedTo,
   children,
 }: {
   section: Section;
@@ -72,6 +77,12 @@ export function SectionShell({
   nextTitle: string | null;
   /** Short labels of the unanswered questions, for the note under the section. */
   outstanding: string[];
+  /**
+   * Set only when this section holds the one required answer and it is missing. Present means
+   * Next is disabled and this sentence says why - a greyed button with no explanation is a
+   * dead end, which is the thing the old gate was rightly criticised for.
+   */
+  blockedReason?: string;
   /** True once this section has been left before, so its summary may show on arrival. */
   revisited: boolean;
   lang: Lang;
@@ -89,6 +100,8 @@ export function SectionShell({
   onJumpSection: (id: string) => void;
   allSections: Section[];
   railProgress: Record<string, NavProgress>;
+  /** While set, the sidebar will only navigate to this section. */
+  lockedTo?: string;
   children: React.ReactNode;
 }) {
   /*
@@ -126,6 +139,7 @@ export function SectionShell({
         progress={railProgress}
         lang={lang}
         onJump={onJumpSection}
+        lockedTo={lockedTo}
       />
 
       {/* Visually hidden, deliberately not `hidden`: a hidden element is not announced. */}
@@ -213,7 +227,13 @@ export function SectionShell({
             it is not - which is the same reasoning as the landing page's CTA.
           */}
           <div className="sticky bottom-0 -mx-10 mt-7 hidden bg-paper/95 px-10 pb-6 pt-4 backdrop-blur-md desk:block">
-            <Actions lang={lang} nextTitle={nextTitle} onBack={onBack} onNext={onNext} />
+            <Actions
+              lang={lang}
+              nextTitle={nextTitle}
+              onBack={onBack}
+              onNext={onNext}
+              blockedReason={blockedReason}
+            />
           </div>
         </main>
       </div>
@@ -223,7 +243,13 @@ export function SectionShell({
         the viewport, and the way forward must never be something you scroll to find.
       */}
       <div className="fixed inset-x-0 bottom-0 z-40 border-t border-line bg-paper/95 px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3 backdrop-blur-md desk:hidden">
-        <Actions lang={lang} nextTitle={nextTitle} onBack={onBack} onNext={onNext} />
+        <Actions
+          lang={lang}
+          nextTitle={nextTitle}
+          onBack={onBack}
+          onNext={onNext}
+          blockedReason={blockedReason}
+        />
       </div>
     </div>
   );
@@ -232,7 +258,9 @@ export function SectionShell({
 /**
  * Back and Next, rendered twice - once in the desktop column, once in the phone's fixed bar.
  *
- * Neither is ever disabled. See the note at the top of the file.
+ * Next is disabled in exactly one case, and never silently: `blockedReason` carries the
+ * sentence that explains it, rendered above the button rather than hidden behind a tooltip or
+ * a press that does nothing.
  *
  * Twice rather than one element moved by CSS because the two live in different stacking and
  * scrolling contexts. Only one is ever RENDERED - each side is behind a `desk:hidden` or a
@@ -249,14 +277,26 @@ function Actions({
   nextTitle,
   onBack,
   onNext,
+  blockedReason,
 }: {
   lang: Lang;
   nextTitle: string | null;
   onBack: () => void;
   onNext: () => void;
+  blockedReason?: string;
 }) {
   return (
-    <div className="flex items-center gap-3">
+    <div>
+      {blockedReason !== undefined ? (
+        <p
+          role="status"
+          className="mb-2 flex gap-2 text-[12.5px] font-medium leading-snug text-brand-ink"
+        >
+          <span aria-hidden>·</span>
+          <span>{blockedReason}</span>
+        </p>
+      ) : null}
+      <div className="flex items-center gap-3">
       <Button
         variant="ghost"
         size="lg"
@@ -270,6 +310,7 @@ function Actions({
         <Button
           size="lg"
           onClick={onNext}
+          disabled={blockedReason !== undefined}
           className="w-full"
           /*
             Queried by the page when Enter runs out of questions to open: focus should land
@@ -281,6 +322,7 @@ function Actions({
         >
           {nextTitle === null ? t("finishUp", lang) : t("nextSection", lang, { title: nextTitle })}
         </Button>
+      </div>
       </div>
     </div>
   );

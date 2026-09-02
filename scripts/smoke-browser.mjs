@@ -339,21 +339,36 @@ try {
   // ---------- section 1: About You ----------
   notes.push(await sectionLine());
   /*
-    Nothing is required to move on, and this is the assertion for it.
-    It used to assert the opposite - that About You gated Next until sex and age were given.
-    A hair-loss intake asks about pregnancy, alcohol and smoking, and a form that refuses to
-    advance until a patient answers produces a guess instead of a blank; a blank is honest and
-    a guess is a wrong entry in a clinical record. The DOWNLOAD is still gated on a complete
-    form, which is checked at the end of this walk.
+    ONE gate, and this is where it is.
+
+    Almost nothing is required: a form that refuses to advance until a patient answers whether
+    they are pregnant produces a guess instead of a blank, and a guess is a wrong entry in a
+    clinical record. Sex is the exception, because it decides which questions exist at all -
+    skip it and the file a doctor opens has two nulls that could mean "does not apply" or
+    "never asked".
+
+    So: blocked here with a reason on screen, free the moment a sex is chosen, and the age
+    beside it never blocks. Sections A to E are checked further down, after the walk has
+    answered its way through them.
   */
-  const nextOpen = await page
-    .locator("[data-next-action]")
-    .filter({ hasNot: page.locator("[hidden]") })
-    .first()
-    .isEnabled();
-  notes.push(`Next works with nothing answered? ${nextOpen}  (must be true)`);
-  if (!nextOpen)
-    errors.push({ kind: "optional", text: "Next was blocked on an unanswered section", fatal: true });
+  const visibleNext = () =>
+    page.locator("[data-next-action]").filter({ hasNot: page.locator("[hidden]") }).first();
+
+  const gated = await visibleNext().isDisabled();
+  const gateReason = await page
+    .getByText(/decides which questions apply/)
+    .count()
+    .catch(() => 0);
+  notes.push(`About You gates Next until a sex is chosen? ${gated}  (must be true)`);
+  if (!gated)
+    errors.push({ kind: "gate", text: "the sex question did not gate Next", fatal: true });
+  if (gateReason === 0)
+    errors.push({
+      kind: "gate",
+      text: "Next is disabled with no reason on screen",
+      fatal: false,
+    });
+  else notes.push("the block says why, on screen, rather than greying out silently");
 
   /*
     Located by the VISIBLE label now.
@@ -378,9 +393,15 @@ try {
     stayed disabled - which was the behaviour that has been deliberately removed.
   */
   const aboutIncomplete = (await page.locator('main [data-answered="false"]').count()) > 0;
-  notes.push(`sex alone leaves About You incomplete? ${aboutIncomplete}  (reported, not blocked)`);
+  const freedBySex = await visibleNext().isEnabled();
+  notes.push(
+    `sex alone: About You still incomplete? ${aboutIncomplete}, Next freed? ${freedBySex}`,
+  );
   if (!aboutIncomplete)
     errors.push({ kind: "about", text: "About You counted itself answered with no age", fatal: false });
+  // The age is reported, never enforced: only the sex was ever the gate.
+  if (!freedBySex)
+    errors.push({ kind: "gate", text: "choosing a sex did not lift the gate", fatal: true });
 
   /*
     The age is TYPED, because typing is the primary way to answer it now and a smoke that
@@ -390,26 +411,36 @@ try {
     un-answers the question rather than leaving the last good one behind, and a valid one
     commits.
   */
+  /*
+    34, not 60, and the reason is a race this check used to lose.
+
+    An age of 55 or more summons the text-size offer half a second later, and that dialog
+    moves focus to its own button. Typing "6a0" and then appending a "0" therefore had a
+    dialog opening between the two keystrokes: the second one went to the dialog, the field
+    kept "60", and the assertion reported "an out-of-range age was accepted" - a failure in
+    the test's timing rather than in the form. The dialog gets exercised on its own terms a
+    few lines down, with an age chosen for it.
+  */
   const ageField = page.getByRole("textbox", { name: /How old are you/ });
-  await ageField.type("6a0", { delay: 40 });
+  await ageField.type("3a4", { delay: 40 });
   await page.waitForTimeout(400);
   const typedValue = await ageField.inputValue();
-  notes.push(`typed "6a0" -> field holds ${JSON.stringify(typedValue)}  (letters dropped)`);
-  if (typedValue !== "60")
+  notes.push(`typed "3a4" -> field holds ${JSON.stringify(typedValue)}  (letters dropped)`);
+  if (typedValue !== "34")
     errors.push({ kind: "age", text: `letters reached the age field: ${typedValue}`, fatal: false });
 
   await ageField.type("0", { delay: 40 });
   await page.waitForTimeout(450);
   /*
-    An out-of-range age is still NOT AN ANSWER, which is the part that matters, and it no
-    longer blocks Next, because nothing does. Those are two different claims and this checks
-    both: the error is on screen, and the card reports itself unanswered - `data-answered` is
-    the store's view of the question rather than the field's, so it is what would catch 600
-    being quietly kept as 60.
+    An out-of-range age is NOT AN ANSWER, which is the part that matters, and it does not
+    block Next, because only the sex question does. Two claims, both checked: the error is on
+    screen, and the card reports itself unanswered - `data-answered` is the store's view of
+    the question rather than the field's, so it is what would catch 340 being quietly kept
+    as 34. The alert is looked for inside `main` so a dialog's own alert cannot satisfy it.
   */
-  const alertShown = (await page.getByRole("alert").count()) > 0;
+  const alertShown = (await page.locator('main [role="alert"]').count()) > 0;
   const stillUnanswered = (await page.locator('main [data-answered="false"]').count()) > 0;
-  notes.push(`600 -> error shown? ${alertShown}, question left unanswered? ${stillUnanswered}`);
+  notes.push(`340 -> error shown? ${alertShown}, question left unanswered? ${stillUnanswered}`);
   if (!alertShown || !stillUnanswered)
     errors.push({
       kind: "age",

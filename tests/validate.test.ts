@@ -108,8 +108,33 @@ describe("coverage", () => {
   it("reports an empty form as missing all 16 keys", () => {
     const r = validate(structuredClone(EMPTY_ANSWERS), { ...EMPTY_META, patient_sex: null }, {});
     expect(r.valid).toBe(false);
-    // menstrual/pregnancy are gated out when sex is not female, so 14 remain.
+    /*
+      All sixteen, including the two gated ones.
+
+      This used to expect fourteen, on the reasoning that menstrual_cycle and
+      pregnancy_related are "gated out when sex is not female". Null is not "not female"
+      though - it is "we do not know" - and treating the two the same is what let a patient
+      skip the sex question, answer everything else, and unlock the download. A gated null is
+      a clinical fact; an unknown-sex null is a gap in the record, and the file a doctor opens
+      cannot tell them apart.
+    */
+    expect(r.missing).toHaveLength(TOTAL_QUESTIONS);
+  });
+
+  it("excludes the gated pair once sex is known and is not female", () => {
+    const r = validate(structuredClone(EMPTY_ANSWERS), { ...EMPTY_META, patient_sex: "male" }, {});
     expect(r.missing).toHaveLength(TOTAL_QUESTIONS - 2);
+    expect(r.missing).not.toContain("menstrual_cycle");
+    expect(r.missing).not.toContain("pregnancy_related");
+  });
+
+  it("refuses a complete form whose sex was never answered", () => {
+    // Every question a male patient is asked, answered - but with the sex itself unknown.
+    // The download must stay shut: this is the one answer the form insists on.
+    const r = validate(completeMale(), { ...EMPTY_META, patient_sex: null }, ALL_TOUCHED);
+    expect(r.valid).toBe(false);
+    expect(r.missing).toContain("menstrual_cycle");
+    expect(r.missing).toContain("pregnancy_related");
   });
 
   it("does not accept an empty multi-select unless None was actively chosen", () => {

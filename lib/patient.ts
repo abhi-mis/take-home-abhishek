@@ -102,6 +102,21 @@ export function shouldOfferComfort(
  * because it is unusual is how a form tells a 96-year-old they do not exist. Anything
  * outside this is a typo rather than a person.
  */
+/**
+ * The one answer this form insists on, and the reason it is the exception.
+ *
+ * Everything else can be left blank and come back to, because a form that refuses to advance
+ * produces guesses and a guess is a wrong entry in a clinical record. Sex is different in kind:
+ * it is not an answer, it is what decides which QUESTIONS EXIST. Q6 (periods) and Q7
+ * (pregnancy-related) are asked only of a female patient and emitted as null otherwise, so
+ * without it the output carries two nulls that could mean either "does not apply" or "we never
+ * found out" - and the doctor reading the file cannot tell which. One is a clinical fact, the
+ * other is a gap in the record.
+ */
+export function sexMissing(meta: Meta): boolean {
+  return meta.patient_sex === null;
+}
+
 export const AGE_MIN = 16;
 export const AGE_MAX = 100;
 

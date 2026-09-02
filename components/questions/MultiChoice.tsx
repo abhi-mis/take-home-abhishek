@@ -24,7 +24,7 @@ import { OptionCard } from "../ui/Button";
 import { OptionIcon, hasOptionIcon } from "./OptionIcons";
 import { cn, tick } from "@/lib/utils";
 import { optionLabel, type Lang } from "@/lib/i18n";
-import { toggleMulti } from "@/lib/keymap";
+import { toggleMulti } from "@/lib/multiSelect";
 
 export function MultiChoice({
   options,
@@ -59,8 +59,8 @@ export function MultiChoice({
   function toggle(opt: string) {
     if (unavailable?.[opt] !== undefined) return;
     tick();
-    // The exclusive-option rule lives in lib/keymap.ts because the keyboard applies the
-    // identical rule. Two copies of it would drift, and the drift would be an answer like
+    // The exclusive-option rule lives in lib/multiSelect.ts so it can be tested without a
+    // browser. Two copies of it would drift, and the drift would be an answer like
     // ["Anemia", "None"] reaching a doctor.
     onChange(toggleMulti(values, opt, exclusive));
   }
