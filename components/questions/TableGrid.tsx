@@ -1,18 +1,38 @@
 "use client";
 
 /**
- * Q12 products and Q13 procedures - one component, because the schema gives them the
- * same shape: rows x columns where the first column is a boolean flag and the rest
- * only exist when that flag is true.
+ * Q12 products and Q13 procedures - one component, because the schema gives them the same
+ * shape: rows x columns where the first column is a boolean flag and the rest only exist when
+ * that flag is true.
  *
- * A real HTML table at 380px is unusable, so each row is a card that starts collapsed
- * as a single yes/no and expands its detail columns only when switched on. A patient
- * who uses one product answers 4 fields; a patient who uses none answers 5 taps and
- * is done. That is the whole reason this is not rendered as a grid.
+ * A real HTML table at 380px is unusable, so each row is a card.
+ *
+ * THE FLAG IS NOT ASKED SEPARATELY. It used to be: a Yes/No, and then, once you said Yes, a
+ * revealed "how long?" with three options. Two stages for one fact, and the first stage told
+ * nobody anything - a patient who picks "3-6mo" has obviously used the thing. The row now
+ * opens as one line of options with the negative among them:
+ *
+ *   [ Never ][ <3mo ][ 3-6mo ][ >6mo ]
+ *
+ * Picking a duration writes `used: true` alongside it; picking Never writes `used: false` and
+ * nulls every detail column. The mapping is in `lib/apply.ts` and the emitted JSON is
+ * unchanged - see the note at the top of that file.
+ *
+ * What still unfolds is the columns that are genuinely separate questions: "did it help" and
+ * "any side effects" are not points on the duration scale, and collapsing them in would mean
+ * inventing combinations the schema does not have.
  */
 import { AnimatePresence, motion } from "framer-motion";
 import { cn, tick } from "@/lib/utils";
 import { optionLabel, t, type Lang } from "@/lib/i18n";
+import {
+  NEGATIVE,
+  mergedIsPositive,
+  mergedOptions,
+  mergedPatch,
+  mergedSelection,
+  type MergedSpec,
+} from "@/lib/apply";
 import { SegmentedRow } from "./HabitsGrid";
 import { YesNo } from "./YesNo";
 
@@ -26,40 +46,63 @@ export interface ColumnSpec {
 export interface TableGridProps {
   rows: readonly string[];
   lang: Lang;
-  /** The boolean column that gates the rest ("used" or "done"). */
-  flagKey: string;
+  /** Which flag and which option column this table merges into one row. */
+  merged: MergedSpec;
+  /** What that merged row is asking, for the radiogroup's accessible name. */
+  mergedLabel: string;
+  /** The columns that still unfold: the ones that are their own question. */
   detailColumns: readonly ColumnSpec[];
   value: Record<string, Record<string, unknown>>;
   onChangeRow: (row: string, patch: Record<string, unknown>) => void;
-  /** Rows the model just wrote, for the confirm highlight. */
   rowGloss?: Record<string, string>;
 }
 
 export function TableGrid({
   rows,
   lang,
-  flagKey,
+  merged,
+  mergedLabel,
   detailColumns,
   value,
   onChangeRow,
   rowGloss,
 }: TableGridProps) {
+  const options = mergedOptions(merged);
+  // The sentinel is a UI token, so its label comes from the dictionary rather than from
+  // `optionLabel`, which translates values the schema defines.
+  const labels = { [NEGATIVE]: t("optNever", lang) };
+
   return (
     <div className="flex flex-col gap-2.5">
       {rows.map((row) => {
         const entry = value[row] ?? {};
-        const on = entry[flagKey] === true;
+        const on = mergedIsPositive(entry, merged);
+        const selected = mergedSelection(entry, merged);
 
         return (
           <div
             key={row}
             className={cn(
-              "relative overflow-hidden rounded-2xl border p-3.5",
+              "overflow-hidden rounded-2xl border p-3.5",
               on ? "border-brand/35 bg-card" : "border-line bg-card",
             )}
           >
-            <div className="row-split relative flex items-start gap-3">
-              <div className="min-w-0 flex-1">
+            {/*
+              Beside the label when the options fit, on their own line when they do not.
+
+              Both fixed rules were wrong. Options on a dedicated line cost every UNANSWERED
+              row an extra 35px, and there are fourteen of them across the two tables - the
+              first version of this control measured 470px TALLER overall than the two-stage
+              one it replaced, because the old collapsed row was just a label and a Yes/No.
+              Forcing them beside the label instead overflows a 320px phone.
+
+              `flex-wrap` decides per row and per viewport without a rule to get wrong: the
+              options take the same line while there is room for them, and drop below when
+              there is not. "Never <3mo 3-6mo >6mo" fits on a desktop; "Moderate 5-10/day"
+              and its siblings do not, and wrap on their own.
+            */}
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-2.5">
+              <div className="min-w-[45%] flex-1">
                 <p className="text-[14.5px] font-semibold leading-tight text-ink">
                   {optionLabel(row, lang)}
                 </p>
@@ -67,34 +110,20 @@ export function TableGrid({
                   <p className="mt-0.5 text-[12.5px] leading-snug text-muted">{rowGloss[row]}</p>
                 ) : null}
               </div>
-              <div className="row-control w-[124px] shrink-0">
-                <YesNo
-                  size="sm"
-                  lang={lang}
-                  value={(entry[flagKey] as boolean | null) ?? null}
-                  /*
-                    No labels passed, so YesNo uses the dictionary.
-
-                    These used to be `yesLabel={flagLabel}` and a hardcoded `noLabel="No"`,
-                    which meant the products and treatments tables showed English Yes/No on a
-                    fully Hindi page - the habits grid beside them was translated, so the two
-                    tables disagreed with each other in the same form. Found by reading a
-                    Hindi screenshot, not by a test: the no-hardcoded-English scan looks for
-                    prose in JSX text, and this was a prop value.
-                  */
-                  onChange={(v) => {
-                    tick();
-                    // Switching a row off nulls every detail column, keeping the
-                    // "must be null when false" invariant true at all times.
-                    if (v) onChangeRow(row, { [flagKey]: true });
-                    else
-                      onChangeRow(row, {
-                        [flagKey]: false,
-                        ...Object.fromEntries(detailColumns.map((c) => [c.key, null])),
-                      });
-                  }}
-                />
-              </div>
+              <SegmentedRow
+                wrap
+                /* basis, not shrink-0: see the note in HabitsGrid. */
+                className="min-w-0 flex-1 basis-[320px]"
+                ariaLabel={`${optionLabel(row, lang)}: ${mergedLabel}`}
+                options={options}
+                labels={labels}
+                lang={lang}
+                value={selected}
+                onSelect={(v) => {
+                  tick();
+                  onChangeRow(row, mergedPatch(merged, v));
+                }}
+              />
             </div>
 
             <AnimatePresence initial={false}>
@@ -104,37 +133,40 @@ export function TableGrid({
                   animate={{ opacity: 1, height: "auto" }}
                   exit={{ opacity: 0, height: 0 }}
                   transition={{ duration: 0.2 }}
-                  className="relative overflow-hidden"
+                  className="overflow-hidden"
                 >
-                  <div className="mt-3 flex flex-col gap-3 border-t border-line pt-3">
+                  <div className="mt-3 flex flex-col gap-2.5 border-t border-line pt-3 desk:flex-row desk:gap-5">
                     {detailColumns.map((col) => {
                       const missing = entry[col.key] === null || entry[col.key] === undefined;
                       return (
-                        <div key={col.key}>
+                        <div key={col.key} className="row-split flex items-center gap-3">
                           <p
                             className={cn(
-                              "mb-1.5 text-[12px] font-semibold uppercase tracking-wide",
+                              "min-w-0 flex-1 text-[12px] font-semibold uppercase tracking-wide",
                               missing ? "text-warn" : "text-muted",
                             )}
                           >
                             {col.label}
                             {missing ? " · " + t("required", lang) : ""}
                           </p>
-                          {col.kind === "yesno" ? (
-                            <YesNo
-                              size="sm"
-                              lang={lang}
-                              value={(entry[col.key] as boolean | null) ?? null}
-                              onChange={(v) => onChangeRow(row, { [col.key]: v })}
-                            />
-                          ) : (
-                            <SegmentedRow
-                              options={col.options ?? []}
-                              lang={lang}
-                              value={(entry[col.key] as string | null) ?? null}
-                              onSelect={(v) => onChangeRow(row, { [col.key]: v })}
-                            />
-                          )}
+                          <div className="row-control shrink-0">
+                            {col.kind === "yesno" ? (
+                              <YesNo
+                                size="sm"
+                                lang={lang}
+                                value={(entry[col.key] as boolean | null) ?? null}
+                                onChange={(v) => onChangeRow(row, { [col.key]: v })}
+                              />
+                            ) : (
+                              <SegmentedRow
+                                ariaLabel={col.label}
+                                options={col.options ?? []}
+                                lang={lang}
+                                value={(entry[col.key] as string | null) ?? null}
+                                onSelect={(v) => onChangeRow(row, { [col.key]: v })}
+                              />
+                            )}
+                          </div>
                         </div>
                       );
                     })}

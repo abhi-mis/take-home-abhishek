@@ -25,7 +25,8 @@
  * what `validateStep` counts to decide whether the question is complete, so the grid and the
  * "still needed" summary cannot disagree about what is missing.
  */
-import { PRODUCT_DUR, PRODUCT_ROWS, PROCEDURE_ROWS, SESSIONS } from "@/lib/types";
+import { PRODUCT_ROWS, PROCEDURE_ROWS } from "@/lib/types";
+import { PRODUCT_MERGED, PROCEDURE_MERGED } from "@/lib/apply";
 import type { Answers } from "@/lib/types";
 import { t, type Lang } from "@/lib/i18n";
 import { HabitsGrid } from "./HabitsGrid";
@@ -36,14 +37,20 @@ import { TableGrid, type ColumnSpec } from "./TableGrid";
   render from `lang` because they are read by the patient, unlike the row keys beside
   them, which are schema strings and never change.
 */
+/*
+  What is left AFTER the merge.
+
+  "How long" and "how many sessions" are gone from here: they are the merged row itself now,
+  with the flag folded in as its negative option. What remains is the columns that are their
+  own question - whether it helped, whether there were side effects - which a duration scale
+  cannot express.
+*/
 const productColumns = (lang: Lang): ColumnSpec[] => [
-  { key: "duration", label: t("colHowLong", lang), kind: "options", options: PRODUCT_DUR },
   { key: "helped", label: t("colHelped", lang), kind: "yesno" },
   { key: "side_effects", label: t("colSideEffects", lang), kind: "yesno" },
 ];
 
 const procedureColumns = (lang: Lang): ColumnSpec[] => [
-  { key: "sessions", label: t("colSessions", lang), kind: "options", options: SESSIONS },
   { key: "helped", label: t("colHelped", lang), kind: "yesno" },
 ];
 
@@ -88,7 +95,8 @@ export function TableQuestion({
       <TableGrid
         rows={PRODUCT_ROWS}
         lang={lang}
-        flagKey="used"
+        merged={PRODUCT_MERGED}
+        mergedLabel={t("colHowLong", lang)}
         detailColumns={productColumns(lang)}
         rowGloss={productGloss(lang)}
         value={answers.products as unknown as Record<string, Record<string, unknown>>}
@@ -108,7 +116,8 @@ export function TableQuestion({
     <TableGrid
       rows={PROCEDURE_ROWS}
       lang={lang}
-      flagKey="done"
+      merged={PROCEDURE_MERGED}
+      mergedLabel={t("colSessions", lang)}
       detailColumns={procedureColumns(lang)}
       rowGloss={procedureGloss(lang)}
       value={answers.procedures as unknown as Record<string, Record<string, unknown>>}

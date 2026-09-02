@@ -446,6 +446,8 @@ export const TEXT_EN = {
   habitSalonPlaceholder: "e.g. keratin, about 6 months ago",
 
   // products and procedures
+  // The negative option on a merged row (see lib/apply.ts): "never used it", not "no".
+  optNever: "Never",
   colHowLong: "How long",
   colHelped: "Did it help?",
   colSideEffects: "Any side effects?",
@@ -770,6 +772,7 @@ export const TEXT_HI: Record<TextKey, string> = {
   habitWhich: "कौन सा इलाज?",
   habitSalonPlaceholder: "जैसे केराटिन, करीब 6 महीने पहले",
 
+  optNever: "कभी नहीं",
   colHowLong: "कितने समय से",
   colHelped: "फ़ायदा हुआ?",
   colSideEffects: "कोई साइड इफ़ेक्ट?",

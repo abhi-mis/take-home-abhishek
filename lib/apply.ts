@@ -1,146 +1,138 @@
 /**
  * Writing answers back into the store - the rules, in one place.
  *
- * Three different controls write these answers: the grids, the guided follow-up flow, and
- * a voice fill. The rules that make an answer VALID are clinical, not cosmetic:
+ * The rule everything here exists to protect is clinical, not cosmetic: a flag answered No
+ * must null its detail columns. `validate.ts` enforces "detail must be null when the flag is
+ * false", so getting this wrong produces an off-schema download, which is the one output
+ * nobody is allowed to get wrong. That is why the rules live in a module with no React in it
+ * and tests that need no browser.
  *
- *   - a flag answered "No" must null its detail columns, or validate.ts's
- *     "detail must be null when the flag is false" invariant breaks and the downloaded
- *     JSON is off-schema;
- *   - an extraction merges into existing answers, never replaces them, so a second
- *     reply that mentions one more product does not erase the first four.
+ * MERGED CHOICES
  *
- * Those rules used to live inside VoiceMatrix, next to the JSX. Pulling them out is what
- * makes them testable without React - and a schema-invalid download is the one output
- * nobody is allowed to get wrong, so it deserves tests that do not need a browser.
+ * Several questions in the schema are a boolean gating an option list: "do you smoke?" then
+ * "how much?", "have you used this?" then "for how long?". Asked literally that is two stages
+ * and two taps for one fact, and the first stage carries no information the second does not -
+ * nobody picks "Mild <5/day" without smoking.
+ *
+ * So the control is one row: the negative option sits alongside the positive ones.
+ *
+ *   before   [ Yes ][ No ]   then, revealed   [ Mild ][ Moderate ][ Severe ]
+ *   after    [ No ][ Mild <5/day ][ Moderate 5-10/day ][ Severe >10/day ]
+ *
+ * THE JSON DOES NOT CHANGE. This is a presentation merge, and the mapping back to the
+ * schema's own shape is the whole content of this file: picking "Mild <5/day" writes
+ * `{ smoking: true, smoking_severity: "Mild <5/day" }` and picking No writes
+ * `{ smoking: false, smoking_severity: null }` - exactly the two states the two-stage version
+ * produced. `lib/schema.ts`, `lib/types.ts` and the emitted output are untouched.
+ *
+ * It does not apply everywhere, and the exception is worth naming: `salon_treatment_detail`
+ * and `past_treatment_describe` are free text, and a text box cannot be an option in a row of
+ * buttons. Those two stay two-stage.
  */
-import type { OutstandingField } from "./followups";
-import type { ExtractResult } from "./extractPrompt";
-import {
-  PROCEDURE_ROWS,
-  PRODUCT_ROWS,
-  type Answers,
-  type Habits,
-  type PatientSex,
-} from "./types";
+import { PROCEDURE_ROWS, PRODUCT_ROWS, PRODUCT_DUR, SESSIONS, SMOKING_SEV } from "./types";
 
-/** A store update, expressed as data rather than applied - so it can be asserted. */
-export interface Ops {
-  patch?: Partial<Answers>;
-  sex?: PatientSex;
+/**
+ * The negative option's value.
+ *
+ * A sentinel rather than "No", because the real options are schema strings and this one is
+ * not: it must never be mistaken for a value that could be written to an answer. Everything
+ * that reads it maps it to `false` before the store sees it.
+ */
+export const NEGATIVE = "__negative__";
+
+export interface MergedSpec {
+  /** The boolean column the negative option writes `false` to. */
+  flag: string;
+  /** The option column the positive choices write to. */
+  detail: string;
+  /**
+   * Other columns that must go null when the flag goes false.
+   *
+   * They are NOT part of this control - "did it help" is a separate clinical fact and gets
+   * its own row - but they are part of the same invariant, so the list lives with the rule.
+   */
+  alsoNull: readonly string[];
+  options: readonly string[];
+}
+
+/** Q11, the smoking row: one boolean, one severity scale, nothing else. */
+export const SMOKING_MERGED: MergedSpec = {
+  flag: "smoking",
+  detail: "smoking_severity",
+  alsoNull: [],
+  options: SMOKING_SEV,
+};
+
+/** Q12, every product row: used + how long, with helped and side effects following. */
+export const PRODUCT_MERGED: MergedSpec = {
+  flag: "used",
+  detail: "duration",
+  alsoNull: ["helped", "side_effects"],
+  options: PRODUCT_DUR,
+};
+
+/** Q13, every treatment row: done + how many sessions, with helped following. */
+export const PROCEDURE_MERGED: MergedSpec = {
+  flag: "done",
+  detail: "sessions",
+  alsoNull: ["helped"],
+  options: SESSIONS,
+};
+
+/** The options a merged row renders, negative first. */
+export function mergedOptions(spec: MergedSpec): string[] {
+  return [NEGATIVE, ...spec.options];
 }
 
 /**
- * Merge incoming table rows into existing ones, per row rather than per table.
+ * What the row shows as selected: an option string, NEGATIVE, or null for unanswered.
  *
- * Generic over both tables because products and procedures differ only in their column
- * names; a shallow `{...current, ...incoming}` would drop the columns a partial row
- * omits, which is exactly what an extraction produces.
+ * `flag === true` with an empty detail returns null - nothing selected - which is the honest
+ * reading of a half-answered row. Tapping cannot produce that state, but a session persisted
+ * before this control existed can, and so can a future edit; a row that is incomplete should
+ * look incomplete rather than pick a button for the patient.
  */
-export function mergeRows<K extends string, E extends object>(
-  current: Record<K, E>,
-  incoming: Partial<Record<K, Partial<E>>>,
-): Record<K, E> {
-  const out = { ...current };
-  for (const [row, cell] of Object.entries(incoming) as [K, Partial<E>][]) {
-    if (!cell) continue;
-    out[row] = { ...current[row], ...cell };
+export function mergedSelection(
+  entry: Record<string, unknown> | undefined,
+  spec: MergedSpec,
+): string | null {
+  if (entry === undefined) return null;
+  if (entry[spec.flag] === false) return NEGATIVE;
+  if (entry[spec.flag] === true) {
+    const detail = entry[spec.detail];
+    return typeof detail === "string" && detail.length > 0 ? detail : null;
   }
-  return out;
+  return null;
 }
 
-const PRODUCT_DETAILS = ["duration", "helped", "side_effects"] as const;
-const PROCEDURE_DETAILS = ["sessions", "helped"] as const;
+/**
+ * The patch for one tap on a merged row.
+ *
+ * The negative branch nulls the detail AND everything in `alsoNull`, which is the invariant.
+ * The positive branch deliberately does NOT touch `alsoNull`: switching from "<3mo" to "3-6mo"
+ * must not wipe an already-answered "did it help".
+ */
+export function mergedPatch(spec: MergedSpec, choice: string): Record<string, unknown> {
+  if (choice === NEGATIVE) {
+    const out: Record<string, unknown> = { [spec.flag]: false, [spec.detail]: null };
+    for (const key of spec.alsoNull) out[key] = null;
+    return out;
+  }
+  return { [spec.flag]: true, [spec.detail]: choice };
+}
 
-function isProductRow(row: string): boolean {
+/** True while the row's remaining follow-up columns should be on screen. */
+export function mergedIsPositive(
+  entry: Record<string, unknown> | undefined,
+  spec: MergedSpec,
+): boolean {
+  return entry !== undefined && entry[spec.flag] === true;
+}
+
+export function isProductRow(row: string): boolean {
   return (PRODUCT_ROWS as readonly string[]).includes(row);
 }
-function isProcedureRow(row: string): boolean {
+
+export function isProcedureRow(row: string): boolean {
   return (PROCEDURE_ROWS as readonly string[]).includes(row);
-}
-
-/**
- * An extraction result -> store ops.
- *
- * The three table questions merge; every other question is a plain assignment. Note
- * that `result.patch` is already schema-filtered by the slice, so this function's only
- * job is the merge strategy.
- */
-export function extractOps(
-  questionKey: string,
-  result: ExtractResult,
-  answers: Answers,
-): Ops {
-  const p = result.patch;
-
-  if (questionKey === "habits" && p.habits) {
-    return { patch: { habits: { ...answers.habits, ...(p.habits as Partial<Habits>) } } };
-  }
-  if (questionKey === "products" && p.products) {
-    return {
-      patch: { products: mergeRows(answers.products, p.products as Partial<Answers["products"]>) },
-    };
-  }
-  if (questionKey === "procedures" && p.procedures) {
-    return {
-      patch: {
-        procedures: mergeRows(answers.procedures, p.procedures as Partial<Answers["procedures"]>),
-      },
-    };
-  }
-
-  // Q14 and anything else single-valued: the slice returns exactly the keys it owns.
-  return Object.keys(p).length > 0 ? { patch: { ...p } } : {};
-}
-
-/**
- * One follow-up field -> store ops.
- *
- * This is where the "No nulls its details" invariant lives. The grid and the guided
- * follow-up flow both come through here, so a row answered in one cannot end up shaped
- * differently from the same row answered in the other.
- */
-export function fieldOps(
-  questionKey: string,
-  field: OutstandingField,
-  value: boolean | string,
-  answers: Answers,
-): Ops {
-  if (questionKey === "habits" || field.path.startsWith("habits.")) {
-    const p: Record<string, unknown> = { [field.field]: value };
-    if (field.field === "smoking" && value === false) p.smoking_severity = null;
-    if (field.field === "salon_treatments" && value === false) p.salon_treatment_detail = null;
-    return { patch: { habits: { ...answers.habits, ...p } as Habits } };
-  }
-
-  if (field.path === "past_treatment_describe") {
-    return { patch: { past_treatment_describe: String(value) } };
-  }
-
-  const row = field.row;
-  if (!row) return {};
-
-  if (isProductRow(row)) {
-    const current = answers.products[row as keyof Answers["products"]];
-    const cell: Record<string, unknown> = { ...current, [field.field]: value };
-    if (field.field === "used" && value === false) for (const d of PRODUCT_DETAILS) cell[d] = null;
-    return {
-      patch: {
-        products: { ...answers.products, [row]: cell } as Answers["products"],
-      },
-    };
-  }
-
-  if (isProcedureRow(row)) {
-    const current = answers.procedures[row as keyof Answers["procedures"]];
-    const cell: Record<string, unknown> = { ...current, [field.field]: value };
-    if (field.field === "done" && value === false) for (const d of PROCEDURE_DETAILS) cell[d] = null;
-    return {
-      patch: {
-        procedures: { ...answers.procedures, [row]: cell } as Answers["procedures"],
-      },
-    };
-  }
-
-  return {};
 }

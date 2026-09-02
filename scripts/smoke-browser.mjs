@@ -148,15 +148,29 @@ async function answerOpenCard() {
 
   const consentYes = card.getByRole("radio", { name: /Yes, I agree/ });
   const nos = card.getByRole("radio", { name: /^No$/ });
+  const nevers = card.getByRole("radio", { name: /^Never$/ });
   const bands = card.getByRole("button", { name: /Teens|13-19/ });
   const checks = card.locator('[role="checkbox"]:not([aria-disabled="true"])');
   const radios = card.getByRole("radio");
 
   if (await consentYes.count()) {
     await consentYes.first().click();
+  } else if ((await nevers.count()) > 1) {
+    /*
+      A merged table (products, treatments). The flag column is gone: each row is one line
+      of options whose first entry is "Never", and picking it writes the flag false and
+      nulls the detail columns. So answering the whole question negatively is one tap per
+      row - which is the point of the change, and worth having the walk exercise.
+    */
+    for (const el of await nevers.elementHandles()) {
+      if ((await el.getAttribute("aria-checked").catch(() => "true")) !== "true") {
+        await el.click().catch(() => {});
+        await page.waitForTimeout(60);
+      }
+    }
   } else if ((await nos.count()) > 2) {
-    // A grid: every row must be answered, so say No to all of them, then pick the one
-    // segmented row (wash frequency) that has no yes/no.
+    // The habits grid: yes/no rows, plus two rows that are option lists of their own -
+    // wash frequency, and smoking, whose negative is "No" among its severities.
     for (const el of await nos.elementHandles()) {
       if ((await el.getAttribute("aria-checked").catch(() => "true")) !== "true") {
         await el.click().catch(() => {});

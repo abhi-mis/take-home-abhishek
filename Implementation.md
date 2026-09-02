@@ -273,6 +273,81 @@ is not, and an extra tap to dismiss a card is ceremony the patient did not ask f
 
 ---
 
+## Nested questions: one row, not two stages
+
+A boolean gating an option list was asked literally - "do you smoke?", then, once you said
+yes, "how much?" - and the first stage carried no information the second did not. Nobody picks
+"Mild <5/day" without smoking. Every such pair is now one row with the negative among the
+options:
+
+```
+before   [ Yes ][ No ]        then, revealed   [ Mild <5/day ][ Moderate 5-10/day ][ Severe >10/day ]
+after    [ No ][ Mild <5/day ][ Moderate 5-10/day ][ Severe >10/day ]
+```
+
+**The JSON does not change.** This is a presentation merge and nothing else: `lib/schema.ts`,
+`lib/types.ts` and the emitted output are untouched. `lib/apply.ts` maps a tap back to the
+schema's own pair - "Mild <5/day" writes `{ smoking: true, smoking_severity: "Mild <5/day" }`,
+No writes `{ smoking: false, smoking_severity: null }` - which are exactly the two states the
+two-stage control produced. Verified three ways: unit tests that round-trip every option
+through the mapping and back, a test that fills a whole form through `mergedPatch` and asserts
+`validate()` reports **zero** issues, and the browser walk, whose output notes are unchanged
+(`all 16 keys are satisfied`, `products rows: 5`, `answer keys: 17`).
+
+Where it applies, and where it does not:
+
+| question | before | after |
+| --- | --- | --- |
+| smoking + severity | Yes/No, then 3 options | `[No][Mild][Moderate][Severe]` |
+| each product row: used + duration | Yes/No, then 3 options | `[Never][<3mo][3-6mo][>6mo]` |
+| each treatment row: done + sessions | Yes/No, then 3 options | `[Never][1-3][4-6][>6]` |
+| salon treatments + detail | Yes/No, then a text box | unchanged - a text box cannot be an option |
+| Q14 side effects + description | Yes/No, then a text box | unchanged, same reason |
+
+"Did it help" and "any side effects" also stay as their own rows. They are not points on a
+duration scale, and folding them in would mean inventing combinations the schema has no
+values for.
+
+**Taps to fill the three merged questions**, for a patient who answers everything positively:
+
+| | before | after |
+| --- | --- | --- |
+| smoking | 2 | 1 |
+| 5 product rows | 20 | 15 |
+| 4 treatment rows | 12 | 8 |
+| **total** | **34** | **24** |
+
+### What it cost, measured
+
+The unanswered form got slightly TALLER, and pretending otherwise would be dishonest. A
+collapsed two-stage row was a label with a Yes/No beside it; a merged row is a label with four
+options, which on a phone need a line of their own.
+
+| | before | after |
+| --- | --- | --- |
+| every question opened, 1280px | 6109px | 6156px |
+| every question opened, 390px | 7877px | 8558px |
+
+So: 29% fewer taps and one less stage, for 0.8% more height on a desktop and 8.6% on a phone.
+That is the trade the change actually is. The height lands on the state a patient scrolls past;
+the taps land on the state they work through.
+
+Two layout details that were measured rather than guessed:
+
+- **`basis`, not `shrink-0`.** The first version pinned the options to their content width, so
+  on a 390px phone "Severe >10/day" sat off the right edge of the card and the hair-wash label
+  was squeezed into a 140px column wrapping one word per line. Asking for 320px instead lets
+  the options share the label's line when there is room and take a full line of their own when
+  there is not - which is what allows their own wrapping to work.
+- **10px of horizontal padding, not 14.** At 390px the smoking row has 280px to work in, and
+  "Moderate 5-10/day" plus "Severe >10/day" came to 282px. Two pixels over, so they wrapped
+  onto a line each and one row became three ragged ones. Four pixels per side brings the pair
+  to 272px and the row to two even lines. The 44px minimum target height is untouched, which
+  is what WCAG 2.5.8 asks for. At 320px it is still three lines, because four options that long
+  cannot do better in 209px.
+
+---
+
 ## React Hook Form, at the three fields that type
 
 The form now uses React Hook Form, and where it does NOT is as deliberate as where it does.
@@ -1139,7 +1214,7 @@ of the UI, so a bad extraction patch can't bypass the interface.
 
 ## What's tested, and what deliberately isn't
 
-**`npm test` - 267 deterministic tests, no API key needed.** These are the dependable
+**`npm test` - 271 deterministic tests, no API key needed.** These are the dependable
 checks: the step builder, sex gating in all four states, every conditional-followup
 rule in both directions, exclusive options, 16-key coverage, the personalisation rules
 (comfort thresholds, the onset-age ceiling, and that a suggestion never writes an answer),

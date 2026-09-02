@@ -35,7 +35,7 @@ two accelerators:
 Read-aloud needs **no key at all** - it uses the browser's own `speechSynthesis`.
 
 ```bash
-npm test              # 267 deterministic tests, no key needed
+npm test              # 271 deterministic tests, no key needed
 npm run smoke         # real-browser walkthrough of the whole intake (needs a dev server)
 npm run eval          # live extraction eval against the fixtures (needs ANTHROPIC_API_KEY)
 npm run build         # production build
@@ -338,11 +338,17 @@ needle").
 Habits, products and treatments are tables rather than choices: six rows, five rows and four
 rows, two of them with rows that ask for detail once switched on.
 
-**Conditional detail is revealed inline, under the row that unlocked it.** Answering "yes" to
-a product creates three more questions - how long, did it help, side effects - and an earlier
-version handed those over as their own full-size cards, one at a time. It read well in
-isolation, and it meant that switching one row on made the other four vanish: the patient lost
-the list they were working down. Inline keeps the whole table, and the context, on screen.
+**The flag is not asked separately.** A row opens as one line of options with the negative
+among them - `[Never][<3mo][3-6mo][>6mo]` - because "have you used this?" followed by "for how
+long?" is two stages for one fact, and nobody picks "3-6mo" without having used the thing.
+Picking a duration writes `used: true` alongside it; picking Never nulls every detail column.
+The emitted JSON is identical either way - see `lib/apply.ts`.
+
+**What still unfolds is revealed inline, under the row that unlocked it.** "Did it help" and
+"any side effects" are their own questions, not points on the duration scale. An earlier
+version handed them over as full-size cards one at a time, which read well in isolation and
+meant that switching one row on made the other four vanish: the patient lost the list they
+were working down.
 
 **Completeness comes from `lib/followups.ts`, not from the grid.** It describes which fields a
 row owes, and `validateStep` counts the same descriptors that the "still needed" summary
@@ -392,7 +398,7 @@ slower.
 
 Two tiers, on purpose.
 
-**Deterministic (`npm test`, 267 tests, no key) - the dependable gate.** One test
+**Deterministic (`npm test`, 271 tests, no key) - the dependable gate.** One test
 diffs `lib/schema.ts` against the schema as downloaded from the URL in the brief, so
 "verbatim copy" is proven rather than claimed · step builder and
 schema coverage · sex gating across all four states, including that switching away from
