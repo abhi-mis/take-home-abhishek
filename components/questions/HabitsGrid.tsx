@@ -58,6 +58,17 @@ const LABELS: Record<string, { en: TextKey; help: TextKey }> = {
 export const OPTION_ROW = "flex flex-wrap items-center gap-x-4 gap-y-2";
 export const OPTION_ROW_LABEL = "min-w-0 flex-1 basis-full desk:basis-0";
 export const OPTION_ROW_CONTROL = "w-full justify-start desk:w-[430px] desk:shrink-0";
+/*
+  The tables get a narrower column, and it is not an inconsistency.
+
+  What has to line up is the controls WITHIN one card, because that is the column a patient
+  reads down. The habits card mixes a Yes/No, a three-option row and the four long smoking
+  severities, so it needs the widest of them: 430px. Every row of the products and treatments
+  tables carries the identical four short options - "Never <3mo 3-6mo >6mo" is 268px with its
+  gaps - so 430px there is 160px of nothing, taken from the label: "OTC/Medicated Shampoos"
+  was wrapping onto two lines to make room for whitespace.
+*/
+export const OPTION_ROW_CONTROL_NARROW = "w-full justify-start desk:w-[290px] desk:shrink-0";
 
 export function HabitsGrid({
   value,

@@ -55,7 +55,8 @@ const HABIT_QUESTIONS: Record<
   string,
   { label: TextKey; question: TextKey; kind: OutstandingField["kind"]; options?: readonly string[] }
 > = {
-  smoking: { label: "habitSmoking", question: "habitSmokingHelp", kind: "yesno" },
+  // Merged with its severity scale into one option row, so not a yes/no any more.
+  smoking: { label: "habitSmoking", question: "habitSmokingHelp", kind: "options" },
   alcohol: { label: "habitAlcohol", question: "fuAlcoholQ", kind: "yesno" },
   hard_water: { label: "habitWater", question: "habitWaterHelp", kind: "yesno" },
   heating_tools_styling_chemicals: {
@@ -160,7 +161,16 @@ function tableOutstanding(
         field: spec.flag,
         label: optionLabel(row, lang),
         question: spec.flagQuestion(row),
-        kind: "yesno",
+        /*
+          "options", not "yesno", since the flag was merged into the row's option list.
+
+          The control a patient sees is [Never][<3mo][3-6mo][>6mo] - there is no Yes/No on
+          the row any more - so "choose Yes or No" described a button that does not exist.
+          It went unnoticed while these strings only appeared in a section's own note; it
+          became visible the moment the review screen started rendering them instead of the
+          validator's schema paths.
+        */
+        kind: "options",
       });
       continue;
     }

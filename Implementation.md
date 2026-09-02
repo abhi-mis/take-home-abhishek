@@ -273,6 +273,119 @@ is not, and an extra tap to dismiss a card is ceremony the patient did not ask f
 
 ---
 
+## The review screen was showing the patient a stack trace
+
+The last page listed what was outstanding by printing `validate()`'s `issues` array:
+
+```
+products.Oral Minoxidil.helped: required when used is true
+products.Supplements.used: Expected boolean, received null
+procedures.PRP/GFC/iPRF.done: Expected boolean, received null
+```
+
+Those strings are Zod paths and schema invariants. They exist so the DOWNLOAD can refuse a
+malformed object, and they are exactly right for that job and exactly wrong for a person: a
+patient reading "Expected boolean, received null" has been handed a stack trace.
+
+`validateStep` answers the same question in the form's own vocabulary. It builds its list from
+the `lib/followups.ts` descriptors, which are translated and which name the row rather than its
+path - and it is the same list the section screens show, so the review screen and the section a
+patient jumps back to cannot disagree about what is missing:
+
+```
+Hair products you use ->
+  . OTC/Medicated Shampoos: choose one
+  . Oral Minoxidil - did it help: choose Yes or No
+  . Oral Minoxidil - side effects: choose Yes or No
+```
+
+The count above it was counting validator LINES rather than questions, which is how a form with
+three unfinished questions reported "10 item(s) still need attention." - with the "(s)" doing
+the work a plural should. It counts questions now, and there are two strings for the two cases.
+
+**Making those strings patient-visible exposed one that had gone stale.** The row flags read
+"choose Yes or No", describing a control that stopped existing when the flag was merged into the
+row's option list: there is no Yes/No on those rows any more. It had been wrong since that
+change and nobody could see it, because until now these strings only appeared in a section's own
+quiet note. The descriptors say `kind: "options"` and the line reads "choose one". The genuine
+yes/no follow-ups - did it help, any side effects - still say "choose Yes or No", because that
+is still what they are.
+
+---
+
+## A checkbox list is not finished when it is answered
+
+The accordion opens the next card as soon as the open one reports itself answered. On a single
+choice that is the momentum the design is built on. On a checkbox list it was a bug: ticking
+PCOS made the question answered, so the card shut and Health moved on - and picking PCOS AND
+Thyroid meant answering the same question twice, reopening it in between.
+
+`advancesOnAnswer` in `lib/sections.ts` is now the rule, and it excludes three kinds:
+
+| kind | why it stays open |
+| --- | --- |
+| `multi` | answered after one tick, finished when the patient says so |
+| `yesno_describe` | "Yes" plus free text becomes answered at the FIRST CHARACTER typed, so this was closing the box mid-word |
+| `about` | three fields, and the only card in its section anyway |
+
+`table` deliberately stays in the advancing set: a table is answered only when every row is, so
+the tap that completes it genuinely is the last one.
+
+Those cards get two things a self-advancing card does not need:
+
+- **"Pick as many as apply"**, above the options, before the patient starts rather than
+  discovered by trying. A checkbox list looks exactly like a radio list to someone who has not
+  tapped twice, and single choices outnumber multiples in this form - so one tap and move on is
+  the reasonable assumption to arrive with.
+- **A "Done, next question" button**, which appears only once there is an answer to move on
+  from AND a next question to move on to. An empty list with a done button beside it invites
+  skipping a question nobody has read; skipping is still available through Next, which is a
+  deliberate act rather than an accidental one.
+
+  The second condition was a correction. The button was first handed to every card that does
+  not advance by itself, with a fallback that focused the footer when the section had nothing
+  left - so About You, the only card in its section, offered "Done, next question" with no
+  next question behind it. A button that names something it cannot do is worse than no button,
+  and the way on from the last card in a section is Next, which is already there and says
+  where it goes.
+
+Verified in the browser, ticking two conditions in a row with nothing reopened in between:
+
+```
+before             open, 6 boxes, 0 checked, hint shown, no Continue
+ticked PCOS/PCOD   open, 1 checked, Continue appears
+ticked Thyroid     open, 2 checked          <- the bug was here
+after Continue     "How are your periods?"
+```
+
+---
+
+## The row follow-ups were a third of a card apart
+
+"Did it help" and "any side effects" inherited the 430px control column from the row above.
+Inside a half-width flex child that column stretched: the label went hard left, the Yes/No went
+hard right, and the question ended up a third of a card away from the buttons that answer it -
+two short questions reading as four scattered pieces.
+
+They are pairs now, packed left with a fixed gap, and the label sits 10px from its own control
+at every width. Two things came out of measuring it rather than looking at it:
+
+- **The tables get a narrower control column than the habits grid** - 290px against 430px - and
+  that is not an inconsistency. What has to line up is the controls WITHIN one card, because
+  that is the column a patient reads down. The habits card mixes a Yes/No, a three-option row
+  and the four long smoking severities, so it needs the widest. Every row of the products table
+  carries the identical four short options, so 430px there was 160px of nothing taken from the
+  label - "OTC/Medicated Shampoos" was wrapping onto two lines to make room for whitespace.
+- **The pair stacks by breakpoint, not by wrapping.** Letting it wrap on its own was the first
+  attempt and it produced a ragged card at 390px: "did it help" fitted on one line and "any side
+  effects", two words longer, did not - so two identical controls sat in two different shapes
+  beside each other. Deciding it at `desk` means both pairs always agree.
+
+Measured after: one distinct control left edge per card at 320, 390 and 1280px, no row label
+wrapping, and nothing overflowing at any width.
+
+---
+
 ## Nothing is required to move on
 
 Next is never disabled. A patient can leave any question unanswered, walk through all six

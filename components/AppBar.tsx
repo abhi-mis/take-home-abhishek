@@ -29,8 +29,21 @@ import { ThemeToggle } from "./ThemeToggle";
 import { t, type Lang } from "@/lib/i18n";
 import type { Comfort } from "@/lib/patient";
 
-export const APP_BAR_H = "h-[60px] desk:h-[68px]";
-export const APP_BAR_PAD = "pt-[60px] desk:pt-[68px]";
+/**
+ * The bar's height, and the padding that clears it. ONE pair of numbers, always true.
+ *
+ * These used to describe only the top row (60/68px) while the bar also rendered a progress
+ * line under it, so the real thing measured 73/81px and the constant understated it by 13.
+ * Nothing looked broken because every caller happened to add enough content padding of its
+ * own to cover the difference - the section screens by 20px, the sidebar by 24px. That is not
+ * a layout, it is three accidents agreeing.
+ *
+ * So the header is a fixed height and the progress line lives inside it: the slot is reserved
+ * whether or not a screen has progress to show, which also means the chrome does not change
+ * height between the form and the review screen.
+ */
+export const APP_BAR_H = "h-[72px] desk:h-[80px]";
+export const APP_BAR_PAD = "pt-[72px] desk:pt-[80px]";
 
 export function AppBar({
   index,
@@ -55,8 +68,10 @@ export function AppBar({
   onLang: (l: Lang) => void;
 }) {
   return (
-    <header className="fixed inset-x-0 top-0 z-40 border-b border-line bg-paper/90 backdrop-blur-md">
-      <div className={`${APP_BAR_H} flex items-center gap-3 px-4 desk:px-7`}>
+    <header
+      className={`fixed inset-x-0 top-0 z-40 ${APP_BAR_H} flex flex-col justify-center border-b border-line bg-paper/90 backdrop-blur-md`}
+    >
+      <div className="flex items-center gap-3 px-4 desk:px-7">
         <Wordmark />
 
         {/*
@@ -79,9 +94,12 @@ export function AppBar({
         </div>
       </div>
 
-      {/* Sits ON the bar's bottom edge, so it takes no height of its own. */}
+      {/*
+        Inside the bar's own height rather than added to it, so a screen with no progress to
+        show (the review) has a bar exactly as tall as one that does.
+      */}
       {index === undefined || fractions === undefined ? null : (
-        <div className="px-4 pb-1.5 desk:px-7">
+        <div className="px-4 pt-2 desk:px-7">
           <ProgressBar index={index} fractions={fractions} lang={lang} />
         </div>
       )}

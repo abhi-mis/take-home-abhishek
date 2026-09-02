@@ -25,11 +25,12 @@ import { QuestionBody } from "./QuestionBody";
 import { QuestionSpeaker } from "../QuestionSpeaker";
 import { questionSpeech } from "@/lib/questionSpeech";
 import { answerSummary, shortLabel } from "@/lib/summary";
-import { questionCopy, ui, type Lang } from "@/lib/i18n";
+import { questionCopy, t, ui, type Lang } from "@/lib/i18n";
 import type { Comfort } from "@/lib/patient";
 import type { Step } from "@/lib/steps";
 import type { Answers, Meta, PatientSex } from "@/lib/types";
 import { cn, tick } from "@/lib/utils";
+import { Button } from "../ui/Button";
 
 export type CardState = "answered" | "open" | "waiting";
 
@@ -50,6 +51,7 @@ export function QuestionCard({
   setFirstName,
   chooseNone,
   onOpen,
+  onContinue,
 }: {
   step: Step;
   state: CardState;
@@ -75,6 +77,11 @@ export function QuestionCard({
   setFirstName: (name: string | null) => void;
   chooseNone: (key: string) => void;
   onOpen: () => void;
+  /**
+   * Present only on the cards that do not move on by themselves - a checkbox list, the
+   * describe box. See `advancesOnAnswer` in lib/sections.ts for which and why.
+   */
+  onContinue?: () => void;
 }) {
   const reduce = useReducedMotion();
   const open = state === "open";
@@ -185,6 +192,19 @@ export function QuestionCard({
             className="overflow-hidden"
           >
             <div className="px-4 pb-4 pt-3 desk:px-6 desk:pb-6">
+              {/*
+                "Pick as many as apply", said before they start rather than discovered.
+
+                A checkbox list looks exactly like a radio list to someone who has not tried
+                it twice, and the single choices in this form outnumber the multiples - so the
+                reasonable assumption is one tap and move on. One line removes the guess.
+              */}
+              {onContinue !== undefined && step.kind === "multi" ? (
+                <p className="mb-2.5 text-[12.5px] font-medium text-brand-ink">
+                  {t("pickMore", lang)}
+                </p>
+              ) : null}
+
               <QuestionBody
                 step={step}
                 answers={answers}
@@ -199,11 +219,42 @@ export function QuestionCard({
                 setFirstName={setFirstName}
                 chooseNone={chooseNone}
               />
+
+              {/*
+                The way on, and only once there is something to move on FROM. An empty
+                checkbox list with a "done" button beside it is inviting the patient to skip
+                a question they have not read yet - they can still skip it, with Next, which
+                is a deliberate act rather than an accidental one.
+              */}
+              {onContinue !== undefined && answered ? (
+                <div className="mt-4 flex justify-end">
+                  <Button variant="secondary" onClick={onContinue}>
+                    {t("doneWithThis", lang)} <Arrow />
+                  </Button>
+                </div>
+              ) : null}
             </div>
           </motion.div>
         ) : null}
       </AnimatePresence>
     </section>
+  );
+}
+
+function Arrow() {
+  return (
+    <svg
+      viewBox="0 0 20 20"
+      fill="none"
+      aria-hidden
+      className="size-[15px] shrink-0"
+      stroke="currentColor"
+      strokeWidth={2.5}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M4 10h11M11 5.5 15.5 10 11 14.5" />
+    </svg>
   );
 }
 

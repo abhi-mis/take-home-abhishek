@@ -113,6 +113,27 @@ export function firstUnanswered(
  * hunt for what they missed - the outstanding list does that job explicitly, and only once
  * they try to leave.
  */
+/**
+ * Does answering this question mean the patient is finished with it?
+ *
+ * Only for the kinds where ONE tap is the whole answer. The accordion opens the next card as
+ * soon as the open one reports itself answered, which is the right momentum on a single choice
+ * and wrong on anything a patient might still be adding to:
+ *
+ *   multi            a checkbox list is answered after one tick and finished when the patient
+ *                    says so. Auto-advancing shut the card the moment they chose PCOS, so
+ *                    picking PCOS and Thyroid meant answering, reopening, answering again.
+ *   yesno_describe   "Yes" plus free text becomes answered at the FIRST CHARACTER typed, so
+ *                    this closed the box mid-word.
+ *   about            three fields, and it is the only card in its section anyway.
+ *
+ * `table` stays in the advancing set on purpose: a table is answered only when every row is,
+ * so the tap that completes it genuinely is the last one.
+ */
+export function advancesOnAnswer(step: Step): boolean {
+  return step.kind !== "multi" && step.kind !== "yesno_describe" && step.kind !== "about";
+}
+
 export function nextUnansweredAfter(
   section: Section,
   from: Step,

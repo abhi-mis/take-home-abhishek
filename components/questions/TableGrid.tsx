@@ -33,7 +33,12 @@ import {
   mergedSelection,
   type MergedSpec,
 } from "@/lib/apply";
-import { OPTION_ROW, OPTION_ROW_CONTROL, OPTION_ROW_LABEL, SegmentedRow } from "./HabitsGrid";
+import {
+  OPTION_ROW,
+  OPTION_ROW_CONTROL_NARROW,
+  OPTION_ROW_LABEL,
+  SegmentedRow,
+} from "./HabitsGrid";
 import { YesNo } from "./YesNo";
 
 export interface ColumnSpec {
@@ -113,7 +118,7 @@ export function TableGrid({
               </div>
               <SegmentedRow
                 wrap
-                className={OPTION_ROW_CONTROL}
+                className={OPTION_ROW_CONTROL_NARROW}
                 ariaLabel={`${optionLabel(row, lang)}: ${mergedLabel}`}
                 options={options}
                 labels={labels}
@@ -135,29 +140,49 @@ export function TableGrid({
                   transition={{ duration: 0.2 }}
                   className="overflow-hidden"
                 >
-                  <div className="mt-3 flex flex-col gap-2.5 border-t border-line pt-3 desk:flex-row desk:gap-5">
-                    {detailColumns.map((col) => {
-                      const missing = entry[col.key] === null || entry[col.key] === undefined;
-                      return (
-                        <div key={col.key} className={OPTION_ROW}>
-                          {/*
-                            The label, and nothing appended to it.
+                  {/*
+                    The follow-ups are PAIRS, packed left - not rows in the wide column.
 
-                            It used to read `{col.label} · REQUIRED` while unanswered, which
-                            moved every control on the row sideways the moment the answer
-                            landed - text appearing and disappearing inside a flex row is a
-                            layout shift by construction. Nothing in the form is required to
-                            move on any more either, so the word was also no longer true.
+                    They inherited the 430px control column from the row above, and inside a
+                    half-width flex child that column stretched: the label went hard left, the
+                    Yes/No went hard right, and "DID IT HELP?" ended up a third of a card away
+                    from the buttons that answer it. Two short questions reading as four
+                    scattered pieces.
+
+                    Each is now label-then-control on one line at its natural width, and the
+                    pair of them sits together with a fixed gap. They belong to the row above,
+                    so they read as its detail rather than as two more questions.
+                  */}
+                  <div className="mt-3 flex flex-col gap-3 border-t border-line pt-3 desk:flex-row desk:flex-wrap desk:gap-x-9 desk:gap-y-3">
+                    {detailColumns.map((col) => {
+                      return (
+                        <div
+                          key={col.key}
+                          /*
+                            Stacked on a phone, inline on a desktop.
+
+                            The pair is about 276px and a 320px phone leaves 209px inside the
+                            row card, so something has to give. Letting it wrap on its own was
+                            the first attempt and it produced a ragged card at 390px: "did it
+                            help" fitted on one line and "any side effects" - two words longer -
+                            did not, so two identical controls sat in two different shapes
+                            beside each other. Deciding it by breakpoint instead means both
+                            pairs always agree.
+                          */
+                          className="row-split flex flex-col items-start gap-1.5 desk:flex-row desk:shrink-0 desk:items-center desk:gap-2.5"
+                        >
+                          {/*
+                            The label, and nothing appended to it. It used to read
+                            `{col.label} · REQUIRED` while unanswered, which moved every
+                            control on the row sideways the moment the answer landed - text
+                            appearing and disappearing inside a flex row is a layout shift by
+                            construction. Nothing is required to move on any more either, so
+                            the word was also no longer true.
                           */}
-                          <p
-                            className={cn(
-                              OPTION_ROW_LABEL,
-                              "text-[12px] font-semibold uppercase tracking-wide text-muted",
-                            )}
-                          >
+                          <p className="shrink-0 text-[11.5px] font-semibold uppercase tracking-wide text-muted">
                             {col.label}
                           </p>
-                          <div className={cn("row-control", OPTION_ROW_CONTROL)}>
+                          <div className="row-control shrink-0">
                             {col.kind === "yesno" ? (
                               <YesNo
                                 size="sm"

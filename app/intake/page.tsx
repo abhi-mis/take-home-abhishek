@@ -26,6 +26,7 @@ import { useRouter } from "next/navigation";
 import { useIntake } from "@/lib/store";
 import {
   ALL_SECTIONS,
+  advancesOnAnswer,
   answeredCount,
   isAnswered,
   nextUnansweredAfter,
@@ -146,6 +147,13 @@ export default function IntakePage() {
       correcting.current = false;
       return;
     }
+    /*
+      Some questions are not finished just because they are answerable.
+      See `advancesOnAnswer`: a checkbox list reports itself answered after one tick, and
+      closing it there is what made picking two conditions require answering the question
+      twice. Those cards stay open and offer an explicit way on instead.
+    */
+    if (!advancesOnAnswer(open)) return;
     if (correcting.current) return;
     if (keyboardSelect.current) {
       keyboardSelect.current = false;
@@ -374,6 +382,10 @@ export default function IntakePage() {
       >
         {visible.map((step, i) => {
           const done = isAnswered(step, answers, meta, explicitNone);
+          // Null when this card advances on its own, or when nothing follows it here.
+          const continueTarget = advancesOnAnswer(step)
+            ? null
+            : nextUnansweredAfter(section, step, answers, meta, explicitNone);
           return (
           <QuestionCard
             key={step.id}
@@ -398,6 +410,29 @@ export default function IntakePage() {
               correcting.current = done;
               openQuestion(step.id);
             }}
+            /*
+              Only the cards that do not advance by themselves get a Continue button, and
+              only once they have an answer. Everything else moves on when the answer lands,
+              so a button there would be a second way to do what just happened.
+            */
+            /*
+              Only where there is a next question to go to.
+
+              The first version handed this to every card that does not advance by itself and
+              fell back to focusing the footer when the section had nothing left - so About
+              You, which is the only card in its section, showed a "Done, next question"
+              button whose next question did not exist. A button that names something it
+              cannot do is worse than no button: the way on from the last card in a section is
+              Next, which is already there and says where it goes.
+            */
+            onContinue={
+              continueTarget === null
+                ? undefined
+                : () => {
+                    correcting.current = false;
+                    openQuestion(continueTarget.id);
+                  }
+            }
           />
           );
         })}

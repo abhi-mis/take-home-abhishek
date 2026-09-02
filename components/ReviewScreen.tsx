@@ -31,7 +31,7 @@ import { JsonDialog } from "./JsonDialog";
 import { useIntake } from "@/lib/store";
 import { doneTitle, personalSummary } from "@/lib/patient";
 import { EditQuestionDialog } from "./EditQuestionDialog";
-import { ALL_STEPS } from "@/lib/steps";
+import { ALL_STEPS, isStepVisible, validateStep } from "@/lib/steps";
 
 export function ReviewScreen({
   answers,
@@ -64,6 +64,33 @@ export function ReviewScreen({
   const UI = ui(lang);
   const COPY_L = questionCopy(lang);
 
+  /**
+   * What is still outstanding, per question, in language a patient can act on.
+   *
+   * `validate()` also reports this, and its `issues` were being printed straight onto this
+   * screen: "products.Oral Minoxidil.helped: required when used is true",
+   * "procedures.PRP/GFC/iPRF.done: Expected boolean, received null". Those are Zod paths and
+   * schema invariants - they exist so the DOWNLOAD can refuse a malformed object, and they
+   * are the right words for that job and the wrong ones for a person. A patient reading
+   * "Expected boolean, received null" has been handed a stack trace.
+   *
+   * `validateStep` answers the same question in the form's own vocabulary, because it builds
+   * its list from the `lib/followups.ts` descriptors - which are translated, and which name
+   * the row rather than its path ("Oral Minoxidil: did it help?"). It is also the exact list
+   * the section screens show, so the review screen and the section a patient jumps back to
+   * cannot disagree about what is missing.
+   *
+   * One entry per question rather than per field, so the count at the top is a number of
+   * questions - which is what the links underneath it are.
+   */
+  const outstanding = useMemo(
+    () =>
+      ALL_STEPS.filter((step) => step.key !== null && isStepVisible(step, meta))
+        .map((step) => ({ step, check: validateStep(step, answers, meta, explicitNone, lang) }))
+        .filter(({ check }) => !check.complete),
+    [answers, meta, explicitNone, lang],
+  );
+
   const result = useMemo(
     () => validate(answers, meta, explicitNone),
     [answers, meta, explicitNone],
@@ -90,12 +117,18 @@ export function ReviewScreen({
     */
     <div className="min-h-dvh bg-paper">
       <AppBar lang={lang} comfort={comfort} onComfort={setComfort} onLang={setLang} />
-      <div
-        className={cn(
-          "mx-auto w-full max-w-md px-5 pb-16 pt-6 desk:max-w-4xl desk:px-8 desk:pt-10",
-          APP_BAR_PAD,
-        )}
-      >
+      {/*
+        Two elements, because they were fighting over one.
+
+        The bar padding and the content padding were both `pt-*` on the same div, and
+        tailwind-merge resolves that conflict by keeping the last one - so `APP_BAR_PAD` won
+        and the `pt-6` intended as breathing room was silently dropped. The heading ended up
+        one pixel ABOVE the bar's bottom edge, which is what a patient reported. Clearing the
+        chrome and spacing the content are two different jobs and now sit on two elements, the
+        way the section screens already did it.
+      */}
+      <div className={APP_BAR_PAD}>
+        <div className="mx-auto w-full max-w-md px-5 pb-16 pt-6 desk:max-w-4xl desk:px-8 desk:pt-10">
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
         <div className="flex items-center gap-3">
           <span
@@ -114,9 +147,9 @@ export function ReviewScreen({
             <p className="text-[13.5px] text-muted">
               {result.valid
                 ? UI.reviewBody
-                : t("reviewNeedAttention", lang, {
-                    n: result.missing.length + result.issues.length,
-                  })}
+                : outstanding.length === 1
+                  ? t("reviewNeedAttention", lang)
+                  : t("reviewNeedAttentionN", lang, { n: outstanding.length })}
             </p>
           </div>
         </div>
@@ -125,21 +158,36 @@ export function ReviewScreen({
       {/* Anything unresolved becomes a direct jump back to that question. */}
       {!result.valid ? (
         <div className="mt-5 rounded-2xl border border-warn/30 bg-warn/5 p-4">
-          <ul className="flex flex-col gap-2">
-            {result.missing.map((key) => (
-              <li key={key}>
+          <ul className="flex flex-col gap-3">
+            {outstanding.map(({ step, check }) => (
+              <li key={step.id}>
                 <button
                   type="button"
-                  onClick={() => setEditing(key)}
+                  onClick={() => setEditing(step.key as string)}
                   className="min-h-[44px] text-left text-[14px] font-semibold text-warn underline decoration-warn/40 underline-offset-2 transition-colors hover:decoration-warn"
                 >
-                  {COPY_L[key as keyof typeof COPY_L]?.title ?? key} →
+                  {COPY_L[step.key as keyof typeof COPY_L]?.title ?? step.key} →
                 </button>
-              </li>
-            ))}
-            {result.issues.map((issue) => (
-              <li key={issue} className="text-[13px] leading-snug text-warn">
-                {issue}
+                {/*
+                  What is missing INSIDE that question, which is the part the links alone
+                  could not say: "Hair products you use" does not tell a patient which of
+                  five rows is half answered.
+                */}
+                {check.outstanding.length > 0 ? (
+                  <ul className="mt-0.5 flex flex-col gap-0.5">
+                    {check.outstanding.slice(0, 6).map((o) => (
+                      <li key={o} className="flex gap-2 text-[13px] leading-snug text-warn/85">
+                        <span aria-hidden>·</span>
+                        <span>{o}</span>
+                      </li>
+                    ))}
+                    {check.outstanding.length > 6 ? (
+                      <li className="text-[12.5px] italic text-warn/70">
+                        {t("andMore", lang, { n: check.outstanding.length - 6 })}
+                      </li>
+                    ) : null}
+                  </ul>
+                ) : null}
               </li>
             ))}
           </ul>
@@ -282,6 +330,7 @@ export function ReviewScreen({
       <p className="mt-6 text-center text-[11.5px] leading-relaxed text-muted">
         {t("reviewNote", lang, { n: QUESTIONS.length })}
       </p>
+        </div>
       </div>
     </div>
   );

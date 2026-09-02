@@ -414,7 +414,7 @@ export const TEXT_EN = {
   onset30s: "30s",
   onset40s: "40s",
   onset50s: "50+",
-  onsetTeensHint: "13-19",
+  onsetTeensHint: "16-19",
   onset20sHint: "20-29",
   onset30sHint: "30-39",
   onset40sHint: "40-49",
@@ -426,6 +426,9 @@ export const TEXT_EN = {
   // Informational now, not a blocker: these can be left and come back to.
   canComeBack: "You can come back to these",
   canComeBackN: "{n} you can come back to",
+  // The way out of a card that cannot know when the patient has finished with it.
+  pickMore: "Pick as many as apply",
+  doneWithThis: "Done, next question",
   jsonTitle: "The form your doctor receives",
   jsonClose: "Close",
   stillNeeded: "Still needed",
@@ -545,7 +548,9 @@ export const TEXT_EN = {
   saveNote: "Answers save as you go. You can stop and come back on this phone.",
   resultNotMentioned: "You did not mention ({n})",
   resultAndMore: "…and {n} more",
-  reviewNeedAttention: "{n} item(s) still need attention.",
+  // Counted in QUESTIONS now, not in validator lines, and with a real plural.
+  reviewNeedAttention: "One question still needs an answer.",
+  reviewNeedAttentionN: "{n} questions still need an answer.",
   confirmedTail: "{banner} - you can still change anything below.",
   patternNotSure: "{label} - I cannot tell which",
   rowsFromSchema: "{n} rows from the intake schema.",
@@ -758,6 +763,8 @@ export const TEXT_HI: Record<TextKey, string> = {
 
   canComeBack: "इन्हें बाद में भी भर सकते हैं",
   canComeBackN: "{n} बाद में भर सकते हैं",
+  pickMore: "जितने लागू हों, चुनें",
+  doneWithThis: "हो गया, अगला सवाल",
   jsonTitle: "आपके डॉक्टर को यही फ़ॉर्म मिलेगा",
   jsonClose: "बंद करें",
   stillNeeded: "अभी बाकी है",
@@ -862,7 +869,8 @@ export const TEXT_HI: Record<TextKey, string> = {
   saveNote: "जवाब अपने आप सेव होते रहते हैं। आप रुककर इसी फ़ोन पर वापस आ सकते हैं।",
   resultNotMentioned: "इनके बारे में आपने कुछ नहीं कहा ({n})",
   resultAndMore: "…और {n} बाकी",
-  reviewNeedAttention: "{n} बातों पर ध्यान देना बाकी है।",
+  reviewNeedAttention: "एक सवाल का जवाब बाकी है।",
+  reviewNeedAttentionN: "{n} सवालों के जवाब बाकी हैं।",
   confirmedTail: "{banner} - नीचे कुछ भी बदल सकते हैं।",
   patternNotSure: "{label} - मैं बता नहीं सकता कि कहाँ से",
   rowsFromSchema: "स्कीमा से {n} पंक्तियाँ।",
