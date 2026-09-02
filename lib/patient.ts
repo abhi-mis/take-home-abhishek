@@ -94,8 +94,26 @@ export function shouldOfferComfort(
   return suggestedComfort(meta.patient_age) !== "standard";
 }
 
-export const AGE_MIN = 16;
-export const AGE_MAX = 95;
+/**
+ * The range the age field accepts.
+ *
+ * It was 16 to 95 while the age was picked from decade cards, where the range was implied by
+ * the cards themselves. A typed field needs a real bound, and a wide one: refusing a number
+ * because it is unusual is how a form tells a 96-year-old they do not exist. Anything
+ * outside this is a typo rather than a person.
+ */
+export const AGE_MIN = 1;
+export const AGE_MAX = 100;
+
+/**
+ * The youngest age hair loss is asked about, which is NOT the same number.
+ *
+ * `maxOnsetAge` used to floor the onset ceiling at AGE_MIN, and that was only correct while
+ * AGE_MIN was 16. With the field accepting 1, flooring at AGE_MIN would tell a 5-year-old's
+ * form that onset may be up to 5 - which is right - but flooring at 16 would have allowed 16.
+ * Keeping the two bounds separate is what makes both of them mean something.
+ */
+export const ONSET_MIN = 5;
 
 /** Coarse bands, used for copy rather than for any clinical decision. */
 export function ageBand(age: number | null, lang: Lang): string {
@@ -203,7 +221,7 @@ export function personalNote(key: string, meta: Meta, lang: Lang): string | unde
     return t("noteMenopause", lang);
   }
   if (key === "age_hair_loss_began" && age !== null) {
-    return t("noteOnsetRange", lang, { age, min: AGE_MIN });
+    return t("noteOnsetRange", lang, { age, min: ONSET_MIN });
   }
   return undefined;
 }
@@ -216,7 +234,7 @@ export function personalNote(key: string, meta: Meta, lang: Lang): string | unde
  * reason the age question earns its place beyond presentation.
  */
 export function maxOnsetAge(meta: Meta): number {
-  return meta.patient_age === null ? 90 : Math.max(AGE_MIN, meta.patient_age);
+  return meta.patient_age === null ? 90 : Math.max(ONSET_MIN, meta.patient_age);
 }
 
 // ---------------------------------------------------------------------------

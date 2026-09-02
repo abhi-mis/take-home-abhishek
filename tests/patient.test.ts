@@ -12,6 +12,8 @@
 import { describe, expect, it } from "vitest";
 import {
   AGE_MIN,
+  AGE_MAX,
+  ONSET_MIN,
   COMFORT_ZOOM,
   ageBand,
   cleanFirstName,
@@ -84,8 +86,13 @@ describe("the onset-age ceiling", () => {
     expect(maxOnsetAge(meta())).toBe(90);
   });
 
-  it("never returns a ceiling below the floor", () => {
-    expect(maxOnsetAge(meta({ patient_age: 3 }))).toBeGreaterThanOrEqual(AGE_MIN);
+  it("floors at the ONSET minimum, not the age field's minimum", () => {
+    // Two different numbers on purpose. The age field accepts 1 because refusing an unusual
+    // age is how a form tells someone they do not exist; the onset question starts at 5.
+    expect(AGE_MIN).toBe(1);
+    expect(AGE_MAX).toBe(100);
+    expect(maxOnsetAge(meta({ patient_age: 3 }))).toBe(ONSET_MIN);
+    expect(maxOnsetAge(meta({ patient_age: 40 }))).toBe(40);
   });
 });
 

@@ -246,7 +246,19 @@ export default function IntakePage() {
           const target = nextUnansweredAfter(section, open, answers, meta, explicitNone);
           // Nothing left to open: put focus where the patient is going instead.
           if (target === null) {
-            document.querySelector<HTMLButtonElement>("footer button:last-of-type")?.focus();
+            /*
+              The RENDERED one. Back and Next exist twice - once in the desktop column, once
+              in the phone's fixed bar - with one side `display: none` at any given width, so
+              `querySelector` returns whichever comes first in the document rather than the
+              one on screen. On a phone that was the hidden desktop button, and focusing a
+              `display: none` element is a silent no-op: Enter on a finished section moved
+              focus nowhere at all. `getClientRects()` is empty exactly when an element is
+              not rendered, and unlike `offsetParent` it does not also go null on fixed
+              positioning - which the phone bar uses.
+            */
+            [...document.querySelectorAll<HTMLButtonElement>("[data-next-action]")]
+              .find((b) => b.getClientRects().length > 0)
+              ?.focus();
             return;
           }
           correcting.current = false;

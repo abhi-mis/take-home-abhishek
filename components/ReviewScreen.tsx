@@ -26,9 +26,7 @@ import { buildOutput, validate } from "@/lib/validate";
 import type { Answers, Meta } from "@/lib/types";
 import { Button, CheckIcon } from "./ui/Button";
 import { cn, downloadJson } from "@/lib/utils";
-import { ThemeToggle } from "./ThemeToggle";
-import { ComfortToggle } from "./ComfortToggle";
-import { LangToggle } from "./LangToggle";
+import { AppBar, APP_BAR_PAD } from "./AppBar";
 import { useIntake } from "@/lib/store";
 import { doneTitle, personalSummary } from "@/lib/patient";
 import { EditQuestionDialog } from "./EditQuestionDialog";
@@ -89,12 +87,14 @@ export function ReviewScreen({
       extra width genuinely helps: at 448px it scrolled for about three screens on a 900px
       display with a thousand pixels going spare beside it.
     */
-    <div className="mx-auto w-full max-w-md px-5 pb-16 pt-8 lg:max-w-4xl lg:px-8">
-      <div className="mb-5 flex justify-end">
-        <ComfortToggle comfort={comfort} onChange={setComfort} lang={lang} />
-        <LangToggle lang={lang} onChange={setLang} />
-        <ThemeToggle />
-      </div>
+    <div className="min-h-dvh bg-paper">
+      <AppBar lang={lang} comfort={comfort} onComfort={setComfort} onLang={setLang} />
+      <div
+        className={cn(
+          "mx-auto w-full max-w-md px-5 pb-16 pt-6 desk:max-w-4xl desk:px-8 desk:pt-10",
+          APP_BAR_PAD,
+        )}
+      >
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
         <div className="flex items-center gap-3">
           <span
@@ -149,7 +149,7 @@ export function ReviewScreen({
         Two columns from lg up. `items-start` because the sections have different heights and
         stretching them to match would put a lot of empty card under the short ones.
       */}
-      <div className="mt-6 flex flex-col gap-5 lg:grid lg:grid-cols-2 lg:items-start lg:gap-x-6">
+      <div className="mt-6 flex flex-col gap-5 desk:grid desk:grid-cols-2 desk:items-start desk:gap-x-6">
         {/*
           About You, first, because that is where it was answered - and because
           `patient_sex` and `patient_age` are in the downloaded JSON, so leaving them off
@@ -231,7 +231,7 @@ export function ReviewScreen({
         ))}
       </div>
 
-      <div className="mt-7 flex flex-col gap-3 lg:mx-auto lg:max-w-md">
+      <div className="mt-7 flex flex-col gap-3 desk:mx-auto desk:max-w-md">
         <Button
           size="lg"
           disabled={!result.valid}
@@ -274,6 +274,7 @@ export function ReviewScreen({
       <p className="mt-6 text-center text-[11.5px] leading-relaxed text-muted">
         {t("reviewNote", lang, { n: QUESTIONS.length })}
       </p>
+      </div>
     </div>
   );
 }

@@ -356,3 +356,57 @@ describe("no words on the accent fill", () => {
     expect(offenders).toEqual([]);
   });
 });
+
+/**
+ * The bug this exists for: `yesLabel={flagLabel}` with `flagLabel="Yes"`, and a hardcoded
+ * `noLabel="No"`, in TableGrid. The products and treatments tables therefore showed English
+ * Yes/No on a fully Hindi page - while the habits grid two cards above them was translated,
+ * so the same form disagreed with itself.
+ *
+ * Neither existing scan could see it. "No component hard-codes English prose" looks for
+ * sentences in JSX TEXT, and this was a prop value; the Hindi dictionary was complete, so the
+ * key coverage tests passed too. A label handed to a control as a literal never reaches the
+ * dictionary at all, which is its own category of mistake.
+ */
+describe("labels reach controls through the dictionary", () => {
+  const ROOT = process.cwd();
+
+  function walk(dir: string, out: string[] = []): string[] {
+    for (const entry of readdirSync(dir)) {
+      const full = path.join(dir, entry);
+      if (statSync(full).isDirectory()) walk(full, out);
+      else if (entry.endsWith(".tsx")) out.push(full);
+    }
+    return out;
+  }
+
+  it("passes no literal string to a *Label prop", () => {
+    const offenders: string[] = [];
+    const files = [...walk(path.join(ROOT, "components")), ...walk(path.join(ROOT, "app"))];
+    for (const file of files) {
+      const src = readFileSync(file, "utf8");
+      /*
+        Comment-aware, because the first version of this scan reported the comment that
+        explains the bug it guards against. A check that flags its own documentation is a
+        check people learn to ignore, so block comments are tracked and skipped.
+      */
+      let inBlock = false;
+      src.split("\n").forEach((line, i) => {
+        const trimmed = line.trim();
+        const wasInBlock = inBlock;
+        if (inBlock) {
+          if (line.includes("*/")) inBlock = false;
+        } else if (line.includes("/*") && !line.includes("*/")) {
+          inBlock = true;
+        }
+        if (wasInBlock || trimmed.startsWith("//") || trimmed.startsWith("*")) return;
+
+        // yesLabel="Yes" / noLabel='No' / flagLabel="Yes" - a literal, not {t(...)}.
+        const m = /\b(\w*Label)\s*=\s*["']([^"']+)["']/.exec(line);
+        if (m === null) return;
+        offenders.push(`${path.relative(ROOT, file)}:${i + 1} ${m[1]}="${m[2]}"`);
+      });
+    }
+    expect(offenders).toEqual([]);
+  });
+});

@@ -151,7 +151,7 @@ collapsed rows the patient now has to hunt for. Printing "3 things missing" and 
 away is a bad ending to an otherwise magic moment.
 
 So every outstanding field is described in `lib/followups.ts` as a **self-contained
-question** - its own wording, control and options - and `FollowUpFlow` asks them one at
+question** - its own wording, control and options - and the grid reveals them inline, one at
 a time at full size. Three taps and the patient is done.
 
 Four decisions carry it:
@@ -273,6 +273,139 @@ is not, and an extra tap to dismiss a card is ceremony the patient did not ask f
 
 ---
 
+## The app shell, and the breakpoint that caused all of this
+
+A patient reported the desktop app rendering as a phone column. Five complaints came with that
+screenshot, and four of them turned out to be the same architectural mistake: the layout was a
+448px phone column with desktop rules bolted on at `lg`, so the chrome had nowhere to live
+except inside the content.
+
+**The breakpoint itself was the root cause.** Tailwind's `lg` is 64rem, which moves with the
+user's font size, and a Windows laptop at 150% display scaling reports a viewport of roughly
+1000-1100px to begin with. Between the two, an ordinary 1600px laptop can sit below `lg` and be
+handed the mobile layout. The app now uses a `desk` token set to **900px in absolute pixels** -
+`px` rather than `rem` on purpose, so a patient who scales their text up gets bigger text
+rather than a different layout.
+
+What replaced it:
+
+| | before | after |
+| --- | --- | --- |
+| desktop layout | 448px column, centred in a void | fixed sidebar + 780px content pane |
+| top chrome | inside a vertically centred column | `fixed`, one constant height |
+| chrome geometry across the six sections | changed with each section | `0,81` on all six |
+| section navigation | a decorative rail | fixed, full height, every step reachable |
+| breakpoint | `lg`, 64rem, font-size dependent | `desk`, 900px, absolute |
+
+`components/AppBar.tsx` is the bar, `components/SectionNav.tsx` the sidebar, and `SectionShell`
+composes them. The bar carries only what is true for the whole session - identity, the three
+accessibility controls, and progress - because anything that changes size with the question
+puts the jump back.
+
+### One heading, not two
+
+The first version put the section name in the bar on a phone and in the page on a desktop,
+which meant two `h1` elements with one of them `display: none`. That is valid and exposed
+correctly to a screen reader, but the FIRST `h1` in document order was then the hidden one, so
+anything reaching for "the heading" got an invisible element. The browser smoke found it by
+hanging on `waitForSelector("h1")` for thirty seconds. There is now one heading, in the page, at
+every width; the bar carries position ("section 3 of 6"), which the name does not.
+
+### The progress bar was overstating progress
+
+Segments used to be filled positionally - every segment before the current one drawn full. That
+is fine in a wizard you can only walk forwards through, and wrong here, because the sidebar
+lets a patient jump straight to Treatments. Doing so drew three full segments over three
+sections containing no answers at all: a progress bar telling a patient they had finished work
+they had not done, on a medical form. Each segment now reports its own section's
+answered-over-visible, from the same counts the sidebar renders, and position is carried by an
+outline instead of by fill.
+
+### Two smaller things the measurements turned up
+
+- **The viewport was changing width between sections.** The bar holds still, but the page was
+  1440px wide on two sections and 1425px on the other four, because a scrollbar came and went
+  with the content height - so everything centred shifted sideways as the patient moved through
+  the form. `scrollbar-gutter: stable`.
+- **The products and treatments tables showed English Yes/No on a fully Hindi page**, because
+  the labels were passed to the control as literals (`noLabel="No"`) rather than read from the
+  dictionary. The habits grid beside them was translated, so the same form disagreed with
+  itself. Neither existing scan could see it: one looks for prose in JSX text, and the Hindi
+  dictionary was complete. There is a scan for it now, and it earned its place by immediately
+  reporting a second occurrence - which turned out to be the comment explaining the first, so it
+  is comment-aware too.
+
+---
+
+## What came out, and what that cost
+
+Four things were removed on instruction, and the removals are worth recording because two of
+them deleted the more clever version of a feature.
+
+**Voice.** The mic, the spoken checklist and the result popup - `SpeakFirst`, `VoicePanel`,
+`ResultDialog` and the stage machine inside `VoiceMatrix` - are gone, along with the dictation
+button on the free-text field and the `npm run voice` harness. `/intake` lost 5.3 kB of
+JavaScript with them. The server side is untouched: `/api/transcribe` and `/api/extract` still
+exist, still hold the only copies of the keys, and `lib/extractPrompt.ts` and its tests still
+describe the schema slices - so the extraction pipeline is intact and merely unreferenced by the
+UI rather than deleted.
+
+**The guided follow-up flow.** Answering "yes" to a product creates three more questions, and
+the flow used to hand them over as their own full-size cards, one at a time. It read well in
+isolation, and it meant that switching one row on made the other four vanish - the patient lost
+the list they were working down. The detail is now revealed inline underneath the row that
+unlocked it. `HabitsGrid` and `TableGrid` were already doing exactly that; the flow was a second
+answer to a question that already had one.
+
+**The age range picker.** Six decade cards under a field that already takes a number.
+
+**`lib/followups.ts` did NOT come out.** It describes which fields a row owes, and it is what
+`validateStep` counts to decide whether a table question is complete - so the grid and the
+"still needed" summary cannot disagree about what is missing.
+
+---
+
+## The landing screen, in two compositions
+
+Two measurements are the whole argument. At 1440x900 the landing was a 448px phone column
+stranded in the middle of the viewport with 992px unused, and `mt-auto` on the CTA opened a
+285px void between the last fact and the only button on the page - 204px of it on a 390px
+phone as well.
+
+| | before | after |
+| --- | --- | --- |
+| desktop composition | one 448px column, centred | promise left, facts panel and CTA right |
+| unused desktop width | 992px | margins only |
+| void between the facts and the CTA | 285px desktop / 204px phone | 45px / 20px |
+| chrome anchored to the content box | no | yes |
+| CTA in view at every size tested | yes | yes |
+
+It is one dom in two compositions rather than two blocks toggled by breakpoint, so there is
+one Start button in the page and one tab stop for it. Mobile is a flex column in reading
+order; from `lg` up the root becomes a grid and the four children are placed into cells - the
+promise spanning both panel rows so it centres against them.
+
+**The CTA stays a child of the root.** `sticky bottom-0` can only travel inside its own
+parent's box, so a CTA nested in the facts panel would have nowhere to stick and would
+silently go static - and at the largest text size the content genuinely is taller than the
+phone, which is the case the stickiness exists for.
+
+**The void was fixed by moving the auto margin, not deleting it.** Deleting it puts the button
+directly under the list and leaves 224px of dead space below it; splitting the slack evenly
+leaves the button floating 130px off the bottom, out of the thumb zone. `mt-auto` on the
+PROMISE sends all the slack above the title, so the facts and the button stay one contiguous
+group anchored to the bottom. An auto margin is the right tool here specifically because it
+resolves to zero when there is no free space: at the largest text size the layout degrades to
+a plain scrolling column with nothing pushed off the top, which is what `align-content: center`
+gets wrong.
+
+Checked at nine viewports from 320x568 to 1920x1080, in both languages at all three text
+sizes - 54 combinations - asserting no horizontal overflow, a CTA in view, nothing clipped
+above the fold, and no void over 90px. Three of those widths are now in the smoke: 320px, and
+1023/1024px either side of the breakpoint.
+
+---
+
 ## The grouped intake: six sections, one question open
 
 Seventeen screens of identical chrome is its own kind of fatigue, even when each screen is
@@ -361,18 +494,63 @@ being done.
 3. **The review screen was never made two columns**, though the spec called for it. At 1440px
    it now reads in 1.5 screens instead of three.
 
+### The age question is a field, and voice is an offer
+
+Two changes with the same reasoning behind them: the thing every patient can do should be
+the default, and the clever thing should be the shortcut.
+
+**The age is typed.** It was decade cards plus a slider, which is a nice interaction and the
+wrong default for a fact the patient knows exactly - picking a range and then nudging a
+slider to reach 34 is three interactions to enter two digits. Now it is a labelled field with
+a numeric keypad, and the range cards sit underneath as a quieter shortcut for anyone who
+would rather not type or does not know their age precisely.
+
+`inputMode="numeric"` on a `type="text"` input, deliberately. A number input brings spinners
+nobody wants on a phone, accepts "1e5", and reports an empty string for invalid input so a
+typo cannot be told from a blank. Text plus a numeric keypad gives the keypad without any of
+that, and the handler strips non-digits and leading zeros so the box never shows "007".
+
+Two numbers where there used to be one: `AGE_MIN` is 1 and `AGE_MAX` is 100, because
+refusing a number for being unusual is how a form tells a 96-year-old they do not exist,
+while `ONSET_MIN` is 5 for the hair-loss onset question. `maxOnsetAge` used to floor the
+onset ceiling at `AGE_MIN`, which was only correct while that happened to be 16.
+
+**An out-of-range box means NOT ANSWERED.** Committing only valid values sounds safer and is
+worse: type 600 over a stored 60 and the screen shows 600 with an error while the form quietly
+keeps 60, counts the question answered, and lets the patient leave. `setAge` therefore takes
+`number | null`, and the section becomes incomplete until the field is fixed. The smoke
+asserts it, typing "6a0" then appending a zero.
+
+**Voice is now secondary, and it is one line.** The three table questions used to open on a
+full-screen speak surface with "I would rather answer by tapping" as the way out - voice as
+the default and the form as the escape hatch. That is backwards for a medical intake: the
+form is what every patient can complete.
+
+Demoting it took two passes, and the first one was worse than it looked. Moving the mic panel
+above the grid left the card opening with THREE stacked calls to action - a full mic panel, an
+"answer all of these by speaking" button, and an "answer the remaining 6 one at a time" card -
+of which two led to the same screen. That is not a choice, it is a decision the patient has to
+make before they can begin.
+
+What is there now is one 44px row: a mic glyph and "Answer by speaking". Tapping it is what
+brings the mic out, which is the only moment a mic is any use, and the spoken checklist - the
+enumerated list of every row, the thing that lets one reply fill a whole table - comes with
+it. The follow-up shortcut is gated on `answered.length > 0`, because its real job is the gaps
+a voice fill left behind; offering to walk a patient through the six rows they are already
+looking at was noise.
+
 ### Verified
 
 Six sections in both languages at all three text sizes, on a 390px phone and a 1440px
 desktop: no horizontal overflow, no clipped Devanagari, chrome that agrees with its column,
 and no focusable control hidden behind the footer.
 
-**Voice, inside a card, with a real microphone.** `npm run voice` drives Chromium's fake
-capture device with a synthesised WAV, so the recorder, the Sarvam request and the extraction
-are all real. One spoken sentence filled **6 of 6** habit rows including the layered
-follow-up, and "about ten a day" landed on "Moderate 5-10/day" - the inclusive-bound rule
-holding for a spoken word rather than a digit. That was the last path the tap-driven smoke
-could not reach.
+**Voice, while it existed, was verified with a real microphone.** `npm run voice` drove
+Chromium's fake capture device with a synthesised WAV, so the recorder, the Sarvam request and
+the extraction were all real: one spoken sentence filled **6 of 6** habit rows including the
+layered follow-up, and "about ten a day" landed on "Moderate 5-10/day". The harness has been
+removed with the UI it drove. Kept here because it is the evidence that the extraction route -
+which is still there, still tested - does what it claims.
 
 **The numeric boundaries, probed live** against the running extract route: 3/day to
 Mild, 5/day and 10/day to Moderate, 12/day to Severe. The 10/day case had been noted as
@@ -416,7 +594,7 @@ Three details worth the words:
 
 - **The three table questions open on the grid, not the speak screen.** Voice is the point
   of those questions in the wizard, but someone who tapped one row to fix it should not be
-  asked to describe all six items out loud again. `VoiceMatrix` takes an `initialStage`.
+  asked to describe all six items out loud again. Both surfaces now render the same grid.
 - **Done is never blocked.** If the question is still incomplete the dialog says so and
   still closes: the patient opened it to make a correction and must be able to get out. The
   review row then reads "not answered yet" and the download stays disabled, which is the
@@ -860,7 +1038,7 @@ of the UI, so a bad extraction patch can't bypass the interface.
 
 ## What's tested, and what deliberately isn't
 
-**`npm test` - 253 deterministic tests, no API key needed.** These are the dependable
+**`npm test` - 254 deterministic tests, no API key needed.** These are the dependable
 checks: the step builder, sex gating in all four states, every conditional-followup
 rule in both directions, exclusive options, 16-key coverage, the personalisation rules
 (comfort thresholds, the onset-age ceiling, and that a suggestion never writes an answer),

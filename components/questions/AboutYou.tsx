@@ -44,15 +44,6 @@ const SEX_OPTIONS: { value: PatientSex; label: TextKey; gloss: TextKey }[] = [
   { value: "prefer_not", label: "aboutSexPreferNot", gloss: "aboutSexTwoSkipped" },
 ];
 
-const AGE_BANDS = [
-  { label: "16-24", value: 21 },
-  { label: "25-34", value: 30 },
-  { label: "35-44", value: 40 },
-  { label: "45-54", value: 50 },
-  { label: "55-64", value: 60 },
-  { label: "65+", value: 70 },
-] as const;
-
 export function AboutYou({
   firstName,
   sex,
@@ -73,11 +64,19 @@ export function AboutYou({
   comfortAsked: boolean;
   onFirstName: (name: string | null) => void;
   onSex: (v: PatientSex) => void;
-  onAge: (v: number) => void;
+  onAge: (v: number | null) => void;
 }) {
   const [draftName, setDraftName] = useState(firstName ?? "");
-  // Fine-tune appears after the first coarse pick, or immediately on a resumed session.
-  const [fine, setFine] = useState(age !== null);
+  /**
+   * The age box's own text, kept separate from the stored number.
+   *
+   * A controlled input bound straight to the number cannot represent "the patient has typed
+   * 1 so far and is about to type 8": 1 is a valid age, so binding directly would either
+   * commit 1 or refuse the keystroke. The draft holds what was typed, and only a value
+   * inside the range reaches the store.
+   */
+  const [ageDraft, setAgeDraft] = useState(age === null ? "" : String(age));
+  const ageError = ageDraft !== "" && !(Number(ageDraft) >= AGE_MIN && Number(ageDraft) <= AGE_MAX);
   const lastAnnounced = useRef<Comfort>(comfort);
 
   // Commit the name on a debounce rather than on every keystroke: the store is persisted
@@ -208,71 +207,75 @@ export function AboutYou({
       {/* ---------------- age ---------------- */}
       <section>
         <Label text={t("aboutAgeLabel", lang)} />
-        <div className="grid grid-cols-3 gap-2.5">
-          {AGE_BANDS.map((b) => {
-            const active = age !== null && nearestBand(age) === b.value;
-            return (
-              <button
-                key={b.label}
-                type="button"
-                aria-pressed={active}
-                onClick={() => {
-                  tick();
-                  onAge(b.value);
-                  setFine(true);
-                }}
-                className={cn(
-                  "flex min-h-[62px] items-center justify-center rounded-2xl border-2",
-                  "text-[16px] font-bold tabular-nums transition-all duration-100 active:scale-[0.98]",
-                  active
-                    ? "border-brand bg-brand-soft text-brand-ink"
-                    : "border-line bg-card text-ink hover:border-brand/50",
-                )}
-              >
-                {b.label}
-              </button>
-            );
-          })}
+
+        {/*
+          A plain field with a numeric keypad, and it is the PRIMARY way to answer.
+
+          The decade cards used to be the only way in, with a slider to fine-tune. That is a
+          nice interaction and the wrong default for a fact the patient knows exactly: asking
+          someone to pick a range and then nudge a slider to reach "34" is three interactions
+          to enter two digits. The cards stay underneath as a shortcut for anyone who would
+          rather not type, or does not know their age precisely.
+
+          `inputMode="numeric"` with `type="text"` rather than `type="number"`, deliberately:
+          a number input brings spinners nobody wants on a phone, silently accepts "1e5", and
+          reports an empty string for invalid input so a typo is indistinguishable from a
+          blank. Text plus a numeric keypad gives the keypad without any of that.
+        */}
+        <div className="flex items-stretch gap-3">
+          <div className="relative flex-1">
+            <input
+              type="text"
+              inputMode="numeric"
+              autoComplete="off"
+              pattern="[0-9]*"
+              maxLength={3}
+              value={ageDraft}
+              aria-label={t("aboutAgeFieldLabel", lang)}
+              aria-invalid={ageError}
+              aria-describedby={ageError ? "age-error" : undefined}
+              placeholder={t("aboutAgePlaceholder", lang)}
+              onChange={(e) => {
+                // Digits only, so a stray letter never becomes part of the value, and no
+                // leading zeros, so the box never shows "007" for a seven-year-old.
+                const digits = e.target.value
+                  .replace(/[^0-9]/g, "")
+                  .slice(0, 3)
+                  .replace(/^0+(?=\d)/, "");
+                setAgeDraft(digits);
+                const n = Number(digits);
+                const valid = digits !== "" && n >= AGE_MIN && n <= AGE_MAX;
+                /*
+                  An out-of-range box means NOT ANSWERED, not "keep the last good number".
+
+                  Committing only valid values sounds safer and is worse: type 120 over a
+                  stored 12 and the screen shows 120 with an error while the form quietly
+                  holds 12, counts the question answered, and lets you leave. Clearing it
+                  makes the section incomplete, which is the truth.
+                */
+                onAge(valid ? n : null);
+              }}
+              className={cn(
+                "min-h-[64px] w-full rounded-2xl border-2 bg-card px-4 text-[24px] font-bold tabular-nums",
+                "text-ink transition-colors placeholder:text-[17px] placeholder:font-medium placeholder:text-muted/60",
+                "focus:outline-none",
+                ageError ? "border-warn" : "border-line focus:border-brand",
+              )}
+            />
+            <span
+              aria-hidden
+              className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-[14px] font-medium text-muted"
+            >
+              {t("aboutAgeYears", lang)}
+            </span>
+          </div>
         </div>
 
-        <AnimatePresence initial={false}>
-          {fine && age !== null ? (
-            <motion.div
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: "auto" }}
-              className="overflow-hidden"
-            >
-              <div className="mt-4 rounded-2xl border border-line bg-card p-4">
-                <div className="flex items-center justify-between">
-                  <span className="text-[13px] font-semibold text-muted">
-                    {t("aboutAgeExact", lang)}
-                  </span>
-                  <span className="text-[26px] font-bold tabular-nums leading-none text-brand">
-                    {age}
-                  </span>
-                </div>
-                <div className="mt-3 flex items-center gap-3">
-                  <Nudge label={t("aboutAgeYounger", lang)} onClick={() => onAge(clamp(age - 1))}>
-                    &minus;
-                  </Nudge>
-                  <input
-                    type="range"
-                    min={AGE_MIN}
-                    max={AGE_MAX}
-                    step={1}
-                    value={age}
-                    aria-label={t("aboutAgeAria", lang)}
-                    onChange={(e) => onAge(clamp(Number(e.target.value)))}
-                    className="h-2 flex-1 cursor-grab appearance-none rounded-full bg-line accent-brand"
-                  />
-                  <Nudge label={t("aboutAgeOlder", lang)} onClick={() => onAge(clamp(age + 1))}>
-                    +
-                  </Nudge>
-                </div>
-              </div>
-            </motion.div>
-          ) : null}
-        </AnimatePresence>
+        {ageError ? (
+          <p id="age-error" role="alert" className="mt-2 text-[13px] font-medium text-warn">
+            {t("aboutAgeRangeError", lang, { min: AGE_MIN, max: AGE_MAX })}
+          </p>
+        ) : null}
 
         {/*
           The state of the text size, after the patient has decided it. Not a promise
@@ -322,44 +325,4 @@ function Label({
       ) : null}
     </p>
   );
-}
-
-function Nudge({
-  label,
-  onClick,
-  children,
-}: {
-  label: string;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      aria-label={label}
-      onClick={() => {
-        tick();
-        onClick();
-      }}
-      className="grid size-11 shrink-0 place-items-center rounded-full border-2 border-line bg-paper text-[20px] font-bold text-ink transition-colors hover:border-brand hover:text-brand-ink active:scale-95"
-    >
-      {children}
-    </button>
-  );
-}
-
-const clamp = (n: number) => Math.min(AGE_MAX, Math.max(AGE_MIN, n));
-
-/** Which band card to highlight for an exact age. */
-function nearestBand(age: number): number {
-  let best: number = AGE_BANDS[0].value;
-  let bestGap = Infinity;
-  for (const b of AGE_BANDS) {
-    const gap = Math.abs(b.value - age);
-    if (gap < bestGap) {
-      bestGap = gap;
-      best = b.value;
-    }
-  }
-  return best;
 }

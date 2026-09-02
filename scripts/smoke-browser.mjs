@@ -180,8 +180,125 @@ async function answerOpenCard() {
   return true;
 }
 
+/**
+ * The landing screen at three telling widths, at the largest text size.
+ *
+ * It is one dom in two compositions, so the cases that matter are: the narrowest phone
+ * anyone still uses, a width just below the desktop breakpoint, and one just above it.
+ * The invariants are the ones that were actually broken - a CTA the patient has to hunt
+ * for, and content pushed off the top by centring that does not degrade.
+ */
+async function checkLanding() {
+  const WIDTHS = [
+    [320, 568, "narrow phone"],
+    [899, 800, "just below desk"],
+    [900, 800, "just above desk"],
+  ];
+  for (const [w, h, label] of WIDTHS) {
+    await page.setViewportSize({ width: w, height: h });
+    await page.goto(BASE, { waitUntil: "domcontentloaded" });
+    await page.waitForSelector("h1");
+    await page.evaluate(() => document.documentElement.setAttribute("data-comfort", "xl"));
+    await page.waitForTimeout(200);
+
+    const m = await page.evaluate(() => {
+      const de = document.documentElement;
+      // Rects are post-zoom device px, the viewport is pre-zoom css px. Compare in one unit.
+      const zoom = parseFloat(getComputedStyle(de).getPropertyValue("--comfort-zoom")) || 1;
+      const cta = [...document.querySelectorAll("button")].find((b) =>
+        /Start|Continue where/i.test(b.textContent || ""),
+      );
+      const kicker = document.querySelector("h1")?.previousElementSibling;
+      const r = cta?.getBoundingClientRect();
+      return {
+        ctaInView: r ? r.top < window.innerHeight * zoom && r.bottom > 0 : false,
+        ctaW: r ? Math.round(r.width / zoom) : 0,
+        inkTop: kicker ? Math.round(kicker.getBoundingClientRect().top / zoom) : 0,
+        overflowX: de.scrollWidth > window.innerWidth + 1,
+      };
+    });
+
+    notes.push(
+      `landing ${w}px (${label}): cta ${m.ctaW}px wide, in view ${m.ctaInView}, first ink at ${m.inkTop}px`,
+    );
+    if (!m.ctaInView)
+      errors.push({ kind: "landing", text: `${label}: the only CTA is off screen`, fatal: false });
+    if (m.overflowX)
+      errors.push({ kind: "landing", text: `${label}: horizontal overflow`, fatal: false });
+    // Negative means align-content centring has pushed the top of the page out of reach.
+    if (m.inkTop < 0)
+      errors.push({
+        kind: "landing",
+        text: `${label}: content clipped above the viewport (${m.inkTop}px)`,
+        fatal: false,
+      });
+    if (m.ctaW < 44)
+      errors.push({ kind: "landing", text: `${label}: CTA only ${m.ctaW}px wide`, fatal: false });
+  }
+  // Hand the walk back the phone it expects.
+  await page.setViewportSize({ width: 380, height: 780 });
+  await page.evaluate(() => document.documentElement.removeAttribute("data-comfort"));
+}
+
+/**
+ * The top bar is chrome, so it must not move.
+ *
+ * The complaint that produced the current layout was that it did: the header used to live
+ * inside a vertically centred content column, so its position and height changed with the
+ * section. This walks all six and asserts one geometry for the bar across the lot. It also
+ * asserts the bar is genuinely `fixed` - a sticky header measures identically at scroll 0
+ * and then scrolls away, which is the bug wearing the right numbers.
+ */
+async function checkFixedChrome(baseWidth, label) {
+  await page.setViewportSize({ width: baseWidth, height: 820 });
+  await page.goto(`${BASE}/intake`, { waitUntil: "domcontentloaded" });
+  await page.waitForSelector("header");
+
+  const seen = new Set();
+  for (const id of ["0", "A", "B", "C", "D", "E"]) {
+    await page.evaluate((sid) => {
+      const key = "genoroot-intake-v2";
+      const raw = sessionStorage.getItem(key);
+      if (raw === null) return;
+      const p = JSON.parse(raw);
+      p.state.currentSectionId = sid;
+      sessionStorage.setItem(key, JSON.stringify(p));
+    }, id);
+    await page.reload({ waitUntil: "domcontentloaded" });
+    await page.waitForSelector("header");
+    await page.waitForSelector("h1");
+    const m = await page.evaluate(() => {
+      const h = document.querySelector("header");
+      const r = h.getBoundingClientRect();
+      return {
+        box: `${Math.round(r.top)},${Math.round(r.height)}`,
+        position: getComputedStyle(h).position,
+      };
+    });
+    seen.add(m.box);
+    if (m.position !== "fixed")
+      errors.push({
+        kind: "chrome",
+        text: `${label}: the top bar is ${m.position}, not fixed`,
+        fatal: false,
+      });
+  }
+
+  notes.push(`${label}: top bar geometry across six sections -> ${[...seen].join(" | ")}`);
+  if (seen.size !== 1)
+    errors.push({
+      kind: "chrome",
+      text: `${label}: the top bar changes size or position between sections (${[...seen].join(" | ")})`,
+      fatal: false,
+    });
+}
+
 try {
   // ---------- landing ----------
+  await checkLanding();
+  await checkFixedChrome(1280, "desktop");
+  await checkFixedChrome(390, "phone");
+  await page.setViewportSize({ width: 380, height: 780 });
   await page.goto(BASE, { waitUntil: "networkidle" });
   notes.push(`page title: ${JSON.stringify(await page.title())}`);
   await tapButton("Start");
@@ -213,7 +330,36 @@ try {
     errors.push({ kind: "about", text: "sex alone was enough to pass About You", fatal: false });
   else notes.push("sex alone is not enough - the age is still required");
 
-  await tapButton("55-64");
+  /*
+    The age is TYPED, because typing is the primary way to answer it now and a smoke that
+    only taps the range shortcut would leave the real control uncovered.
+
+    Three properties in one place: letters never enter the value, an out-of-range number
+    un-answers the question rather than leaving the last good one behind, and a valid one
+    commits.
+  */
+  const ageField = page.getByRole("textbox", { name: /Your age in years/ });
+  await ageField.type("6a0", { delay: 40 });
+  await page.waitForTimeout(400);
+  const typedValue = await ageField.inputValue();
+  notes.push(`typed "6a0" -> field holds ${JSON.stringify(typedValue)}  (letters dropped)`);
+  if (typedValue !== "60")
+    errors.push({ kind: "age", text: `letters reached the age field: ${typedValue}`, fatal: false });
+
+  await ageField.type("0", { delay: 40 });
+  await page.waitForTimeout(450);
+  const outOfRangeBlocks = await page.getByRole("button", { name: /^Next/ }).isDisabled();
+  const alertShown = (await page.getByRole("alert").count()) > 0;
+  notes.push(`600 -> Next blocked? ${outOfRangeBlocks}, error shown? ${alertShown}`);
+  if (!outOfRangeBlocks || !alertShown)
+    errors.push({
+      kind: "age",
+      text: "an out-of-range age left the question answered",
+      fatal: true,
+    });
+
+  await ageField.fill("");
+  await ageField.type("60", { delay: 40 });
   await page.waitForTimeout(900); // the text-size offer is held back half a second
   const dialog = page.getByRole("dialog");
   if ((await dialog.count()) === 0)

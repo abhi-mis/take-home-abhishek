@@ -1,16 +1,24 @@
 "use client";
 
 /**
- * The frame a whole section renders inside.
+ * The frame a whole section renders inside - an application shell, not a wide phone.
  *
- * It replaces StepShell, which framed one question at a time. Three differences carry the
- * redesign:
+ * The layout this replaces was a 448px column with desktop rules bolted onto it: the header
+ * became `lg:static` and the whole column was vertically centred, so the chrome moved on
+ * every section and a laptop got a phone screenshot in the middle of an empty page. Three
+ * things changed, and each one answers a specific complaint:
  *
- *  - progress is six segments rather than a 1-of-17 crawl, with the current segment filling
- *    as the section's questions are answered;
- *  - the footer advances a SECTION, and says which one is next by name, so pressing it is a
- *    decision rather than a leap;
- *  - the outstanding list names unanswered QUESTIONS instead of describing one control.
+ *  - the top bar is FIXED at a constant height (components/AppBar.tsx), so it is in the same
+ *    place on question one and question sixteen;
+ *  - the six steps live in a fixed sidebar from `desk` up (components/SectionNav.tsx) and the
+ *    content pane is inset to make room, which is what makes this read as an app;
+ *  - the content pane is 780px of real estate with desktop type sizes, rather than a phone
+ *    column centred in a void.
+ *
+ * `desk` is 900px in absolute pixels, not `lg`'s 64rem. See the note beside the token in
+ * globals.css: a Windows laptop at 150% display scaling reports roughly 1000-1100px, and a
+ * rem breakpoint moves with the user's font size, so the two together put ordinary desktops
+ * below `lg` and handed them the mobile layout.
  *
  * Validation stays quiet until the patient has either tried to leave or come back to a
  * section they have already passed. Telling someone what they have not done yet, before they
@@ -18,12 +26,9 @@
  */
 import { useEffect, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { ProgressBar } from "./ProgressBar";
+import { AppBar, APP_BAR_PAD } from "./AppBar";
+import { SectionNav, type NavProgress } from "./SectionNav";
 import { Button } from "./ui/Button";
-import { ComfortToggle } from "./ComfortToggle";
-import { LangToggle } from "./LangToggle";
-import { SectionRail, type RailProgress } from "./SectionRail";
-import { ThemeToggle } from "./ThemeToggle";
 import { sectionLabel, t, ui, type Lang } from "@/lib/i18n";
 import type { Comfort } from "@/lib/patient";
 import type { Section } from "@/lib/sections";
@@ -76,10 +81,9 @@ export function SectionShell({
    * focus move.
    */
   announcement: string;
-  /** Desktop only: the rail lets a patient go straight to any section. */
   onJumpSection: (id: string) => void;
   allSections: Section[];
-  railProgress: Record<string, RailProgress>;
+  railProgress: Record<string, NavProgress>;
   children: React.ReactNode;
 }) {
   const [pressedNext, setPressedNext] = useState(false);
@@ -88,19 +92,27 @@ export function SectionShell({
   const title = sectionLabel(lang)[section.id] ?? section.id;
 
   return (
-    /*
-      Two columns from lg up, one below it.
+    <div className="min-h-dvh bg-paper">
+      <AppBar
+        index={index}
+        total={total}
+        /*
+          Every section's own completion, so the bar cannot claim work the patient has not
+          done. Derived from the same per-section counts the sidebar renders, which is what
+          keeps the two from disagreeing.
+        */
+        fractions={allSections.map((s) => {
+          const p = railProgress[s.id];
+          if (p === undefined || p.visible === 0) return 0;
+          return p.answered / p.visible;
+        })}
+        lang={lang}
+        comfort={comfort}
+        onComfort={onComfort}
+        onLang={onLang}
+      />
 
-      The desktop problem was never that the column was too narrow - 448px is close to the
-      ideal measure, and widening the questions would hurt. It was that the column had no
-      company, and that the sticky header painted a 448px band while the fixed footer ruled
-      the full 1425px, so the two disagreed about how wide the app was. From lg up both sit
-      INSIDE the column and stop being sticky at all, because there is nothing to stick to
-      when the whole section fits on one screen.
-    */
-    <div className="lg:grid lg:min-h-dvh lg:grid-cols-[262px_minmax(0,1fr)]">
-      <SectionRail
-        className="hidden lg:block"
+      <SectionNav
         sections={allSections}
         currentId={section.id}
         progress={railProgress}
@@ -108,112 +120,178 @@ export function SectionShell({
         onJump={onJumpSection}
       />
 
-      <div className="mx-auto flex min-h-dvh w-full max-w-md flex-col lg:min-h-0 lg:max-w-[560px] lg:justify-center lg:py-12">
-      <header className="sticky top-0 z-30 bg-paper/95 px-5 pb-3 pt-4 backdrop-blur lg:static lg:bg-transparent lg:px-0 lg:backdrop-blur-none">
-        <ProgressBar
-          index={index}
-          total={total}
-          fraction={visible === 0 ? 1 : answered / visible}
-          lang={lang}
-        />
-        <div className="mt-2.5 flex items-start gap-2">
-          <div className="min-w-0 flex-1">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted">
-              {t("sectionOf", lang, { n: index + 1, total })}
-            </p>
-            {/*
-              The section title is this screen's h1. Cards below use h2 for their own
-              headers, which gives a screen reader the outline the design implies:
-              one section, several questions inside it.
-            */}
-            <h1 className="font-display truncate text-[20px] leading-[1.4] text-ink">{title}</h1>
-          </div>
-          <ComfortToggle comfort={comfort} onChange={onComfort} lang={lang} className="mt-0.5" />
-          <LangToggle lang={lang} onChange={onLang} className="mt-0.5" />
-          {/* The palette toggle fits once the rail carries the wordmark and progress. */}
-          <ThemeToggle className="mt-0.5 hidden lg:grid" />
-        </div>
-        <p className="mt-1 text-[11.5px] font-medium text-brand-ink">
-          {t("answeredOf", lang, { n: answered, total: visible })}
-        </p>
-      </header>
-
       {/* Visually hidden, deliberately not `hidden`: a hidden element is not announced. */}
       <p aria-live="polite" className="sr-only">
         {announcement}
       </p>
 
-      <main className="flex-1 px-4 pb-40 lg:flex-none lg:px-0 lg:pb-0 lg:pt-5">
-        <div className="flex flex-col gap-2.5">{children}</div>
-
-        <AnimatePresence initial={false}>
-          {showOutstanding ? (
-            <motion.div
-              initial={{ opacity: 0, y: -4 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0 }}
-              role="status"
-              aria-live="polite"
-              className="mt-5 rounded-2xl border border-dashed border-warn/45 bg-warn/[0.04] p-3.5"
-            >
-              <p className="text-[12.5px] font-bold uppercase tracking-wide text-warn">
-                {outstanding.length === 1
-                  ? t("stillNeeded", lang)
-                  : t("stillNeededN", lang, { n: outstanding.length })}
-              </p>
-              <ul className="mt-1.5 flex flex-col gap-1">
-                {outstanding.slice(0, 8).map((o) => (
-                  <li key={o} className="flex gap-2 text-[13px] leading-snug text-warn">
-                    <span aria-hidden>·</span>
-                    <span>{o}</span>
-                  </li>
-                ))}
-                {outstanding.length > 8 ? (
-                  <li className="text-[12.5px] italic text-warn/80">
-                    {t("andMore", lang, { n: outstanding.length - 8 })}
-                  </li>
-                ) : null}
-              </ul>
-            </motion.div>
-          ) : null}
-        </AnimatePresence>
-      </main>
-
-      <footer
-        className={cn(
-          "fixed inset-x-0 bottom-0 z-30 border-t border-line bg-paper/95 backdrop-blur",
-          "px-5 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3",
-          "lg:static lg:border-0 lg:bg-transparent lg:px-0 lg:pb-0 lg:pt-6 lg:backdrop-blur-none",
-        )}
-      >
-        <div className="mx-auto flex w-full max-w-md items-center gap-3 lg:max-w-none">
-          <Button
-            variant="ghost"
-            size="lg"
-            onClick={onBack}
-            className="w-[88px] shrink-0"
-            aria-label={ui(lang).back}
-          >
-            <BackArrow /> {ui(lang).back}
-          </Button>
+      <div className={cn("desk:pl-[264px]", APP_BAR_PAD)}>
+        <main className="mx-auto w-full max-w-[780px] px-4 pb-36 pt-5 desk:px-10 desk:pb-10 desk:pt-9">
           {/*
-            The wrapper catches the tap a disabled button cannot. `disabled:pointer-events-none`
-            means a press on a blocked Next lands here instead of nowhere, which is what turns
-            "the button is dead" into "here is what is missing" - while the button itself stays
-            genuinely disabled for keyboard and screen-reader users.
+            The section heading, in the page rather than in the chrome.
+            It is the h1 either way - cards below are h2 - but on a desktop it can be a
+            proper page title with room to breathe, and on a phone the app bar has already
+            said where we are, so this is the same fact told once at reading size.
           */}
-          <div
-            className="flex-1"
-            onPointerDown={() => {
-              if (!canGoNext) setPressedNext(true);
-            }}
-          >
-            <Button size="lg" onClick={onNext} disabled={!canGoNext} className="w-full">
-              {nextTitle === null ? t("finishUp", lang) : t("nextSection", lang, { title: nextTitle })}
-            </Button>
+          {/*
+            The one heading in the document, at every width.
+
+            The kicker is desktop-only because the app bar already says "section 3 of 6" on a
+            phone and there is no reason to say it twice in 80px. The name is not in the bar
+            at all - see the note in AppBar.tsx for why one visible heading beat two.
+          */}
+          <div className="mb-4 desk:mb-7">
+            <p className="hidden text-[11.5px] font-bold uppercase tracking-[0.14em] text-brand-ink desk:block">
+              {t("sectionOf", lang, { n: index + 1, total })}
+            </p>
+            <h1 className="font-display text-[27px] leading-[1.25] text-ink desk:mt-1.5 desk:text-[34px]">
+              {title}
+            </h1>
+            <p className="mt-1 text-[13px] font-medium text-muted desk:mt-1.5 desk:text-[13.5px]">
+              {t("answeredOf", lang, { n: answered, total: visible })}
+            </p>
           </div>
-        </div>
-      </footer>
+
+          <div className="flex flex-col gap-3 desk:gap-3.5">{children}</div>
+
+          <AnimatePresence initial={false}>
+            {showOutstanding ? (
+              <motion.div
+                initial={{ opacity: 0, y: -4 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0 }}
+                role="status"
+                aria-live="polite"
+                className="mt-5 rounded-2xl border border-dashed border-warn/45 bg-warn/[0.04] p-4"
+              >
+                <p className="text-[12.5px] font-bold uppercase tracking-wide text-warn">
+                  {outstanding.length === 1
+                    ? t("stillNeeded", lang)
+                    : t("stillNeededN", lang, { n: outstanding.length })}
+                </p>
+                <ul className="mt-1.5 flex flex-col gap-1">
+                  {outstanding.slice(0, 8).map((o) => (
+                    <li key={o} className="flex gap-2 text-[13px] leading-snug text-warn">
+                      <span aria-hidden>·</span>
+                      <span>{o}</span>
+                    </li>
+                  ))}
+                  {outstanding.length > 8 ? (
+                    <li className="text-[12.5px] italic text-warn/80">
+                      {t("andMore", lang, { n: outstanding.length - 8 })}
+                    </li>
+                  ) : null}
+                </ul>
+              </motion.div>
+            ) : null}
+          </AnimatePresence>
+
+          {/*
+            Desktop: sticky rather than simply last.
+
+            About You is taller than a 900px viewport on its own, so actions placed at the
+            end of the column are actions the patient has to go looking for. Sticky gives
+            both behaviours from one element - pinned to the bottom edge while the section
+            is taller than the screen, sitting quietly at the end of the reading flow when
+            it is not - which is the same reasoning as the landing page's CTA.
+          */}
+          <div className="sticky bottom-0 -mx-10 mt-7 hidden bg-paper/95 px-10 pb-6 pt-4 backdrop-blur-md desk:block">
+            <Actions
+              lang={lang}
+              nextTitle={nextTitle}
+              canGoNext={canGoNext}
+              onBack={onBack}
+              onNext={onNext}
+              onBlockedPress={() => setPressedNext(true)}
+            />
+          </div>
+        </main>
+      </div>
+
+      {/*
+        Phone: the actions are a fixed bar. On a small screen a section can be taller than
+        the viewport, and the way forward must never be something you scroll to find.
+      */}
+      <div className="fixed inset-x-0 bottom-0 z-40 border-t border-line bg-paper/95 px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3 backdrop-blur-md desk:hidden">
+        <Actions
+          lang={lang}
+          nextTitle={nextTitle}
+          canGoNext={canGoNext}
+          onBack={onBack}
+          onNext={onNext}
+          onBlockedPress={() => setPressedNext(true)}
+        />
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Back and Next, rendered twice - once in the desktop column, once in the phone's fixed bar.
+ *
+ * Twice rather than one element moved by CSS because the two live in different stacking and
+ * scrolling contexts. Only one is ever RENDERED - each side is behind a `desk:hidden` or a
+ * `hidden desk:block` - so there is one Back and one Next on screen at any viewport, and no
+ * duplicate tab stops, since a `display: none` element is not focusable.
+ *
+ * Both are in the DOM, though, and that distinction bit once: `querySelector` returns the
+ * first match regardless of whether it is rendered, so the page's "focus the way forward"
+ * shortcut was aiming at the hidden desktop button while on a phone. Anything looking these
+ * up has to filter by what is actually rendered - see the note at the call site.
+ */
+function Actions({
+  lang,
+  nextTitle,
+  canGoNext,
+  onBack,
+  onNext,
+  onBlockedPress,
+}: {
+  lang: Lang;
+  nextTitle: string | null;
+  canGoNext: boolean;
+  onBack: () => void;
+  onNext: () => void;
+  onBlockedPress: () => void;
+}) {
+  return (
+    <div className="flex items-center gap-3">
+      <Button
+        variant="ghost"
+        size="lg"
+        onClick={onBack}
+        className="w-[92px] shrink-0"
+        aria-label={ui(lang).back}
+      >
+        <BackArrow /> {ui(lang).back}
+      </Button>
+      {/*
+        The wrapper catches the tap a disabled button cannot. `disabled:pointer-events-none`
+        means a press on a blocked Next lands here instead of nowhere, which is what turns
+        "the button is dead" into "here is what is missing" - while the button itself stays
+        genuinely disabled for keyboard and screen-reader users.
+      */}
+      <div
+        className="flex-1"
+        onPointerDown={() => {
+          if (!canGoNext) onBlockedPress();
+        }}
+      >
+        <Button
+          size="lg"
+          onClick={onNext}
+          disabled={!canGoNext}
+          className="w-full"
+          /*
+            Queried by the page when Enter runs out of questions to open: focus should land
+            on the way forward. It used to be found with `footer button:last-of-type`, which
+            broke silently the moment the footer stopped being a <footer> - an attribute the
+            component declares is a contract, a tag-name selector is a guess.
+          */
+          data-next-action
+        >
+          {nextTitle === null ? t("finishUp", lang) : t("nextSection", lang, { title: nextTitle })}
+        </Button>
       </div>
     </div>
   );

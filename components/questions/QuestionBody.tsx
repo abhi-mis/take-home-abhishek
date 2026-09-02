@@ -9,9 +9,9 @@
  * through the form. Two copies of "which control does `type: multi` mean?" is exactly the
  * kind of duplication that drifts, so it lives here and both callers render it.
  *
- * It is deliberately just the BODY - no title, no hint, no Back/Next. The wizard wraps it
- * in StepShell and the review dialog wraps it in its own frame, and neither has to agree
- * with the other about chrome.
+ * It is deliberately just the BODY - no title, no hint, no Back/Next. The section card wraps
+ * it and the review dialog wraps it in its own frame, and neither has to agree with the
+ * other about chrome.
  *
  * Adding a question to lib/schema.ts still needs no edit here as long as its `type` is
  * one of the kinds below - that is what the schema-driven wizard buys.
@@ -27,7 +27,7 @@ import { YesNo } from "./YesNo";
 import { NumberStepper } from "./NumberStepper";
 import { AboutYou } from "./AboutYou";
 import { Consent } from "./Consent";
-import { VoiceMatrix } from "./VoiceMatrix";
+import { TableQuestion } from "./TableQuestion";
 import { YesNoDescribe } from "./YesNoDescribe";
 import { PatternPicker } from "./PatternPicker";
 
@@ -41,24 +41,10 @@ export interface QuestionBodyProps {
   explicitNone: Record<string, true>;
   patch: (p: Partial<Answers>) => void;
   setSex: (sex: PatientSex) => void;
-  setAge: (age: number) => void;
+  setAge: (age: number | null) => void;
   setFirstName: (name: string | null) => void;
   chooseNone: (key: string) => void;
-  /**
-   * "This step is presenting its own focused surface" - the speak screen or the guided
-   * follow-up flow. The wizard uses it to stand down its outstanding-items summary; the
-   * review dialog has no such summary, so it passes a no-op.
-   */
-  setFocusMode?: (focused: boolean) => void;
-  /**
-   * Where a table question opens. The wizard starts on the speak screen, because voice is
-   * the point of those three questions. The review dialog starts on the grid: someone who
-   * tapped one row to fix it does not want to be asked to describe all six out loud.
-   */
-  tableStage?: "speak" | "form";
 }
-
-const noop = () => {};
 
 export function QuestionBody({
   step,
@@ -73,8 +59,6 @@ export function QuestionBody({
   setAge,
   setFirstName,
   chooseNone,
-  setFocusMode = noop,
-  tableStage = "speak",
 }: QuestionBodyProps) {
   const COPY_L = questionCopy(lang);
 
@@ -173,13 +157,11 @@ export function QuestionBody({
 
     case "table":
       return (
-        <VoiceMatrix
+        <TableQuestion
           lang={lang}
           questionKey={step.key as "habits" | "products" | "procedures"}
           answers={answers}
           patch={patch}
-          setFocusMode={setFocusMode}
-          initialStage={tableStage}
         />
       );
 

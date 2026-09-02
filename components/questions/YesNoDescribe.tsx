@@ -14,7 +14,6 @@
  */
 import { AnimatePresence, motion } from "framer-motion";
 import type { Answers } from "@/lib/types";
-import { VoicePanel } from "./VoicePanel";
 import { YesNo } from "./YesNo";
 import { t, type Lang } from "@/lib/i18n";
 
@@ -55,16 +54,6 @@ export function YesNoDescribe({
               <p className="mb-3 text-[14px] font-semibold text-ink">
                 {t("sideEffectMore", lang)}
               </p>
-
-              <VoicePanel
-                lang={lang}
-                questionKey="past_treatment_side_effects"
-                onResult={(r) => {
-                  // The slice may also correct the yes/no if the patient said no.
-                  if (r.patch.past_treatment_describe)
-                    patch({ past_treatment_describe: r.patch.past_treatment_describe });
-                }}
-              />
 
               <textarea
                 value={answers.past_treatment_describe ?? ""}

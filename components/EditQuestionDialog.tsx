@@ -55,7 +55,7 @@ export function EditQuestionDialog({
   explicitNone: Record<string, true>;
   patch: (p: Partial<Answers>) => void;
   setSex: (sex: PatientSex) => void;
-  setAge: (age: number) => void;
+  setAge: (age: number | null) => void;
   setFirstName: (name: string | null) => void;
   chooseNone: (key: string) => void;
   onClose: () => void;
@@ -154,9 +154,6 @@ export function EditQuestionDialog({
             setAge={setAge}
             setFirstName={setFirstName}
             chooseNone={chooseNone}
-            // Straight to the grid: this patient came to fix one row, not to describe
-            // the whole table out loud again.
-            tableStage="form"
           />
 
           {/*

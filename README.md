@@ -35,8 +35,7 @@ two accelerators:
 Read-aloud needs **no key at all** - it uses the browser's own `speechSynthesis`.
 
 ```bash
-npm test              # 253 deterministic tests, no key needed
-npm run voice         # voice end to end with a real mic, needs both keys and a WAV
+npm test              # 254 deterministic tests, no key needed
 npm run smoke         # real-browser walkthrough of the whole intake (needs a dev server)
 npm run eval          # live extraction eval against the fixtures (needs ANTHROPIC_API_KEY)
 npm run build         # production build
@@ -203,6 +202,7 @@ of them changes the rest of the form. That is the whole reason it is allowed to 
 
 | Given | What actually changes |
 | --- | --- |
+| **age, typed** | a labelled field with a numeric keypad, 1 to 100. Letters are dropped, leading zeros normalised, and an out-of-range value un-answers the question rather than leaving the last good number in place. The range cards remain as a secondary shortcut. |
 | **age 55-69** | the form ASKS: "Would you like larger text?", with both sizes previewed side by side. Yes scales text and every tap target up 12% (70+ scales 26%); no leaves it exactly as it was. Asked once, either answer final, and the **Aa** button changes it any time. |
 | **age, any** | Q1's onset-age slider is capped at it. A 45-year-old can no longer record "hair loss began at 60", and lowering the age later pulls a now-impossible onset answer down with it. |
 | **age 52+** | Q6 offers *Menopausal*; 50+ offers *Not applicable* on Q7. Offers, rendered as a prompt the patient has to accept - never a pre-filled answer. |
@@ -332,44 +332,24 @@ needle").
 
 ---
 
-## The voice question, end to end
+## The three table questions
 
-Q11/12/13 are a three-stage flow, not a grid with a mic on top.
+Habits, products and treatments are tables rather than choices: six rows, five rows and four
+rows, two of them with rows that ask for detail once switched on.
 
-1. **Speak first.** The grid is hidden. You get a numbered checklist of every item to
-   cover plus its conditional details, an example answer, the mic, and "I would rather
-   answer by tapping". The checklist enumerates rather than summarising - a prose prompt
-   read better but quietly dropped rows, so patients answered three of six. Labels are
-   interpolated from the schema, so a new row cannot go unasked.
-2. **The result popup.** "Filled 6 of 6" - or "Filled 2 of 6, 4 still to go" with the
-   missed items named - plus an explicit **"Yes, these match"**. An LLM just filled six
-   medical fields from one sentence; taking silence as agreement is not confirmation.
-3. **The form.** For confirming, correcting, or answering by hand. Anyone who chose to
-   tap, or whose mic or key failed, lands here directly.
+**Conditional detail is revealed inline, under the row that unlocked it.** Answering "yes" to
+a product creates three more questions - how long, did it help, side effects - and an earlier
+version handed those over as their own full-size cards, one at a time. It read well in
+isolation, and it meant that switching one row on made the other four vanish: the patient lost
+the list they were working down. Inline keeps the whole table, and the context, on screen.
 
-**Conditional questions get asked, not revealed.** Answering "yes" to a product does not
-finish that row - it creates three more (how long, did it help, side effects). Switching a
-row on now asks exactly those, one at a time, and closes itself when they are done:
+**Completeness comes from `lib/followups.ts`, not from the grid.** It describes which fields a
+row owes, and `validateStep` counts the same descriptors that the "still needed" summary
+reads - so a row cannot look answered to one and unanswered to the other.
 
-```
-Do you use OTC/Medicated Shampoos? -> Yes
-  -> How long have you been using it? -> Did it help? -> Any side effects?
-```
-
-The same applies to smoking (how much) and salon treatments (which one). New layers
-appear mid-flow because the queue is derived from the answers rather than precomputed.
-
-**The mic shows real levels.** The waveform comes from an `AnalyserNode` on the live
-stream, not a CSS animation - a fake animation looks identical whether the mic is live or
-muted, so a patient would get no warning they are not being heard until the transcript
-came back empty.
-
-**Verified with real speech,** not mocks: Windows TTS piped into Chromium's
-`--use-file-for-fake-audio-capture`, through the live Sarvam and extraction routes. "I
-smoke about six a day... I had keratin at a salon last year" filled all six fields,
-mapped "about six a day" to `Moderate 5-10/day`, and extracted `keratin` as the salon
-detail. That run predates the move to Claude - the transcription half still stands, the
-extraction half has not been repeated since.
+Voice used to be the point of these three: a spoken checklist, one reply filling six fields
+through `/api/extract`. That UI has been removed. The server routes and the extraction prompt
+remain and are covered by tests, so the pipeline is intact and simply unreferenced by the form.
 
 ## Light and dark
 
@@ -410,7 +390,7 @@ solved problem where a hand-rolled version would be worse and slower.
 
 Two tiers, on purpose.
 
-**Deterministic (`npm test`, 253 tests, no key) - the dependable gate.** One test
+**Deterministic (`npm test`, 254 tests, no key) - the dependable gate.** One test
 diffs `lib/schema.ts` against the schema as downloaded from the URL in the brief, so
 "verbatim copy" is proven rather than claimed · step builder and
 schema coverage · sex gating across all four states, including that switching away from
@@ -503,24 +483,25 @@ analytics.
 
 ```
 app/
-  page.tsx                  landing
+  page.tsx                  landing - one dom, two compositions (phone column / desktop panel)
   intake/page.tsx           wizard shell - switches on step.kind, has no question list
   api/transcribe/route.ts   Sarvam proxy (key server-side)
   api/extract/route.ts      structured extraction + schema gate
 components/
-  SectionShell.tsx  SectionRail.tsx  ProgressBar.tsx  ReviewScreen.tsx  ThemeToggle.tsx
+  SectionShell.tsx  AppBar.tsx  SectionNav.tsx  ProgressBar.tsx  ReviewScreen.tsx
   QuestionSpeaker.tsx        the read-aloud button, on every question
   ComfortToggle.tsx          text-size control (Aa), and the DOM projection of it
   ComfortPrompt.tsx          "would you like larger text?", asked once, previews both
   EditQuestionDialog.tsx     one question, corrected from the review screen
-  SectionShell.tsx           the frame around a whole section, mobile and desktop
-  SectionRail.tsx            desktop: six sections, progress, keyboard legend
+  SectionShell.tsx           the app shell: bar, sidebar, content pane, actions
+  AppBar.tsx                 fixed top chrome, one constant height on every screen
+  SectionNav.tsx             desktop sidebar: six steps, per-step progress, shortcuts
   questions/QuestionCard.tsx one question in one of three states
   questions/QuestionBody.tsx the controls for one question, shared by wizard and dialog
   LangToggle.tsx             EN / हिं, and the <html lang> it writes
   questions/     SingleChoice MultiChoice YesNo NumberStepper AboutYou PatternPicker
-                 Consent YesNoDescribe VoiceMatrix VoicePanel SpeakFirst ResultDialog
-                 FollowUpFlow HabitsGrid TableGrid ScalpDiagram
+                 Consent YesNoDescribe TableQuestion HabitsGrid TableGrid
+                 ScalpDiagram
 lib/
   schema.ts        source of truth (verbatim copy of the published schema)
   types.ts         Answers + enums, all derived from schema.ts

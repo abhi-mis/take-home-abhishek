@@ -7,7 +7,6 @@
  * followup declarations are what make the severity and salon-detail inputs appear.
  * Nothing about the followups is hardcoded here beyond their input widget.
  *
- * `justFilled` marks rows the model wrote on this pass. They get a brief highlight
  * so the patient's eye lands on what changed and can correct it - that is the
  * "confirm chips" step, done in place rather than on a separate screen.
  */
@@ -34,19 +33,16 @@ export function HabitsGrid({
   value,
   onChange,
   lang,
-  justFilled = [],
 }: {
   value: Habits;
   onChange: (patch: Partial<Habits>) => void;
   lang: Lang;
-  justFilled?: string[];
 }) {
   return (
     <div className="flex flex-col gap-2.5">
       {HABIT_ROWS.map((row) => {
-        const highlighted = justFilled.includes(row.key);
         return (
-          <Row key={row.key} highlighted={highlighted}>
+          <Row key={row.key}>
             <RowLabel field={row.key} lang={lang} />
 
             {row.key === "hair_wash_frequency" ? (
@@ -115,30 +111,11 @@ export function HabitsGrid({
   );
 }
 
-/**
- * A row that can flash to mark "the model just filled this".
- *
- * The flash used to animate between two hardcoded hex colours, which was wrong the
- * moment a dark palette existed. It is now a brand-soft overlay whose opacity fades
- * (see `.flash-fill` in globals.css), so it inherits whatever the current theme is.
- */
-export function Row({
-  children,
-  highlighted,
-}: {
-  children: React.ReactNode;
-  highlighted?: boolean;
-}) {
+/** One row of the table: its label, and whatever control answers it. */
+export function Row({ children }: { children: React.ReactNode }) {
   return (
-    <div className="relative overflow-hidden rounded-2xl border border-line bg-card p-3.5">
-      {highlighted ? (
-        <span
-          key="flash"
-          aria-hidden
-          className="flash-fill pointer-events-none absolute inset-0 rounded-2xl bg-brand-soft"
-        />
-      ) : null}
-      <div className="relative">{children}</div>
+    <div className="rounded-2xl border border-line bg-card p-3.5 desk:p-4">
+      {children}
     </div>
   );
 }

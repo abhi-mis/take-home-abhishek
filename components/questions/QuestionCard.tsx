@@ -71,7 +71,7 @@ export function QuestionCard({
   explicitNone: Record<string, true>;
   patch: (p: Partial<Answers>) => void;
   setSex: (sex: PatientSex) => void;
-  setAge: (age: number) => void;
+  setAge: (age: number | null) => void;
   setFirstName: (name: string | null) => void;
   chooseNone: (key: string) => void;
   onOpen: () => void;
@@ -100,7 +100,18 @@ export function QuestionCard({
           : "border-line shadow-[0_1px_2px_rgba(60,45,25,0.05)]",
       )}
     >
-      <h2>
+      {/*
+        The header is a ROW, not just the disclosure button.
+
+        The read-aloud control cannot live inside that button - a button inside a button is
+        invalid, and a screen reader would read the whole header as one confused control - and
+        it used to sit on a row of its own inside the open card, which cost vertical space on
+        every question to hold one icon. As a sibling it lines up with the question it reads
+        out, and it only renders when the card is open: reading out a collapsed one-line
+        summary would be reading the patient their own answer back.
+      */}
+      <div className="flex items-start">
+        <h2 className="min-w-0 flex-1">
         <button
           type="button"
           aria-expanded={open}
@@ -111,15 +122,17 @@ export function QuestionCard({
             onOpen();
           }}
           className={cn(
-            "flex w-full items-start gap-3 px-4 text-left",
-            open ? "cursor-default pb-1 pt-4" : "min-h-[52px] cursor-pointer py-3.5",
+            "flex w-full items-start gap-3 px-4 text-left desk:gap-4 desk:px-6",
+            open
+              ? "cursor-default pb-1 pt-4 desk:pt-6"
+              : "min-h-[52px] cursor-pointer py-3.5 desk:min-h-[62px] desk:py-4.5",
             state === "waiting" && "opacity-60",
           )}
         >
           <span
             aria-hidden
             className={cn(
-              "mt-0.5 grid size-6 shrink-0 place-items-center rounded-full text-[11px] font-bold tabular-nums",
+              "mt-0.5 grid size-6 shrink-0 place-items-center rounded-full text-[11px] font-bold tabular-nums desk:size-7 desk:text-[12px]",
               state === "answered"
                 ? // accent-icon-ok: the done fill holds a tick, never a word.
                   "bg-done text-white"
@@ -133,23 +146,31 @@ export function QuestionCard({
 
           <span className="min-w-0 flex-1">
             {open ? (
-              <span className="font-display block text-[21px] leading-[1.45] text-ink">
+              <span className="font-display block text-[21px] leading-[1.45] text-ink desk:text-[25px] desk:leading-[1.35]">
                 {title}
               </span>
             ) : (
-              <span className="block truncate text-[13.5px] leading-snug text-muted">
+              <span className="block truncate text-[13.5px] leading-snug text-muted desk:text-[14.5px]">
                 {shortLabel(step, lang)}
               </span>
             )}
           </span>
 
           {state === "answered" ? (
-            <span className="mt-px max-w-[46%] truncate text-[13.5px] font-semibold text-ink">
+            <span className="mt-px max-w-[46%] truncate text-[13.5px] font-semibold text-ink desk:text-[14.5px]">
               {answerSummary(step, answers, meta, lang)}
             </span>
           ) : null}
         </button>
-      </h2>
+        </h2>
+        {open ? (
+          <QuestionSpeaker
+            text={questionSpeech(step, meta, lang)}
+            lang={lang}
+            className="mr-4 mt-4 shrink-0 desk:mr-6 desk:mt-6"
+          />
+        ) : null}
+      </div>
 
       <AnimatePresence initial={false}>
         {open ? (
@@ -163,12 +184,7 @@ export function QuestionCard({
             transition={{ duration: reduce ? 0 : 0.18, ease: [0.22, 1, 0.36, 1] }}
             className="overflow-hidden"
           >
-            <div className="px-4 pb-4">
-              <div className="mb-3 flex justify-end">
-                {/* The speaker follows the OPEN question rather than the section: reading a
-                    whole category aloud would be five questions at once. */}
-                <QuestionSpeaker text={questionSpeech(step, meta, lang)} lang={lang} />
-              </div>
+            <div className="px-4 pb-4 pt-3 desk:px-6 desk:pb-6">
               <QuestionBody
                 step={step}
                 answers={answers}

@@ -34,6 +34,22 @@
     something a person is asking; the same sentence in the UI sans reads as a field label.
   */
   --font-display: var(--font-display-serif), Newsreader, Georgia, serif;
+
+  /*
+    THE DESKTOP BREAKPOINT, in pixels and deliberately low.
+
+    A patient reported the desktop app rendering as a phone column, and the cause is a
+    combination two of Tailwind's defaults walk straight into. `lg` is 64rem, so the
+    breakpoint moves with the user's font settings - a 20px root pushes it out to 1280px -
+    and a Windows laptop at 150% display scaling reports a viewport in the 1000-1100px
+    range to begin with. Between the two, an ordinary 1600px laptop can sit below `lg` and
+    get the mobile layout, which is exactly what happened.
+
+    900px in absolute pixels: below it a phone column is genuinely the right answer, above
+    it there is room for the sidebar and a wide content pane. `px` rather than `rem` so
+    that a patient who has scaled their text up gets bigger text, not a different layout.
+  */
+  --breakpoint-desk: 900px;
 }
 
 /*
@@ -113,6 +129,16 @@
 html {
   /* Stops iOS Safari inflating the font when a form field is focused. */
   -webkit-text-size-adjust: 100%;
+  /*
+    Reserve the scrollbar's width even when the page does not scroll.
+
+    Measured while checking that the top bar holds still between sections: it does, but the
+    viewport itself was 1440px wide on two sections and 1425px on the other four, because a
+    scrollbar came and went with the content height. Every centred thing on the page shifted
+    7px sideways as the patient moved through the form. The bar was innocent; the gutter was
+    not.
+  */
+  scrollbar-gutter: stable;
 }
 
 /*

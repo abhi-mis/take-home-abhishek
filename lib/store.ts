@@ -68,7 +68,8 @@ interface IntakeState {
 
   patch: (p: Partial<Answers>) => void;
   setSex: (sex: PatientSex) => void;
-  setAge: (age: number) => void;
+  /** null when the field holds something out of range: not answered, not 'the old value'. */
+  setAge: (age: number | null) => void;
   setFirstName: (name: string | null) => void;
   setLang: (l: Lang) => void;
   setComfort: (c: Comfort) => void;
@@ -166,7 +167,8 @@ export const useIntake = create<IntakeState>()(
       setAge: (age) =>
         set((s) => ({
           meta: { ...s.meta, patient_age: age },
-          answers: clampOnsetAge(s.answers, age),
+          // No age means no ceiling to enforce; the onset answer is left as it is.
+          answers: age === null ? s.answers : clampOnsetAge(s.answers, age),
           // Deliberately does NOT touch `comfort`. An age used to resize the screen on
           // the spot; now it only makes the form eligible to ask. See ComfortPrompt.
         })),

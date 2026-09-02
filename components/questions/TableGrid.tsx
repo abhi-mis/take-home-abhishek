@@ -28,12 +28,10 @@ export interface TableGridProps {
   lang: Lang;
   /** The boolean column that gates the rest ("used" or "done"). */
   flagKey: string;
-  flagLabel: string;
   detailColumns: readonly ColumnSpec[];
   value: Record<string, Record<string, unknown>>;
   onChangeRow: (row: string, patch: Record<string, unknown>) => void;
   /** Rows the model just wrote, for the confirm highlight. */
-  justFilled?: string[];
   rowGloss?: Record<string, string>;
 }
 
@@ -41,11 +39,9 @@ export function TableGrid({
   rows,
   lang,
   flagKey,
-  flagLabel,
   detailColumns,
   value,
   onChangeRow,
-  justFilled = [],
   rowGloss,
 }: TableGridProps) {
   return (
@@ -53,7 +49,6 @@ export function TableGrid({
       {rows.map((row) => {
         const entry = value[row] ?? {};
         const on = entry[flagKey] === true;
-        const highlighted = justFilled.includes(row);
 
         return (
           <div
@@ -63,13 +58,6 @@ export function TableGrid({
               on ? "border-brand/35 bg-card" : "border-line bg-card",
             )}
           >
-            {/* Theme-inheriting "just filled" flash - see globals.css .flash-fill. */}
-            {highlighted ? (
-              <span
-                aria-hidden
-                className="flash-fill pointer-events-none absolute inset-0 bg-brand-soft"
-              />
-            ) : null}
             <div className="row-split relative flex items-start gap-3">
               <div className="min-w-0 flex-1">
                 <p className="text-[14.5px] font-semibold leading-tight text-ink">
@@ -84,8 +72,16 @@ export function TableGrid({
                   size="sm"
                   lang={lang}
                   value={(entry[flagKey] as boolean | null) ?? null}
-                  yesLabel={flagLabel}
-                  noLabel="No"
+                  /*
+                    No labels passed, so YesNo uses the dictionary.
+
+                    These used to be `yesLabel={flagLabel}` and a hardcoded `noLabel="No"`,
+                    which meant the products and treatments tables showed English Yes/No on a
+                    fully Hindi page - the habits grid beside them was translated, so the two
+                    tables disagreed with each other in the same form. Found by reading a
+                    Hindi screenshot, not by a test: the no-hardcoded-English scan looks for
+                    prose in JSX text, and this was a prop value.
+                  */
                   onChange={(v) => {
                     tick();
                     // Switching a row off nulls every detail column, keeping the
