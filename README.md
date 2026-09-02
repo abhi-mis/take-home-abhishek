@@ -303,15 +303,19 @@ or Telugu build is a second map rather than a rewrite. The extraction prompt sti
 handles Hindi and Hinglish *speech* - UI language and spoken-input language are
 different things, and a patient reading English may still answer the mic in Hindi.
 
-**Nothing is optional.** `validateStep()` in `lib/steps.ts` is the single gate:
+**Nothing is required to move on; the DOWNLOAD is what is gated.** `validateStep()` in
+`lib/steps.ts` is still the single source of "is this answered", and it is now used to
+report rather than to block:
 
-- Next stays disabled until the current step is genuinely answered, and the reason is
-  printed on screen. A greyed-out button that will not say what is wrong is not
-  validation, it is a dead end.
-- On the table questions (Q11/12/13) it lists **every outstanding row by name**, so a
-  patient is never hunting for the one row they missed.
-- `validate()` reuses that same function for the final object, so the per-step gate and
-  the download gate cannot drift apart.
+- Next always works. A patient can leave a question blank and come back to it, because a
+  form that refuses to advance until someone answers whether they are pregnant produces a
+  guess, and a guess is a wrong entry in a clinical record.
+- The section says "you can come back to these" and names them, quietly, once the patient
+  has answered something. On the table questions (Q11/12/13) that includes **every
+  outstanding row by name**, so nobody hunts for the one row they missed.
+- `validate()` reuses that same function for the final object, so what the form calls
+  answered and what the download requires cannot drift apart. An incomplete form is a fine
+  thing for a patient to have and not a thing to hand a doctor as if it were finished.
 
 Making that honest required a data-model change: every yes/no is `boolean | null` while
 filling. If `smoking` defaulted to `false`, an untouched row would be indistinguishable

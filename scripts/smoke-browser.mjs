@@ -338,10 +338,22 @@ try {
 
   // ---------- section 1: About You ----------
   notes.push(await sectionLine());
-  const aboutBlocked = await page.getByRole("button", { name: /^Next/ }).isDisabled();
-  notes.push(`About You blocks Next before answers? ${aboutBlocked}  (must be true)`);
-  if (!aboutBlocked)
-    errors.push({ kind: "about", text: "About You did not gate Next", fatal: false });
+  /*
+    Nothing is required to move on, and this is the assertion for it.
+    It used to assert the opposite - that About You gated Next until sex and age were given.
+    A hair-loss intake asks about pregnancy, alcohol and smoking, and a form that refuses to
+    advance until a patient answers produces a guess instead of a blank; a blank is honest and
+    a guess is a wrong entry in a clinical record. The DOWNLOAD is still gated on a complete
+    form, which is checked at the end of this walk.
+  */
+  const nextOpen = await page
+    .locator("[data-next-action]")
+    .filter({ hasNot: page.locator("[hidden]") })
+    .first()
+    .isEnabled();
+  notes.push(`Next works with nothing answered? ${nextOpen}  (must be true)`);
+  if (!nextOpen)
+    errors.push({ kind: "optional", text: "Next was blocked on an unanswered section", fatal: true });
 
   /*
     Located by the VISIBLE label now.
@@ -359,9 +371,16 @@ try {
   else notes.push('the name is echoed as you type: "Thank you, Asha"');
 
   await tap(page.getByRole("radio", { name: /^Female/ }), 'option "Female"');
-  if (!(await page.getByRole("button", { name: /^Next/ }).isDisabled()))
-    errors.push({ kind: "about", text: "sex alone was enough to pass About You", fatal: false });
-  else notes.push("sex alone is not enough - the age is still required");
+  /*
+    Answering the sex alone leaves About You incomplete, and that is now reported rather than
+    enforced: the card still says `data-answered="false"` and the section note lists what is
+    open, but Next works. The previous version of this check asserted the opposite - that Next
+    stayed disabled - which was the behaviour that has been deliberately removed.
+  */
+  const aboutIncomplete = (await page.locator('main [data-answered="false"]').count()) > 0;
+  notes.push(`sex alone leaves About You incomplete? ${aboutIncomplete}  (reported, not blocked)`);
+  if (!aboutIncomplete)
+    errors.push({ kind: "about", text: "About You counted itself answered with no age", fatal: false });
 
   /*
     The age is TYPED, because typing is the primary way to answer it now and a smoke that
@@ -381,13 +400,20 @@ try {
 
   await ageField.type("0", { delay: 40 });
   await page.waitForTimeout(450);
-  const outOfRangeBlocks = await page.getByRole("button", { name: /^Next/ }).isDisabled();
+  /*
+    An out-of-range age is still NOT AN ANSWER, which is the part that matters, and it no
+    longer blocks Next, because nothing does. Those are two different claims and this checks
+    both: the error is on screen, and the card reports itself unanswered - `data-answered` is
+    the store's view of the question rather than the field's, so it is what would catch 600
+    being quietly kept as 60.
+  */
   const alertShown = (await page.getByRole("alert").count()) > 0;
-  notes.push(`600 -> Next blocked? ${outOfRangeBlocks}, error shown? ${alertShown}`);
-  if (!outOfRangeBlocks || !alertShown)
+  const stillUnanswered = (await page.locator('main [data-answered="false"]').count()) > 0;
+  notes.push(`600 -> error shown? ${alertShown}, question left unanswered? ${stillUnanswered}`);
+  if (!alertShown || !stillUnanswered)
     errors.push({
       kind: "age",
-      text: "an out-of-range age left the question answered",
+      text: "an out-of-range age was accepted as an answer",
       fatal: true,
     });
 
@@ -492,28 +518,28 @@ try {
   for (let hop = 0; hop < 10; hop += 1) {
     const nextBtn = page.getByRole("button", { name: /^Next|^Review answers/ });
 
-    // Before completing a section, a blocked Next must name what is missing.
-    if (!(await nextBtn.isEnabled())) {
-      await nextBtn.click({ force: true });
-      await page.waitForTimeout(320);
-      const reason = await page.getByRole("status").innerText().catch(() => "");
-      if (hop === 0) {
-        notes.push(`blocked Next says: ${JSON.stringify(reason.replace(/\s+/g, " ").slice(0, 70))}`);
-        if (!reason)
-          errors.push({ kind: "nag", text: "a blocked Next explained nothing", fatal: false });
-      }
-    }
+    /*
+      Answer until the section has no unanswered card left.
 
-    // Answer everything still open in this section.
-    for (let i = 0; i < 14; i += 1) {
-      if (await nextBtn.isEnabled()) break;
+      This loop used to run until Next became enabled, which stopped working the moment
+      nothing was required: Next is always enabled now, so that condition was true on arrival
+      and the walk hopped through all six sections without answering anything. The honest
+      signal is the cards themselves - `data-answered` is what the page already publishes for
+      exactly this - and a section is done when none of them says false.
+    */
+    for (let i = 0; i < 16; i += 1) {
+      if ((await page.locator('main [data-answered="false"]').count()) === 0) break;
       if (!(await answerOpenCard())) break;
     }
+
+    const left = await page.locator('main [data-answered="false"]').count();
+    if (left > 0)
+      notes.push(`${await sectionLine()}: ${left} card(s) still unanswered after the pass`);
 
     if (!(await nextBtn.isEnabled())) {
       errors.push({
         kind: "walk",
-        text: `stuck in ${await sectionLine()} with Next still disabled`,
+        text: `Next is disabled in ${await sectionLine()} - nothing should block it`,
         fatal: true,
       });
       break;
@@ -694,7 +720,30 @@ try {
   // ---------- inspect the actual output object ----------
   await page.getByRole("button", { name: /View raw JSON/ }).click();
   await page.waitForTimeout(500);
-  const parsed = JSON.parse(await page.locator("pre").first().innerText());
+
+  /*
+    The JSON opens in a dialog that scrolls itself.
+
+    It used to be a `<pre>` appended to the review screen, which turned a two-screen page into
+    a six-screen one and put the button that closed it off the bottom. So two things are
+    asserted: the dialog's own box is what overflows, and the page behind it did not grow.
+  */
+  const jsonBox = await page.evaluate(() => {
+    const dialog = document.querySelector('[role="dialog"]');
+    const region = dialog?.querySelector('[role="region"]');
+    return {
+      inDialog: dialog !== null,
+      scrolls: region instanceof HTMLElement ? region.scrollHeight > region.clientHeight + 4 : false,
+      pageScrollable: document.documentElement.scrollHeight > window.innerHeight + 4,
+    };
+  });
+  notes.push(
+    `raw JSON: in a dialog ${jsonBox.inDialog}, scrolls inside itself ${jsonBox.scrolls}`,
+  );
+  if (!jsonBox.inDialog || !jsonBox.scrolls)
+    errors.push({ kind: "json", text: "the raw JSON is not in a scrollable dialog", fatal: false });
+
+  const parsed = JSON.parse(await page.locator('[role="dialog"] pre').first().innerText());
   const a = parsed.answers;
   notes.push(`patient_sex: ${JSON.stringify(parsed.patient_sex)}`);
   notes.push(`menstrual_cycle: ${JSON.stringify(a.menstrual_cycle)} (asked, female)`);
@@ -706,6 +755,18 @@ try {
 
   if (a.menstrual_cycle === null) throw new Error("female patient got a null menstrual_cycle");
   if (a.consent !== true) throw new Error("consent did not record as true");
+
+  /*
+    Escape closes it, and it has to be closed before the review screen can be touched again.
+    Leaving it open is how this check found its own bug: the previous inline `<pre>` let later
+    clicks through, and the dialog correctly does not - the next row click sat there for thirty
+    seconds hitting the backdrop.
+  */
+  await page.keyboard.press("Escape");
+  await page.waitForTimeout(300);
+  if ((await page.getByRole("dialog").count()) > 0)
+    errors.push({ kind: "json", text: "Escape did not close the JSON dialog", fatal: false });
+  else notes.push("Escape closed the JSON dialog");
 
   // ---------- correcting an answer WITHOUT leaving the review screen ----------
   /*

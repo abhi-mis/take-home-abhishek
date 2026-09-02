@@ -423,6 +423,11 @@ export const TEXT_EN = {
   onsetBound: "You told us you are {age}, so later ages are closed.",
 
   // validation
+  // Informational now, not a blocker: these can be left and come back to.
+  canComeBack: "You can come back to these",
+  canComeBackN: "{n} you can come back to",
+  jsonTitle: "The form your doctor receives",
+  jsonClose: "Close",
   stillNeeded: "Still needed",
   stillNeededN: "Still needed ({n})",
   andMore: "…and {n} more below",
@@ -751,6 +756,10 @@ export const TEXT_HI: Record<TextKey, string> = {
   onsetClosed: "आपकी उम्र के बाद",
   onsetBound: "आपने बताया कि आपकी उम्र {age} है, इसलिए इसके बाद की उम्र बंद है।",
 
+  canComeBack: "इन्हें बाद में भी भर सकते हैं",
+  canComeBackN: "{n} बाद में भर सकते हैं",
+  jsonTitle: "आपके डॉक्टर को यही फ़ॉर्म मिलेगा",
+  jsonClose: "बंद करें",
   stillNeeded: "अभी बाकी है",
   stillNeededN: "अभी बाकी है ({n})",
   andMore: "…और {n} नीचे",

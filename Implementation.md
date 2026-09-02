@@ -273,6 +273,113 @@ is not, and an extra tap to dismiss a card is ceremony the patient did not ask f
 
 ---
 
+## Nothing is required to move on
+
+Next is never disabled. A patient can leave any question unanswered, walk through all six
+sections, and reach the review screen with gaps in the form.
+
+That is a decision about what this form is for, not a relaxation of standards. A hair-loss
+intake asks about pregnancy, alcohol and smoking; some of those a patient will not want to
+answer at a reception desk with somebody behind them, and a form that refuses to advance until
+they do produces a guess rather than a blank. A blank is honest. A guess is a wrong entry in a
+clinical record, and it is indistinguishable from a real answer by the time a doctor reads it.
+
+What replaced the gate:
+
+| | before | after |
+| --- | --- | --- |
+| Next while a section is incomplete | disabled | works |
+| what the section says | "STILL NEEDED (3)" in warning colours, after a blocked press | "You can come back to these", quietly, once the patient has answered something |
+| Shift+Enter to the next section | only when complete | always |
+| the DOWNLOAD | gated on a complete, schema-valid form | unchanged |
+| the review screen | lists every unanswered question | unchanged |
+
+So nothing is lost except the argument at the bottom of the screen. The one thing that still
+refuses is the download, which is the right place for it: an incomplete form is a fine thing
+for a patient to have, and not a thing to hand a doctor as if it were finished.
+
+Skipping About You is safe by construction rather than by luck - `isStepVisible` gates Q6 and
+Q7 on `patient_sex === "female"`, so an unanswered sex hides them rather than showing two
+questions that may not apply.
+
+**The browser walk had been asserting the opposite**, in two places, and both had to be
+inverted rather than deleted: it now checks that Next works with nothing answered, and that
+answering the sex alone leaves About You reporting itself incomplete without blocking. Its
+"section finished" signal also had to change - it used to loop until Next became enabled,
+which is now true on arrival, so the walk hopped through all six sections answering nothing.
+It reads `data-answered` instead, which is the fact it actually wanted.
+
+---
+
+## One control column
+
+Every row of every grid puts its control in the same 430px column, left-aligned. Before, each
+row sized its own: a Yes/No took its content width on the right, the hair-wash options asked
+for a 190px minimum, and the merged smoking row asked for 320px. Nothing was misaligned by a
+bug and nothing was aligned on purpose either - three different left edges down one card, with
+the smoking options pushed far enough right that the last one wrapped underneath the first two.
+
+Measured after: **one distinct left edge per card**, at every width, in both languages, with
+nothing overflowing.
+
+Three details that were arithmetic rather than taste:
+
+- **430px, not 420.** The four smoking options measure 403px and three 6px gaps take them to
+  421. At 420 the last one wrapped onto a line of its own - the kind of number that looks
+  arbitrary and is not.
+- **The 2px bleed is for the scrolling variant only.** `SegmentedRow` carried `-mx-0.5 px-0.5`
+  so a focus ring on the first or last button would not be clipped by its overflow box. A
+  wrapping row has no overflow to clip against, and keeping it there put those buttons 4px
+  right of the Yes/No pairs in the same column.
+- **The small Yes/No is a flex row, not a 2-column grid.** A grid in a 430px column stretches
+  "Yes" and "No" to 206px each: two enormous buttons carrying two short words.
+
+In Hindi the smoking row still takes two lines, because the translated severity labels are
+wider than the column. It wraps, left-aligned, with no overflow - which is the correct
+fallback rather than a failure.
+
+---
+
+## Four smaller corrections
+
+**The word REQUIRED came off the table rows.** It read `{column} · REQUIRED` while unanswered,
+so every control on the row moved sideways the moment the answer landed. Text appearing and
+disappearing inside a flex row is a layout shift by construction - and with nothing required
+any more, it was also no longer true.
+
+**The raw JSON opens in a dialog** (`components/JsonDialog.tsx`) that scrolls inside itself,
+capped at 82% of the viewport. As a `<pre>` appended to the review screen it turned a
+two-screen page into a six-screen one, with the button that closed it somewhere off the bottom.
+The smoke asserts the JSON is in a dialog, that the dialog's own box is what overflows, and
+that Escape closes it - which it does, and which is how this found its own bug: the previous
+inline `<pre>` let later clicks through and a modal correctly does not, so the next step in the
+walk spent thirty seconds clicking a backdrop.
+
+**The age floor is 16 again**, on the clinical point that androgenetic hair loss does not
+present before puberty completes. `ONSET_MIN` moved with it, and `NumberStepper` now reads that
+constant instead of declaring a local `5` - a local constant beside a shared one is a second
+source of truth waiting to disagree, and it would have gone on offering an onset age of 5.
+
+**The language toggle's thumb no longer travels across the page.** It used `layoutId`, which
+implies `layout`, so framer-motion animated the element whenever its measured position changed -
+and it measures against the VIEWPORT, not against the control. Anything that moved the toggle
+made the thumb fly to its new home from wherever it had been. The landing screen's composition
+is vertically centred, so it re-centres when its own height changes (the resume button appearing
+after hydration is enough), and the toggle sits 177px lower there than in the app bar. That is
+the "travelling from bottom to top" report.
+
+It is now one element moved by a transform relative to its own layout box, which cannot depend
+on where the control sits. Measured: the thumb is inside its group at both positions, and
+switching language moves it exactly 40px.
+
+The first diagnosis was wrong and worth recording. The obvious suspect was two mounts sharing
+a `layoutId` - `useId()` is derived from tree position, and two pages can easily both produce
+the same id. Probing it by exposing the generated id showed `_R_65btb_` on the landing and
+`_R_2qclubtb_` on the intake: different, so that was not it. The 177px between them was the
+real clue.
+
+---
+
 ## Nested questions: one row, not two stages
 
 A boolean gating an option list was asked literally - "do you smoke?", then, once you said
@@ -375,10 +482,10 @@ instant it appeared, before a character had been typed, because the condition wa
 the message now waits until the patient has actually been in the box.
 
 **Empty is valid at the field level, deliberately.** A blank age is "not answered yet", which
-is a section-completeness question that `validateSection` already blocks Next on - not a field
-error. Colouring the box red the moment someone focuses it and types nothing is the form
-telling them off for arriving. Out of range is a different matter and maps to `null`, so the
-section goes incomplete rather than keeping the last good number.
+is a section-completeness question that `validateSection` reports and the download gate
+enforces - not a field error. Colouring the box red the moment someone focuses it and types
+nothing is the form telling them off for arriving. Out of range is a different matter and maps
+to `null`, so the question stays unanswered rather than keeping the last good number.
 
 `components/ui/TextField.tsx` exists because there were three hand-wired inputs and each
 remembered a different subset of the job: one had `aria-invalid` and no `aria-describedby`, one

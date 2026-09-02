@@ -20,11 +20,17 @@
  * rem breakpoint moves with the user's font size, so the two together put ordinary desktops
  * below `lg` and handed them the mobile layout.
  *
- * Validation stays quiet until the patient has either tried to leave or come back to a
- * section they have already passed. Telling someone what they have not done yet, before they
- * have had a chance to do it, is the fastest way to make software feel hostile.
+ * NOTHING BLOCKS NEXT. A patient can leave any question unanswered and move on, and the
+ * outstanding list under a section is a note rather than a gate: "you can come back to these".
+ *
+ * That is a real decision, not a relaxation. A hair-loss intake asks about pregnancy, alcohol
+ * and smoking; some of those a patient will not want to answer at a reception desk with
+ * someone behind them, and a form that refuses to move until they do produces a guess instead
+ * of a blank. A blank is honest and a guess is a wrong entry in a clinical record. The
+ * download is still gated on a complete, schema-valid form, and the review screen names every
+ * question that has no answer - so nothing is lost except the argument at the bottom of the
+ * screen.
  */
-import { useEffect, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { AppBar, APP_BAR_PAD } from "./AppBar";
 import { SectionNav, type NavProgress } from "./SectionNav";
@@ -43,7 +49,6 @@ export function SectionShell({
   visible,
   nextTitle,
   outstanding,
-  canGoNext,
   revisited,
   lang,
   comfort,
@@ -65,9 +70,8 @@ export function SectionShell({
   visible: number;
   /** Name of the next section, or null on the last one (then Next reads "Review answers"). */
   nextTitle: string | null;
-  /** Short labels of the unanswered questions, for the block message. */
+  /** Short labels of the unanswered questions, for the note under the section. */
   outstanding: string[];
-  canGoNext: boolean;
   /** True once this section has been left before, so its summary may show on arrival. */
   revisited: boolean;
   lang: Lang;
@@ -87,9 +91,12 @@ export function SectionShell({
   railProgress: Record<string, NavProgress>;
   children: React.ReactNode;
 }) {
-  const [pressedNext, setPressedNext] = useState(false);
-  useEffect(() => setPressedNext(false), [section.id]);
-  const showOutstanding = outstanding.length > 0 && (pressedNext || revisited);
+  /*
+    The note appears once the patient has engaged with the section - something answered, or
+    a section they have come back to - and not on arrival. Listing five unanswered questions
+    to someone who has just got here is telling them off for arriving.
+  */
+  const showOutstanding = outstanding.length > 0 && (answered > 0 || revisited);
   const title = sectionLabel(lang)[section.id] ?? section.id;
 
   return (
@@ -172,22 +179,22 @@ export function SectionShell({
                 exit={{ opacity: 0 }}
                 role="status"
                 aria-live="polite"
-                className="mt-5 rounded-2xl border border-dashed border-warn/45 bg-warn/[0.04] p-4"
+                className="mt-5 rounded-2xl border border-dashed border-line bg-card/50 p-4"
               >
-                <p className="text-[12.5px] font-bold uppercase tracking-wide text-warn">
+                <p className="text-[12.5px] font-bold uppercase tracking-wide text-muted">
                   {outstanding.length === 1
-                    ? t("stillNeeded", lang)
-                    : t("stillNeededN", lang, { n: outstanding.length })}
+                    ? t("canComeBack", lang)
+                    : t("canComeBackN", lang, { n: outstanding.length })}
                 </p>
                 <ul className="mt-1.5 flex flex-col gap-1">
                   {outstanding.slice(0, 8).map((o) => (
-                    <li key={o} className="flex gap-2 text-[13px] leading-snug text-warn">
+                    <li key={o} className="flex gap-2 text-[13px] leading-snug text-muted">
                       <span aria-hidden>·</span>
                       <span>{o}</span>
                     </li>
                   ))}
                   {outstanding.length > 8 ? (
-                    <li className="text-[12.5px] italic text-warn/80">
+                    <li className="text-[12.5px] italic text-muted/80">
                       {t("andMore", lang, { n: outstanding.length - 8 })}
                     </li>
                   ) : null}
@@ -206,14 +213,7 @@ export function SectionShell({
             it is not - which is the same reasoning as the landing page's CTA.
           */}
           <div className="sticky bottom-0 -mx-10 mt-7 hidden bg-paper/95 px-10 pb-6 pt-4 backdrop-blur-md desk:block">
-            <Actions
-              lang={lang}
-              nextTitle={nextTitle}
-              canGoNext={canGoNext}
-              onBack={onBack}
-              onNext={onNext}
-              onBlockedPress={() => setPressedNext(true)}
-            />
+            <Actions lang={lang} nextTitle={nextTitle} onBack={onBack} onNext={onNext} />
           </div>
         </main>
       </div>
@@ -223,14 +223,7 @@ export function SectionShell({
         the viewport, and the way forward must never be something you scroll to find.
       */}
       <div className="fixed inset-x-0 bottom-0 z-40 border-t border-line bg-paper/95 px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3 backdrop-blur-md desk:hidden">
-        <Actions
-          lang={lang}
-          nextTitle={nextTitle}
-          canGoNext={canGoNext}
-          onBack={onBack}
-          onNext={onNext}
-          onBlockedPress={() => setPressedNext(true)}
-        />
+        <Actions lang={lang} nextTitle={nextTitle} onBack={onBack} onNext={onNext} />
       </div>
     </div>
   );
@@ -238,6 +231,8 @@ export function SectionShell({
 
 /**
  * Back and Next, rendered twice - once in the desktop column, once in the phone's fixed bar.
+ *
+ * Neither is ever disabled. See the note at the top of the file.
  *
  * Twice rather than one element moved by CSS because the two live in different stacking and
  * scrolling contexts. Only one is ever RENDERED - each side is behind a `desk:hidden` or a
@@ -252,17 +247,13 @@ export function SectionShell({
 function Actions({
   lang,
   nextTitle,
-  canGoNext,
   onBack,
   onNext,
-  onBlockedPress,
 }: {
   lang: Lang;
   nextTitle: string | null;
-  canGoNext: boolean;
   onBack: () => void;
   onNext: () => void;
-  onBlockedPress: () => void;
 }) {
   return (
     <div className="flex items-center gap-3">
@@ -275,22 +266,10 @@ function Actions({
       >
         <BackArrow /> {ui(lang).back}
       </Button>
-      {/*
-        The wrapper catches the tap a disabled button cannot. `disabled:pointer-events-none`
-        means a press on a blocked Next lands here instead of nowhere, which is what turns
-        "the button is dead" into "here is what is missing" - while the button itself stays
-        genuinely disabled for keyboard and screen-reader users.
-      */}
-      <div
-        className="flex-1"
-        onPointerDown={() => {
-          if (!canGoNext) onBlockedPress();
-        }}
-      >
+      <div className="flex-1">
         <Button
           size="lg"
           onClick={onNext}
-          disabled={!canGoNext}
           className="w-full"
           /*
             Queried by the page when Enter runs out of questions to open: focus should land

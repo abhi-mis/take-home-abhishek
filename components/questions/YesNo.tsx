@@ -31,7 +31,21 @@ export function YesNo({
   const shown = value;
 
   return (
-    <div role="radiogroup" className={cn("grid grid-cols-2", size === "lg" ? "gap-3" : "gap-2")}>
+    /*
+      Two layouts, because the two sizes answer different questions.
+
+      `lg` is a question all by itself, so its pair fills the width - a 2x1 grid of big
+      targets. `sm` sits in a table row inside a shared 420px control column, and a grid
+      there would stretch "Yes" and "No" to 206px each: two enormous buttons saying two
+      short words, and a left edge that no longer matches the option rows above and below
+      it. So the small pair is a flex row of fixed-width buttons, packed to the left.
+    */
+    <div
+      role="radiogroup"
+      className={cn(
+        size === "lg" ? "grid grid-cols-2 gap-3" : "flex justify-start gap-2",
+      )}
+    >
       {[
         { v: true, label: yes },
         { v: false, label: no },
@@ -48,7 +62,9 @@ export function YesNo({
           className={cn(
             "rounded-2xl border-2 font-semibold transition-all duration-100 active:scale-[0.98]",
             // tap-lg shrinks under `pointer: fine`; the 88px stays for thumbs.
-            size === "lg" ? "tap-lg min-h-[88px] text-lg" : "min-h-[44px] px-3 text-[13px]",
+            size === "lg"
+              ? "tap-lg min-h-[88px] text-lg"
+              : "min-h-[44px] w-[84px] shrink-0 px-3 text-[13px]",
             shown === v
               ? "border-brand bg-brand-soft text-brand-ink"
               : "border-line bg-card text-muted hover:border-brand/50 hover:bg-brand-soft/40 hover:text-ink",

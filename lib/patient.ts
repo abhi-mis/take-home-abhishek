@@ -102,18 +102,24 @@ export function shouldOfferComfort(
  * because it is unusual is how a form tells a 96-year-old they do not exist. Anything
  * outside this is a typo rather than a person.
  */
-export const AGE_MIN = 1;
+export const AGE_MIN = 16;
 export const AGE_MAX = 100;
 
 /**
  * The youngest age hair loss is asked about, which is NOT the same number.
  *
- * `maxOnsetAge` used to floor the onset ceiling at AGE_MIN, and that was only correct while
- * AGE_MIN was 16. With the field accepting 1, flooring at AGE_MIN would tell a 5-year-old's
+ * `maxOnsetAge` floors the onset ceiling at ONSET_MIN rather than at AGE_MIN. The two happen
+ * to be the same number now, and the indirection stays because they are different facts: one
+ * is who may fill this form in, the other is the earliest age the onset question will offer.
+ * They were briefly 1 and 5, and flooring at AGE_MIN then would have told a 5-year-old's
  * form that onset may be up to 5 - which is right - but flooring at 16 would have allowed 16.
  * Keeping the two bounds separate is what makes both of them mean something.
  */
-export const ONSET_MIN = 5;
+/*
+  16, on the clinical point that androgenetic hair loss does not present before puberty
+  completes. It matches AGE_MIN by consequence, not by definition - see the note above.
+*/
+export const ONSET_MIN = 16;
 
 /** Coarse bands, used for copy rather than for any clinical decision. */
 export function ageBand(age: number | null, lang: Lang): string {

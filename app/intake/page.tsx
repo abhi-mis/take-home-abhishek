@@ -266,7 +266,8 @@ export default function IntakePage() {
           return;
         }
         case "nextSection":
-          if (check.complete) nextSection();
+          // Unconditional, like the button: Shift+Enter is the patient asking to move on.
+          nextSection();
           return;
         case "moveUp":
         case "moveDown": {
@@ -356,7 +357,6 @@ export default function IntakePage() {
         visible={visible.length}
         nextTitle={nextTitle}
         outstanding={check.missing.map((s) => shortLabel(s, lang))}
-        canGoNext={check.complete}
         revisited={touched[section.id] === true}
         lang={lang}
         comfort={comfort}

@@ -27,6 +27,7 @@ import type { Answers, Meta } from "@/lib/types";
 import { Button, CheckIcon } from "./ui/Button";
 import { cn, downloadJson } from "@/lib/utils";
 import { AppBar, APP_BAR_PAD } from "./AppBar";
+import { JsonDialog } from "./JsonDialog";
 import { useIntake } from "@/lib/store";
 import { doneTitle, personalSummary } from "@/lib/patient";
 import { EditQuestionDialog } from "./EditQuestionDialog";
@@ -265,10 +266,17 @@ export function ReviewScreen({
         />
       ) : null}
 
+      {/*
+        In a dialog, so the JSON scrolls and the page does not. Ninety lines of it appended to
+        the review screen turned a two-screen page into a six-screen one, with the button that
+        closed it again somewhere off the bottom.
+      */}
       {showJson ? (
-        <pre className="mt-4 overflow-x-auto rounded-2xl border border-line bg-code-bg p-4 text-[11.5px] leading-relaxed text-code-fg">
-          {JSON.stringify(output, null, 2)}
-        </pre>
+        <JsonDialog
+          json={JSON.stringify(output, null, 2)}
+          lang={lang}
+          onClose={() => setShowJson(false)}
+        />
       ) : null}
 
       <p className="mt-6 text-center text-[11.5px] leading-relaxed text-muted">

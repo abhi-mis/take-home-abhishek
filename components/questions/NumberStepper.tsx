@@ -12,6 +12,7 @@
  */
 import { useState } from "react";
 import { cn, tick } from "@/lib/utils";
+import { ONSET_MIN } from "@/lib/patient";
 import { t, type Lang } from "@/lib/i18n";
 
 /**
@@ -26,7 +27,14 @@ const PRESETS = [
   { label: "onset50s", hint: "onset50sHint", value: 55, low: 50 },
 ] as const;
 
-const MIN = 5;
+/*
+  Reads its floor from lib/patient.ts rather than declaring one.
+
+  It was a local `5` while the age field accepted 1, and a local constant beside a shared one
+  is a second source of truth waiting to disagree: raising the age floor to 16 would have left
+  this offering 5, 6, 7 for an onset age.
+*/
+const MIN = ONSET_MIN;
 const DEFAULT_MAX = 90;
 
 export function NumberStepper({

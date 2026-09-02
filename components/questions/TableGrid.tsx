@@ -33,7 +33,7 @@ import {
   mergedSelection,
   type MergedSpec,
 } from "@/lib/apply";
-import { SegmentedRow } from "./HabitsGrid";
+import { OPTION_ROW, OPTION_ROW_CONTROL, OPTION_ROW_LABEL, SegmentedRow } from "./HabitsGrid";
 import { YesNo } from "./YesNo";
 
 export interface ColumnSpec {
@@ -101,8 +101,9 @@ export function TableGrid({
               there is not. "Never <3mo 3-6mo >6mo" fits on a desktop; "Moderate 5-10/day"
               and its siblings do not, and wrap on their own.
             */}
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-2.5">
-              <div className="min-w-[45%] flex-1">
+            {/* The same control column the habits grid uses - see OPTION_ROW there. */}
+            <div className={OPTION_ROW}>
+              <div className={OPTION_ROW_LABEL}>
                 <p className="text-[14.5px] font-semibold leading-tight text-ink">
                   {optionLabel(row, lang)}
                 </p>
@@ -112,8 +113,7 @@ export function TableGrid({
               </div>
               <SegmentedRow
                 wrap
-                /* basis, not shrink-0: see the note in HabitsGrid. */
-                className="min-w-0 flex-1 basis-[320px]"
+                className={OPTION_ROW_CONTROL}
                 ariaLabel={`${optionLabel(row, lang)}: ${mergedLabel}`}
                 options={options}
                 labels={labels}
@@ -139,17 +139,25 @@ export function TableGrid({
                     {detailColumns.map((col) => {
                       const missing = entry[col.key] === null || entry[col.key] === undefined;
                       return (
-                        <div key={col.key} className="row-split flex items-center gap-3">
+                        <div key={col.key} className={OPTION_ROW}>
+                          {/*
+                            The label, and nothing appended to it.
+
+                            It used to read `{col.label} · REQUIRED` while unanswered, which
+                            moved every control on the row sideways the moment the answer
+                            landed - text appearing and disappearing inside a flex row is a
+                            layout shift by construction. Nothing in the form is required to
+                            move on any more either, so the word was also no longer true.
+                          */}
                           <p
                             className={cn(
-                              "min-w-0 flex-1 text-[12px] font-semibold uppercase tracking-wide",
-                              missing ? "text-warn" : "text-muted",
+                              OPTION_ROW_LABEL,
+                              "text-[12px] font-semibold uppercase tracking-wide text-muted",
                             )}
                           >
                             {col.label}
-                            {missing ? " · " + t("required", lang) : ""}
                           </p>
-                          <div className="row-control shrink-0">
+                          <div className={cn("row-control", OPTION_ROW_CONTROL)}>
                             {col.kind === "yesno" ? (
                               <YesNo
                                 size="sm"

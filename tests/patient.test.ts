@@ -86,11 +86,17 @@ describe("the onset-age ceiling", () => {
     expect(maxOnsetAge(meta())).toBe(90);
   });
 
-  it("floors at the ONSET minimum, not the age field's minimum", () => {
-    // Two different numbers on purpose. The age field accepts 1 because refusing an unusual
-    // age is how a form tells someone they do not exist; the onset question starts at 5.
-    expect(AGE_MIN).toBe(1);
+  it("floors at the ONSET minimum rather than at the age field's", () => {
+    /*
+      The two constants are the same number again - 16, on the clinical point that
+      androgenetic hair loss does not present before puberty completes - and the indirection
+      stays because they are different facts: one is who may fill this form in, the other is
+      the earliest onset the question will offer. They were briefly 1 and 5, and this test is
+      what would catch `maxOnsetAge` being re-pointed at the wrong one.
+    */
+    expect(AGE_MIN).toBe(16);
     expect(AGE_MAX).toBe(100);
+    expect(ONSET_MIN).toBe(16);
     expect(maxOnsetAge(meta({ patient_age: 3 }))).toBe(ONSET_MIN);
     expect(maxOnsetAge(meta({ patient_age: 40 }))).toBe(40);
   });

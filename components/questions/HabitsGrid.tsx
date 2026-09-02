@@ -37,18 +37,27 @@ const LABELS: Record<string, { en: TextKey; help: TextKey }> = {
 };
 
 /*
-  The geometry of a row whose control is a list of options.
+  ONE CONTROL COLUMN, and every row uses it.
 
-  `basis` rather than `shrink-0` is the whole fix. With `shrink-0` the options kept their
-  content width and simply overflowed the card - on a 390px phone "Severe >10/day" was off
-  the right edge entirely, and the hair-wash label was squeezed into a 140px column that
-  wrapped to one word per line. Asking for 320px instead means the options sit beside the
-  label while there is room for both, and when there is not they take a line of their own at
-  full width - which is what lets their own `flex-wrap` put the buttons on two rows.
+  The rows used to size their controls independently: a Yes/No took its content width on the
+  right, the hair-wash options asked for a 190px minimum, and the merged smoking row asked for
+  320px. The result is visible the moment you look down a card - three different left edges,
+  and the smoking options pushed far enough right that the last one wrapped underneath the
+  first two. Nothing was misaligned by a bug; nothing was aligned on purpose either.
+
+  So the control column is a fixed width and the buttons inside it start at its left edge. Down
+  a card, every control now begins at the same x, which is what makes a table of questions read
+  as a table. 430px because that is what the widest set needs on one line: "No", "Mild <5/day",
+  "Moderate 5-10/day" and "Severe >10/day" measure 403px, and three 6px gaps take it to 421.
+  It was briefly 420 - one pixel short - which is exactly the kind of number that looks
+  arbitrary and is not: at 420 the last option wrapped on its own onto a second line.
+
+  On a phone there is no room for two columns at all, so the control drops below its label and
+  takes the full width - still left-aligned, still the same edge as every other row's.
 */
-const OPTION_ROW = "flex flex-wrap items-center gap-x-4 gap-y-2.5";
-const OPTION_ROW_LABEL = "min-w-[45%] flex-1";
-const OPTION_ROW_CONTROL = "min-w-0 flex-1 basis-[320px]";
+export const OPTION_ROW = "flex flex-wrap items-center gap-x-4 gap-y-2";
+export const OPTION_ROW_LABEL = "min-w-0 flex-1 basis-full desk:basis-0";
+export const OPTION_ROW_CONTROL = "w-full justify-start desk:w-[430px] desk:shrink-0";
 
 export function HabitsGrid({
   value,
@@ -121,11 +130,12 @@ export function HabitsGrid({
                 )}
               </div>
             ) : (
-            <div className="row-split flex items-center gap-3">
-              <div className="min-w-0 flex-1">
+            <div className={OPTION_ROW}>
+              <div className={OPTION_ROW_LABEL}>
                 <RowLabel field={row.key} lang={lang} />
               </div>
-              <div className="row-control shrink-0">
+              {/* Same column as the option rows, so the left edges line up. */}
+              <div className={cn("row-control", OPTION_ROW_CONTROL)}>
               <YesNo
                 size="sm"
                 lang={lang}
@@ -267,8 +277,16 @@ export function SegmentedRow({
       role="radiogroup"
       aria-label={ariaLabel}
       className={cn(
-        "-mx-0.5 flex gap-1.5 px-0.5",
-        wrap ? "flex-wrap" : "no-scrollbar overflow-x-auto",
+        "flex gap-1.5",
+        /*
+          The 2px bleed exists only for the scrolling variant, where a focus ring on the
+          first or last button would otherwise be clipped by the overflow box. A wrapping
+          row has no overflow to clip against, and keeping the bleed there put its buttons
+          4px to the right of the Yes/No pairs in the same control column - visible as two
+          slightly different left edges down a card, which is the thing this column was
+          introduced to fix.
+        */
+        wrap ? "flex-wrap" : "no-scrollbar -mx-0.5 overflow-x-auto px-0.5",
         className,
       )}
     >
