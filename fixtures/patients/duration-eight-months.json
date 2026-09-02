@@ -1,0 +1,9 @@
+{
+  "id": "duration-eight-months",
+  "questionKey": "duration",
+  "note": "A number that has to be placed inside a range, not rounded down.",
+  "transcript": "Aath mahine se ho raha hai, shayad thoda zyada.",
+  "expected": {
+    "duration": "6-12 months"
+  }
+}

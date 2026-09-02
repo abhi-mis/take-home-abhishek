@@ -14,7 +14,6 @@
     "smoke": "node scripts/smoke-browser.mjs"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.122.0",
     "@hookform/resolvers": "^5.9.1",
     "clsx": "^2.1.1",
     "framer-motion": "^11.11.17",

@@ -9,7 +9,7 @@
  *
  * So instead of printing "3 things missing" and abandoning them, every outstanding field
  * is described here as a self-contained question - its own wording, its own control, its
- * own options - which FollowUpFlow then asks one at a time. The patient answers three
+ * own options - which the grid then reveals inline, under the row that unlocked them.
  * big taps in a row and is done.
  *
  * These descriptors are also what validateStep() builds its messages from, so the

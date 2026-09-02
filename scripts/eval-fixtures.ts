@@ -35,6 +35,10 @@ interface Fixture {
   note?: string;
   transcript: string;
   expected: Record<string, unknown>;
+  /** About You writes name, sex and age to `meta`, which is not one of the 16 answers. */
+  expectedMeta?: Record<string, unknown>;
+  /** Q4 and Q10: a denial has no option to land on, so it lands here. */
+  expectedNoneOf?: string[];
   expectUnfilled?: string[];
   unmentionedRows?: string[];
   describeMustMention?: string[];
@@ -56,9 +60,9 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
  * lone timeout says nothing about extraction quality - retrying once keeps the score
  * about the model's answers rather than about the queue depth.
  *
- * The call goes through the SAME callModel() the route uses, so provider, model,
- * temperature and the JSON prefill are identical. A benchmark that runs different
- * settings than production is worthless.
+ * The call goes through the SAME callModel() the route uses, and there is nothing to keep
+ * in step: the model and the temperature are constants in lib/llm.ts, so this measures
+ * what production runs by construction rather than by matching two configurations.
  */
 async function ask(settings: LlmSettings, key: string, transcript: string): Promise<string> {
   const user = buildUserMessage(SLICES[key as never], transcript);
@@ -100,6 +104,14 @@ function compare(expected: unknown, actual: unknown, pathStr: string, out: Check
 function scoreOne(fx: Fixture, result: ExtractResult): Check[] {
   const checks: Check[] = [];
   compare(fx.expected, result.patch, "", checks);
+  if (fx.expectedMeta !== undefined) compare(fx.expectedMeta, result.meta ?? {}, "meta", checks);
+
+  if (fx.expectedNoneOf !== undefined) {
+    const got = [...(result.noneOf ?? [])].sort();
+    const want = [...fx.expectedNoneOf].sort();
+    const same = JSON.stringify(got) === JSON.stringify(want);
+    checks.push({ ok: same, label: `noneOf = ${JSON.stringify(got)}${same ? "" : ` (want ${JSON.stringify(want)})`}` });
+  }
 
   // The dangerous failure mode: inventing a "no" for a row nobody mentioned.
   for (const row of fx.unmentionedRows ?? []) {

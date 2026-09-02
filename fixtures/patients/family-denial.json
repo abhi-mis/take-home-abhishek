@@ -1,0 +1,11 @@
+{
+  "id": "family-denial",
+  "questionKey": "family_history",
+  "note": "A blanket denial has a real option to land on in this question.",
+  "transcript": "Nahi, ghar mein kisi ko baal jhadne ki problem nahi hai. Papa ke abhi bhi pure baal hain.",
+  "expected": {
+    "family_history": [
+      "No known family history"
+    ]
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "id": "conditions-two",
+  "questionKey": "diagnosed_conditions",
+  "note": "Two named conditions; must not add the ones never mentioned.",
+  "transcript": "Thyroid ki problem hai, tablet chalti hai. Aur khoon ki kami bhi hai, anemia.",
+  "expected": {
+    "diagnosed_conditions": [
+      "Thyroid disorder",
+      "Anemia"
+    ]
+  }
+}

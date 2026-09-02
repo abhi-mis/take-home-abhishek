@@ -1,0 +1,9 @@
+{
+  "id": "sample-saliva",
+  "questionKey": "sample_type",
+  "note": "A preference stated as an aversion to the other option.",
+  "transcript": "Sui se bahut darr lagta hai. Thook wala test ho jaye to better hai.",
+  "expected": {
+    "sample_type": "Saliva"
+  }
+}

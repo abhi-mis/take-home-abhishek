@@ -20,7 +20,9 @@
  * options - so the test failed while the app was correct. Options are real radios and
  * checkboxes (see OptionCard), so ask for those.
  *
- * Needs no API keys: every question is completed by tapping.
+ * Needs no API keys. The walk completes every question by tapping, and the voice checks
+ * stub both network hops - see `checkVoice`, which is where two bugs that only exist in a
+ * real client were found.
  */
 import { chromium } from "playwright";
 
@@ -36,11 +38,37 @@ function record(kind, text) {
   errors.push({ kind, text: text.slice(0, 300), fatal: FATAL_PATTERNS.test(text) });
 }
 
-const browser = await chromium.launch();
-const page = await browser.newPage({ viewport: { width: 380, height: 780 } });
+/*
+  A fake capture device, so the microphone path can be driven at all.
+
+  Without these flags `getUserMedia` has nothing to open and every voice check would fail
+  for a reason that says nothing about the app. The fake device records silence, which is
+  fine: the two network hops are stubbed (see checkVoice), so what is under test is the
+  client - record, upload, apply the answer, show the patient what happened.
+*/
+const browser = await chromium.launch({
+  args: ["--use-fake-device-for-media-capture", "--use-fake-ui-for-media-stream"],
+});
+const page = await browser.newPage({
+  viewport: { width: 380, height: 780 },
+  permissions: ["microphone"],
+});
+
+/**
+ * True only while a check is deliberately breaking a network call.
+ *
+ * The browser logs a failed fetch as a console error, and one check exists precisely to
+ * fail one - "a transcriber that returns 502 still leaves the taps working". Counting that
+ * as an app error would mean the suite can never reach zero, and a suite that always
+ * reports one error is a suite whose errors get skimmed. Scoped to the resource message
+ * and to that window, so a genuinely missing asset is still caught everywhere else.
+ */
+let expectNetworkNoise = false;
 
 page.on("console", (m) => {
-  if (m.type() === "error") record("console.error", m.text());
+  if (m.type() !== "error") return;
+  if (expectNetworkNoise && /Failed to load resource/i.test(m.text())) return;
+  record("console.error", m.text());
 });
 page.on("pageerror", (e) => record("pageerror", String(e)));
 
@@ -149,7 +177,14 @@ async function answerOpenCard() {
   const consentYes = card.getByRole("radio", { name: /Yes, I agree/ });
   const nos = card.getByRole("radio", { name: /^No$/ });
   const nevers = card.getByRole("radio", { name: /^Never$/ });
-  const bands = card.getByRole("button", { name: /Teens|13-19/ });
+  /*
+    Q1 - the onset age. A plain number field since the decade-card picker came out; it is
+    the ONLY textbox among the sixteen question cards (About You is filled before this loop
+    starts, and Q14's textarea never appears because the walk always answers yes/no with
+    No - see the `nos` branch below). ONSET_MIN itself is what gets typed: always inside
+    range, whatever the current age this run happened to set.
+  */
+  const onsetField = card.getByRole("textbox");
   const checks = card.locator('[role="checkbox"]:not([aria-disabled="true"])');
   const radios = card.getByRole("radio");
 
@@ -181,8 +216,8 @@ async function answerOpenCard() {
     if (await seg.count()) await seg.first().click().catch(() => {});
   } else if (await nos.count()) {
     await nos.first().click();
-  } else if (await bands.count()) {
-    await bands.first().click();
+  } else if (await onsetField.count()) {
+    await onsetField.first().fill("16");
   } else if (await checks.count()) {
     await checks.first().click();
   } else if (await radios.count()) {
@@ -317,11 +352,349 @@ async function checkFixedChrome(baseWidth, label) {
     });
 }
 
+/**
+ * The microphone, end to end on the client, with no key and no real speech.
+ *
+ * Both hops are stubbed: /api/transcribe returns a fixed transcript and /api/extract
+ * returns the payload the real slice would have produced for it. That is the right seam.
+ * The model's accuracy is measured separately by `npm run eval`, which needs a key and is
+ * not a gate; what breaks silently and often is everything AFTER the payload arrives -
+ * whether the answer reaches the store, whether the controls on screen catch up with it,
+ * whether the card stays open long enough to be read, and whether a failure still leaves a
+ * patient able to tap.
+ *
+ * Two of those were real bugs found by exactly this check. A spoken age landed in the store
+ * while the age box stayed empty, because React Hook Form seeds a field once on mount; and
+ * Q14's description was written and then immediately erased by the effect that pushes that
+ * box to the store, which ran with the box's stale empty value. Neither is visible to a
+ * unit test, and both look like the microphone not working.
+ */
+async function checkVoice() {
+  const FILLS = {
+    about: {
+      transcript: "Mera naam Anita hai, main 34 saal ki hoon.",
+      body: {
+        patch: {},
+        meta: { first_name: "Anita", patient_sex: "female", patient_age: 34 },
+        unfilled: [],
+      },
+    },
+    habits: {
+      transcript: "Main roz 6 cigarette peeta hoon, drink nahi karta, paani hard hai.",
+      body: {
+        patch: {
+          habits: {
+            smoking: true,
+            smoking_severity: "Moderate 5-10/day",
+            alcohol: false,
+            hard_water: true,
+          },
+        },
+        unfilled: [
+          "habits.hair_wash_frequency",
+          "habits.heating_tools_styling_chemicals",
+          "habits.salon_treatments",
+        ],
+      },
+    },
+  };
+
+  let asked = "about";
+  /** 200 fills, 502 is a hiccup, 503 is "no key on this deployment". */
+  let transcribeStatus = 200;
+
+  await page.route("**/api/transcribe", (route) =>
+    route.fulfill({
+      status: transcribeStatus,
+      contentType: "application/json",
+      body: JSON.stringify(
+        transcribeStatus === 200
+          ? { transcript: FILLS[asked].transcript }
+          : { error: "upstream said no" },
+      ),
+    }),
+  );
+  await page.route("**/api/extract", (route) => {
+    const sent = JSON.parse(route.request().postData() ?? "{}");
+    if (sent.questionKey !== asked)
+      errors.push({
+        kind: "voice",
+        text: `extraction asked for "${sent.questionKey}" while answering "${asked}"`,
+        fatal: false,
+      });
+    return route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(FILLS[sent.questionKey]?.body ?? {}),
+    });
+  });
+
+  const mic = () => page.getByRole("button", { name: /Answer this question by speaking/ });
+
+  /**
+   * Land on one question through the store, so no walk is needed to reach it.
+   *
+   * `expectMic` waits for the microphone row rather than counting it, because the row is
+   * rendered from an effect - `micSupported()` cannot run during render without breaking
+   * hydration - so a bare count immediately after a reload races the mount and reads 0.
+   * It is off for the consent card, where the absence of a microphone is the assertion.
+   */
+  async function open(sectionId, questionId, expectMic = true) {
+    // The name field writes the store on a 350ms debounce and the store persists on every
+    // write, so editing sessionStorage while a timer is pending gets the edit overwritten.
+    await page.waitForTimeout(600);
+    await page.evaluate(
+      ([sid, qid]) => {
+        const key = "genoroot-intake-v2";
+        const raw = sessionStorage.getItem(key);
+        const wrapper = raw === null ? { state: {}, version: 0 } : JSON.parse(raw);
+        wrapper.state.currentSectionId = sid;
+        wrapper.state.openQuestionId = qid;
+        sessionStorage.setItem(key, JSON.stringify(wrapper));
+      },
+      [sectionId, questionId],
+    );
+    await page.reload({ waitUntil: "domcontentloaded" });
+    await page.waitForSelector("h1");
+    if (expectMic)
+      await mic()
+        .first()
+        .waitFor({ state: "visible", timeout: 15_000 })
+        .catch(() =>
+          errors.push({
+            kind: "voice",
+            text: `no microphone offered on "${questionId}"`,
+            fatal: false,
+          }),
+        );
+    else await page.waitForTimeout(1_200);
+  }
+
+  /**
+   * Is the panel's primary action actually reachable without scrolling?
+   *
+   * The row sits at the BOTTOM of a card, so on a 390px phone the panel opened with "Stop
+   * and fill in" 130px below the fold - a patient who has just started talking going
+   * looking for the way to stop. The panel scrolls itself clear of both fixed bars now,
+   * and this is the measurement rather than the intention: `scrollIntoView` is the obvious
+   * tool and does nothing here, because a question card has two `overflow: hidden` wrappers
+   * that it treats as scroll containers.
+   */
+  async function stopButtonInView() {
+    return page.evaluate(() => {
+      const button = [...document.querySelectorAll("button")].find(
+        (b) => b.textContent?.trim() === "Stop and fill in",
+      );
+      if (button === undefined) return { found: false };
+      const box = button.getBoundingClientRect();
+      const barBottom = document.querySelector("header")?.getBoundingClientRect().bottom ?? 0;
+      return {
+        found: true,
+        ok: box.bottom <= window.innerHeight && box.top >= barBottom,
+        top: Math.round(box.top),
+        bottom: Math.round(box.bottom),
+        viewport: window.innerHeight,
+      };
+    });
+  }
+
+  /** One fill on the open card. Returns the status line the patient is shown. */
+  async function speak(key) {
+    asked = key;
+    await mic().first().click();
+    const stop = page.getByRole("button", { name: "Stop and fill in" });
+    await stop.waitFor({ state: "visible", timeout: 10_000 });
+    await page.waitForTimeout(700); // let the encoder collect something to decode
+    const reach = await stopButtonInView();
+    if (reach.found && reach.ok !== true)
+      errors.push({
+        kind: "voice",
+        text: `"${key}": the stop button is at ${reach.bottom} in a ${reach.viewport}px viewport`,
+        fatal: false,
+      });
+    await stop.click();
+    await page.getByRole("button", { name: "Speak again" }).waitFor({ timeout: 25_000 });
+    return (
+      (
+        await page
+          .locator('main section[data-state="open"] [role="status"]')
+          .last()
+          .textContent()
+      )?.trim() ?? ""
+    );
+  }
+
+  await page.setViewportSize({ width: 390, height: 820 });
+  await page.goto(`${BASE}/intake`, { waitUntil: "domcontentloaded" });
+  await page.waitForSelector("h1");
+  await page.evaluate(() => sessionStorage.clear());
+
+  // ---- About You: three facts out of one sentence, into meta rather than the answers
+  await open("0", "about_you");
+  const aboutLine = await speak("about");
+  const sexChecked = await page
+    .getByRole("radio", { name: /Female/ })
+    .first()
+    .getAttribute("aria-checked");
+  const ageShown = await page
+    .getByRole("textbox", { name: /How old are you/ })
+    .inputValue();
+  notes.push(
+    `voice on About You -> sex checked=${sexChecked}, age box=${JSON.stringify(ageShown)}, "${aboutLine}"`,
+  );
+  notes.push("the recording panel scrolled its stop button clear of both fixed bars");
+  if (sexChecked !== "true")
+    errors.push({ kind: "voice", text: "a spoken sex did not select the option", fatal: false });
+  if (ageShown !== "34")
+    errors.push({
+      kind: "voice",
+      // The bug this exists for: the store had the age and the box did not.
+      text: `a spoken age reached the store but the box shows ${JSON.stringify(ageShown)}`,
+      fatal: false,
+    });
+  const transcriptShown = await page
+    .locator("main")
+    .getByText(FILLS.about.transcript)
+    .count();
+  if (transcriptShown === 0)
+    errors.push({ kind: "voice", text: "the transcript was not shown back", fatal: false });
+
+  // ---- Q11 habits: several rows from one sentence, and an honest count
+  await open("C", "habits");
+  const habitsLine = await speak("habits");
+  const severity = await page
+    .getByRole("radio", { name: /Moderate 5-10\/day/ })
+    .first()
+    .getAttribute("aria-checked");
+  const stillOpen = await page.locator('main section[data-state="open"] h2').innerText();
+  notes.push(`voice on habits -> "${habitsLine}", merged smoking row checked=${severity}`);
+  if (severity !== "true")
+    errors.push({ kind: "voice", text: "the merged smoking row was not filled", fatal: false });
+  if (!/4 of 7/.test(habitsLine))
+    errors.push({
+      kind: "voice",
+      text: `the filled/outstanding count is wrong: "${habitsLine}"`,
+      fatal: false,
+    });
+  /*
+    The card must NOT have closed. A tap is the patient watching themselves choose; a voice
+    fill is a machine's reading they have to be able to check, and a card that collapses on
+    becoming answered takes the transcript with it.
+  */
+  if (!/Lifestyle/.test(stillOpen))
+    errors.push({
+      kind: "voice",
+      text: "a voice fill closed the card before it could be read",
+      fatal: false,
+    });
+
+  // ---- consent is the one question with no microphone at all
+  await open("E", "consent", false);
+  const micsOnConsent = await mic().count();
+  notes.push(`microphones on the consent card: ${micsOnConsent}  (must be 0)`);
+  if (micsOnConsent !== 0)
+    errors.push({
+      kind: "voice",
+      // Permission for a genetic test may not be inferred from prose. The API route's
+      // allow-list is what enforces it; this is the UI half of the same rule.
+      text: "the consent card offered a microphone",
+      fatal: true,
+    });
+
+  // ---- a failure is soft: the taps are still there and still work
+  transcribeStatus = 502;
+  expectNetworkNoise = true;
+  await open("B", "adult_acne_oily_skin");
+  await mic().first().click();
+  const stopIt = page.getByRole("button", { name: "Stop and fill in" });
+  await stopIt.waitFor({ state: "visible", timeout: 10_000 });
+  await page.waitForTimeout(600);
+  await stopIt.click();
+  const alert = page.locator('main [role="alert"]').first();
+  await alert.waitFor({ state: "visible", timeout: 20_000 });
+  const message = ((await alert.textContent()) ?? "").trim();
+  const tapsLeft = await page.getByRole("radio", { name: /^Yes$/ }).count();
+  notes.push(`transcriber failed -> ${JSON.stringify(message)}, tap controls left: ${tapsLeft}`);
+  if (!/tap/i.test(message))
+    errors.push({
+      kind: "voice",
+      text: "the failure message does not point the patient at tapping",
+      fatal: false,
+    });
+  if (tapsLeft === 0)
+    errors.push({
+      kind: "voice",
+      text: "a failed transcription took the tap controls with it",
+      fatal: true,
+    });
+
+  /*
+    ---- a deployment with no speech-to-text key says so once, then stops offering
+
+    The distinction this asserts: a 502 is worth another try and offers one, while a 503
+    never will be and does not. A microphone that cannot possibly work is worse than no
+    microphone - the patient waits, reads an apology, and has learnt only that this form
+    wastes their time - so the latch in lib/voiceClient turns the whole feature off for
+    the rest of the page, which is what the second half of this check measures.
+  */
+  transcribeStatus = 503;
+  await open("B", "excess_body_facial_hair");
+  await mic().first().click();
+  const stopOff = page.getByRole("button", { name: "Stop and fill in" });
+  await stopOff.waitFor({ state: "visible", timeout: 10_000 });
+  await page.waitForTimeout(600);
+  await stopOff.click();
+  const offAlert = page.locator('main [role="alert"]').first();
+  await offAlert.waitFor({ state: "visible", timeout: 20_000 });
+  const offMessage = ((await offAlert.textContent()) ?? "").trim();
+  const retryOffered = await page.getByRole("button", { name: "Speak again" }).count();
+  notes.push(`503 -> ${JSON.stringify(offMessage)}, retry offered: ${retryOffered}  (must be 0)`);
+  if (!/not set up/i.test(offMessage))
+    errors.push({
+      kind: "voice",
+      text: `an unconfigured deployment does not say so: "${offMessage}"`,
+      fatal: false,
+    });
+  if (retryOffered !== 0)
+    errors.push({
+      kind: "voice",
+      text: "an unconfigured microphone still offered to try again",
+      fatal: false,
+    });
+
+  /*
+    Opened by TAPPING the next card, not by reloading.
+
+    The latch lives in a module variable, so a reload clears it - and that is correct: a
+    key can be added between visits, and a latch that survived one would hide a feature
+    that now works. A patient moves between cards without navigating anywhere, which is
+    exactly what this does, so it measures the behaviour they actually get.
+  */
+  // A COLLAPSED card's header carries its short label, not the question - see QuestionCard.
+  await page.getByRole("button", { name: /Acne or oily skin/ }).first().click();
+  await page.waitForTimeout(600);
+  const micsAfterOff = await mic().count();
+  notes.push(`microphones offered on the next card after a 503: ${micsAfterOff}  (must be 0)`);
+  if (micsAfterOff !== 0)
+    errors.push({
+      kind: "voice",
+      text: "a microphone was still offered after the feature reported itself off",
+      fatal: false,
+    });
+
+  // Leave nothing behind: the stubs and the half-filled session would both poison the walk.
+  expectNetworkNoise = false;
+  await page.unroute("**/api/transcribe");
+  await page.unroute("**/api/extract");
+  await page.evaluate(() => sessionStorage.clear());
+}
+
 try {
   // ---------- landing ----------
   await checkLanding();
   await checkFixedChrome(1280, "desktop");
   await checkFixedChrome(390, "phone");
+  await checkVoice();
   await page.setViewportSize({ width: 380, height: 780 });
   await page.goto(BASE, { waitUntil: "networkidle" });
   notes.push(`page title: ${JSON.stringify(await page.title())}`);

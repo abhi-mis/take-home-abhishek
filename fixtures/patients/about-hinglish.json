@@ -1,0 +1,12 @@
+{
+  "id": "about-hinglish",
+  "questionKey": "about",
+  "note": "Name, sex and age in one sentence. Nothing here may reach the answers.",
+  "transcript": "Namaste, mera naam Anita hai. Main 34 saal ki hoon.",
+  "expected": {},
+  "expectedMeta": {
+    "first_name": "Anita",
+    "patient_sex": "female",
+    "patient_age": 34
+  }
+}

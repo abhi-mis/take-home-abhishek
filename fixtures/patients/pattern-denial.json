@@ -1,0 +1,12 @@
+{
+  "id": "pattern-denial",
+  "questionKey": "pattern",
+  "note": "Q4 has no None option, so a denial must come back as noneOf - never as a silently empty list. The transcript deliberately describes NO pattern: the first draft said the hair was thinning evenly all over, which IS 'Diffuse thinning', so the model was marked wrong for being right.",
+  "transcript": "Mujhe theek se pata nahi chalta kahan se jhad rahe hain. Inme se koi bhi option mere jaisa nahi lagta.",
+  "expected": {
+    "pattern": []
+  },
+  "expectedNoneOf": [
+    "pattern"
+  ]
+}

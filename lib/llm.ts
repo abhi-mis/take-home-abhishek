@@ -1,119 +1,124 @@
 /**
- * The LLM boundary: one provider, one model, one call.
+ * The LLM boundary: one provider, one model, one temperature, one call.
  *
- * Extraction runs on Anthropic (Claude). There is no second provider and no adapter
- * layer, on purpose - an abstraction whose only job is to make a swap easy is a cost you
- * pay every day for a decision you make once. Everything model-specific is in this file,
- * so the swap stays cheap without pretending to be pluggable: the route, the eval and
- * the tests only ever call `callModel()`.
+ * Everything the form understands from a spoken reply is understood by Gemini 3 Flash at
+ * temperature 0. Both are CONSTANTS in this file, not settings - there is no env var that
+ * swaps the model and none that moves the temperature, so "which model saw this patient's
+ * words" has one answer that can be read off the source.
  *
- * `ANTHROPIC_API_KEY` missing is not a crash and not a 500. `llmSettings()` returns null,
- * the route answers 503 with a message, and the patient taps or types instead - which is
- * a complete path through every question in both modes.
+ * `GEMINI_API_KEY` missing is not a crash and not a 500. `llmSettings()` returns null, the
+ * route answers 503 with a message, and the patient taps or types instead - which is a
+ * complete path through every question in the form.
  *
- * THE REQUEST SHAPE, MEASURED RATHER THAN ASSUMED
- * ----------------------------------------------
- * Probed against this account's own model list:
+ * WHY GEMINI, AND WHY THIS MODEL
+ * ------------------------------
+ * Extraction ran on Claude Haiku 4.5 before this, chosen by measurement and pinned for the
+ * same reasons. It was replaced because the Anthropic key stopped authenticating - a hard
+ * `401 authentication_error`, which no amount of code can retry its way out of - and a
+ * patient-facing form cannot wait on a credential.
  *
- *   model                      temperature   assistant prefill   plain output
- *   claude-sonnet-5            rejected      rejected            bare JSON
- *   claude-opus-4-8            rejected      rejected            bare JSON
- *   claude-sonnet-4-6          accepted      rejected            ```json fenced
- *   claude-haiku-4-5-*         accepted      accepted            ```json fenced
+ * `gemini-3-flash-preview` was then probed the same way rather than adopted on faith,
+ * against the account's own model list and this app's own prompt:
  *
- * That table is why the default model is haiku-4-5: it is the one that accepts
- * `temperature: 0`, and reproducibility is not a nice-to-have on a medical form - the
- * same reply must fill the same fields every time or the output cannot be audited. It
- * also measured fastest of the four (1.1-1.3s versus 1.9s), which matters on a screen
- * where a patient is watching a spinner.
+ *   temperature: 0        accepted
+ *   responseMimeType      honoured - returns bare JSON, no ```json fence to strip
+ *   Hinglish probe        "din mein 6-7 ho jaati hai" -> "Moderate 5-10/day", correct
+ *   unmentioned field     left null rather than guessed, which is the whole safety rule
+ *   latency               2.8s for a full habits slice
  *
- * Assistant prefill is NOT used even though haiku-4-5 accepts it. It would buy bare JSON
- * instead of a ```json fence, and `parseModelJson()` already strips fences - so it would
- * buy nothing while quietly breaking the moment someone sets ANTHROPIC_MODEL to a newer
- * model. JSON is guaranteed by the system prompt plus that parser, which is the most
- * heavily tested thing in the app (tests/extract.test.ts) precisely because it has
- * always been the real guarantee.
+ * `-preview` in a pinned model id is worth naming as a known cost: a preview model can be
+ * withdrawn. The pin is still right - an id that moves under a medical form is worse - and
+ * the failure is loud rather than silent, because a withdrawn model answers 404, which
+ * `isConfigError` turns into "auto-fill is off" instead of a retry loop.
  *
- * And because model APIs keep moving, an unsupported parameter is handled rather than
- * fatal: switching ANTHROPIC_MODEL to claude-sonnet-5 works, because `temperature` is
- * dropped and remembered on the first 400. See `callModel()`.
+ * THE REQUEST SHAPE
+ * -----------------
+ * Plain `fetch` against the REST endpoint rather than the `@google/genai` SDK. This file
+ * makes exactly one kind of call, with one model, and the SDK's value is the surface this
+ * app does not use: streaming, tool calling, file uploads, chat sessions. The previous
+ * provider's SDK was a dependency for one `messages.create`, and removing it took the
+ * bundle nothing and cost nothing.
+ *
+ * `responseMimeType: "application/json"` is set because the API guarantees it, but
+ * `parseModelJson()` still strips fences behind it - a parser you only trust on the happy
+ * path is not a parser, and it is the most heavily tested thing in the app
+ * (tests/extract.test.ts) precisely because it has always been the real guarantee.
  */
-import Anthropic from "@anthropic-ai/sdk";
+
+/**
+ * The model. Pinned to the exact id rather than an alias, because an alias moves and a
+ * medical form whose extraction behaviour changes under it without a code change is not
+ * auditable.
+ */
+export const MODEL = "gemini-3-flash-preview";
+
+/** Reproducible, always: the same reply must fill the same fields every time. */
+export const TEMPERATURE = 0;
+
+/**
+ * Generous, because this model THINKS before it answers and both halves come out of the
+ * same budget - and the thinking is the big half by a wide margin.
+ *
+ * Measured, which is the only reason this number is what it is:
+ *
+ *   slice                      output tokens   thinking tokens
+ *   habits                     56              289
+ *   products (5 rows x 4 cols) 153             1357
+ *
+ * The first version set 2048, reasoning about the output alone, and the fixture eval failed
+ * two of twenty with "unparseable model output". The JSON was not malformed - it was cut
+ * off mid-object, because thinking had eaten the budget before the answer was written. A
+ * truncated object parses as nothing, so the patient would have seen "nothing in that reply
+ * matched this question" for a reply the model understood perfectly.
+ *
+ * 8192 is headroom rather than a target: nothing is charged for a budget that is not used,
+ * and the JSON shape caps the real output at a few hundred tokens regardless.
+ */
+export const MAX_TOKENS = 8192;
+
+const ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models";
 
 export interface LlmSettings {
   apiKey: string;
-  /** undefined for api.anthropic.com - the SDK's own default is correct. */
-  baseURL: string | undefined;
-  model: string;
-  maxTokens: number;
-  /** Dropped automatically if the configured model rejects it. */
-  temperature: number | undefined;
 }
-
-/**
- * Haiku 4.5: fastest of the models measured (1.1-1.3s for a full habits slice), the
- * cheapest, and the one that still accepts `temperature: 0`. It got every field of the
- * Hinglish probe right - "main roz 6 cigarette peeta hoon" to `Moderate 5-10/day` - which
- * is the whole job here. Extraction against one schema slice is a narrow task; a larger
- * model would cost more and wait longer for the same answer.
- */
-const DEFAULT_MODEL = "claude-haiku-4-5-20251001";
-
-/** Reproducible by default: the same reply must always fill the same fields. */
-const DEFAULT_TEMPERATURE = 0;
-
-/** Enough that a fully-populated 5-row table is never truncated mid-JSON. */
-const MAX_TOKENS = 900;
 
 /** Settings, or null when the key is missing. */
 export function llmSettings(): LlmSettings | null {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
+  const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) return null;
-
-  const rawTemp = process.env.ANTHROPIC_TEMPERATURE?.trim();
-  const temp = rawTemp === undefined || rawTemp === "" ? DEFAULT_TEMPERATURE : Number(rawTemp);
-
-  return {
-    apiKey,
-    baseURL: process.env.ANTHROPIC_BASE_URL?.trim() || undefined,
-    model: process.env.ANTHROPIC_MODEL?.trim() || DEFAULT_MODEL,
-    maxTokens: MAX_TOKENS,
-    // A non-numeric value is ignored rather than sent: NaN would be a 400, and a typo in
-    // an env var should not take extraction down.
-    temperature: temp !== undefined && Number.isFinite(temp) ? temp : undefined,
-  };
+  return { apiKey };
 }
 
 /** The message shown to the patient when extraction is not configured. */
 export const NO_PROVIDER_MESSAGE =
-  "Auto-fill is off: set ANTHROPIC_API_KEY in .env. You can still tap or type your answers.";
+  "Auto-fill is off: set GEMINI_API_KEY in .env. You can still tap or type your answers.";
 
-/**
- * Errors that mean "this model does not accept that parameter", as opposed to "your
- * request is wrong". The distinction matters because the first kind is recoverable by
- * sending less, and the second is not recoverable at all.
- */
-const UNSUPPORTED_PARAM = /is deprecated for this model|does not support|unsupported/i;
+/** An HTTP failure from the provider, with the status kept so the route can classify it. */
+export class LlmHttpError extends Error {
+  constructor(
+    readonly status: number,
+    readonly detail: string,
+  ) {
+    super(`${status} ${detail}`.slice(0, 300));
+    this.name = "LlmHttpError";
+  }
+}
 
-/**
- * Models known to have rejected `temperature`, learned at runtime and remembered for the
- * life of the process.
- *
- * This exists because of a bug that reached the browser as a bare 502: the request
- * carried `temperature: 0`, the current models answer `400 temperature is deprecated for
- * this model`, and the route turned that into "Auto-fill failed". One wasted round trip
- * to discover a permanent fact about a model is acceptable; making that discovery on
- * every single question is not, and neither is a hardcoded table of model ids that goes
- * stale the week after it is written.
- */
-const rejectsTemperature = new Set<string>();
+interface GeminiResponse {
+  candidates?: {
+    content?: { parts?: { text?: string }[] };
+    finishReason?: string;
+  }[];
+  usageMetadata?: { candidatesTokenCount?: number; thoughtsTokenCount?: number };
+}
 
 /**
  * One extraction call. Returns the model's raw text.
  *
- * If the model refuses an optional parameter, the parameter is dropped, remembered, and
- * the call retried once - so a model change becomes a 400 in a log line rather than a
- * broken feature in front of a patient.
+ * No retry and no parameter negotiation: the model is fixed and is known to accept every
+ * parameter sent here, so a failure is a real failure - a revoked key, a network problem,
+ * a timeout - and the caller's job is to fall back to tapping rather than to try again
+ * with less.
  */
 export async function callModel(
   settings: LlmSettings,
@@ -121,75 +126,83 @@ export async function callModel(
   user: string,
   timeoutMs = 28_000,
 ): Promise<string> {
-  const client = new Anthropic({ apiKey: settings.apiKey, baseURL: settings.baseURL });
-
-  const send = async (withTemperature: boolean): Promise<string> => {
-    const res = await client.messages.create(
-      {
-        model: settings.model,
-        max_tokens: settings.maxTokens,
-        ...(withTemperature && settings.temperature !== undefined
-          ? { temperature: settings.temperature }
-          : {}),
-        system,
-        // One user turn, and nothing after it. See the note on prefill above: the JSON
-        // contract is carried by the system prompt and enforced by parseModelJson().
-        messages: [{ role: "user", content: user }],
+  const res = await fetch(`${ENDPOINT}/${MODEL}:generateContent`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      // The header, not `?key=` in the URL: a query string ends up in access logs and
+      // proxy caches, and this one is a credential.
+      "x-goog-api-key": settings.apiKey,
+    },
+    body: JSON.stringify({
+      system_instruction: { parts: [{ text: system }] },
+      // One user turn and nothing after it.
+      contents: [{ role: "user", parts: [{ text: user }] }],
+      generationConfig: {
+        temperature: TEMPERATURE,
+        maxOutputTokens: MAX_TOKENS,
+        responseMimeType: "application/json",
       },
-      { timeout: timeoutMs },
-    );
-    return res.content.map((block) => (block.type === "text" ? block.text : "")).join("");
-  };
+    }),
+    signal: AbortSignal.timeout(timeoutMs),
+  });
 
-  const wantsTemperature =
-    settings.temperature !== undefined && !rejectsTemperature.has(settings.model);
-
-  try {
-    return await send(wantsTemperature);
-  } catch (e) {
-    if (!wantsTemperature || !isUnsupportedParam(e)) throw e;
-    console.warn(
-      `[llm] ${settings.model} rejected temperature; retrying without it and remembering.`,
-    );
-    rejectsTemperature.add(settings.model);
-    return await send(false);
+  if (!res.ok) {
+    throw new LlmHttpError(res.status, (await res.text().catch(() => "")).slice(0, 300));
   }
-}
 
-function isUnsupportedParam(e: unknown): boolean {
-  if (e instanceof Anthropic.APIError) {
-    return e.status === 400 && UNSUPPORTED_PARAM.test(e.message);
+  const body = (await res.json()) as GeminiResponse;
+  const candidate = body.candidates?.[0];
+
+  /*
+    A cut-off answer is a FAILURE, not a string to hand onward.
+
+    Truncated JSON parses as nothing, so passing it on surfaced as "unparseable model
+    output" in the log and "nothing in that reply matched this question" on screen - which
+    is a lie twice over: the model understood the reply, and the fault was our token
+    budget. Named here, it costs one log line to diagnose instead of an afternoon.
+  */
+  if (candidate?.finishReason === "MAX_TOKENS") {
+    const used = body.usageMetadata;
+    throw new Error(
+      `answer truncated at ${MAX_TOKENS} tokens ` +
+        `(output ${used?.candidatesTokenCount ?? "?"}, thinking ${used?.thoughtsTokenCount ?? "?"})`,
+    );
   }
-  return false;
+
+  /*
+    Parts joined rather than `parts[0].text` taken. A thinking model can return several
+    parts, and taking the first one silently truncates a JSON object at whatever boundary
+    the model happened to use.
+  */
+  return (candidate?.content?.parts ?? []).map((p) => p.text ?? "").join("");
 }
 
 /**
- * True when the failure is a configuration problem rather than a hiccup - a model id
- * that does not exist, a revoked key, a parameter this model will never accept.
+ * True when the failure is a configuration problem rather than a hiccup - a revoked key, a
+ * key without access to this model, a model id that no longer exists.
  *
- * Worth separating because the two need opposite responses: a hiccup deserves "try
- * again", a config error deserves a log line loud enough that someone fixes the env var.
- * Retrying it just burns the patient's time.
+ * Worth separating because the two need opposite responses: a hiccup deserves "try again",
+ * a config error deserves a log line loud enough that someone fixes the env var. Retrying
+ * it just burns the patient's time. This is the distinction that turned an expired key from
+ * "something went wrong, try again" into "auto-fill is off" - see the extract route.
  */
 export function isConfigError(e: unknown): boolean {
-  if (!(e instanceof Anthropic.APIError)) return false;
+  if (!(e instanceof LlmHttpError)) return false;
   return e.status === 400 || e.status === 401 || e.status === 403 || e.status === 404;
 }
 
 /** The provider's own words, for the server log only. Never shown to a patient. */
 export function providerDetail(e: unknown): string {
-  if (e instanceof Anthropic.APIError) return `${e.status} ${e.message}`.slice(0, 300);
+  if (e instanceof LlmHttpError) return e.message;
   return e instanceof Error ? e.message.slice(0, 300) : String(e).slice(0, 300);
 }
 
 /**
  * What actually ran, for the eval banner. A benchmark that does not say which model
- * produced its number is not a benchmark.
+ * produced its number is not a benchmark - and here it also states the two facts the
+ * feature promises: this model, this temperature, no others.
  */
-export function describeSettings(s: LlmSettings): string {
-  const sampling =
-    s.temperature === undefined || rejectsTemperature.has(s.model)
-      ? "model default sampling"
-      : `temp ${s.temperature}`;
-  return ["anthropic", s.model, sampling].join(" · ");
+export function describeSettings(_s: LlmSettings): string {
+  return ["google", MODEL, `temp ${TEMPERATURE}`].join(" · ");
 }

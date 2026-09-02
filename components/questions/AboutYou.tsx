@@ -28,6 +28,11 @@
  * input holding `age` cannot represent "the patient has typed 1 so far and is about to type
  * 8": 1 is a valid age, so binding directly would either commit 1 or refuse the keystroke.
  * RHF holds what was typed; only a value inside the range reaches the store.
+ *
+ * That split is also why these two fields need a way BACK. An answer can now arrive from
+ * outside the form state - a spoken reply fills name, sex and age at once - and a box seeded
+ * once on mount would sit there empty while the store held the answer. See the second pair
+ * of effects below.
  */
 import { useEffect } from "react";
 import { useForm } from "react-hook-form";
@@ -116,6 +121,37 @@ export function AboutYou({
     onAge(ageToStore(ageValue));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ageValue]);
+
+  /*
+    THE OTHER DIRECTION, and it is not symmetry for its own sake.
+
+    RHF seeds these boxes from `defaultValues` exactly once, on mount. That was fine while
+    typing was the only way to fill them; then the microphone arrived, and "Mera naam Anita
+    hai, main 34 saal ki hoon" set the store while both boxes stayed empty - the form said
+    "Filled 3 of 3" over a blank age field. So a store value the box does not already
+    represent is pushed in.
+
+    Both effects depend ONLY on the store value, never on what is typed, which is what
+    keeps them from fighting the keyboard: a keystroke changes `ageValue`, that reaches the
+    store, and this effect does not re-run at all. When it does run, it returns early
+    because the box already represents the stored value.
+
+    Null is never pushed. A null store value means "not answered", and clearing a box a
+    patient is halfway through typing is not something an answer elsewhere may do.
+  */
+  useEffect(() => {
+    if (age === null) return;
+    if (ageToStore(ageValue) === age) return;
+    setValue("age", String(age), { shouldValidate: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [age]);
+
+  useEffect(() => {
+    if (firstName === null) return;
+    if (cleanFirstName(nameValue) === firstName) return;
+    setValue("firstName", firstName);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [firstName]);
 
   const ageField = register("age");
 

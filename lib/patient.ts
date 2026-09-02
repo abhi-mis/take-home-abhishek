@@ -255,7 +255,7 @@ export function personalNote(key: string, meta: Meta, lang: Lang): string | unde
  * reason the age question earns its place beyond presentation.
  */
 export function maxOnsetAge(meta: Meta): number {
-  return meta.patient_age === null ? 90 : Math.max(ONSET_MIN, meta.patient_age);
+  return meta.patient_age === null ? AGE_MAX : Math.max(ONSET_MIN, meta.patient_age);
 }
 
 // ---------------------------------------------------------------------------

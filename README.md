@@ -5,10 +5,14 @@ scalp intake and outputs the form **fully filled as structured data**.
 
 Mobile-first, finishable with one thumb, no database, no auth, no admin panel.
 
-One question per screen, pictures where they help. Three of the sixteen can be answered
-by **talking** - the software fills the grid and the patient taps to confirm - and every
-one of the seventeen screens has a **speaker button that reads the question and its
+One question per screen, pictures where they help. **Tapping is the way through**, and
+under the controls of every question but one there is a second offer: **answer it by
+speaking**. Say it in Hindi, English or a mix, and the answer lands in the controls above
+for the patient to check. Every question also has a **speaker button that reads it and its
 options aloud**, for the patient who cannot comfortably read the screen.
+
+The exception is consent. Permission for a genetic test is given by pressing the word
+"Yes", never inferred from prose that a transcriber and then a model both had to read.
 
 > Deep dive into the logic and the reasoning behind each decision:
 > **[Implementation.md](Implementation.md)**
@@ -29,15 +33,22 @@ two accelerators:
 
 | Missing key | What degrades |
 | --- | --- |
-| `ANTHROPIC_API_KEY` | The voice questions do not auto-fill. The tap grid underneath is always there. |
-| `SARVAM_API_KEY` | The microphone is hidden entirely. Tapping is unaffected. |
+| `GEMINI_API_KEY` | Nothing spoken is understood, so nothing auto-fills. |
+| `SARVAM_API_KEY` | Speech never becomes words, so nothing auto-fills. |
+
+Either way the patient is told once, on the card where they tried - *"answering by speaking
+is not set up on this device, please tap your answers below"* - and no card after that
+offers a microphone. A control that cannot possibly work is worse than no control: the
+patient waits, reads an apology, and has learnt only that the form wastes their time. The
+tap controls are untouched in both cases, and the form still produces a complete, valid
+object at the end.
 
 Read-aloud needs **no key at all** - it uses the browser's own `speechSynthesis`.
 
 ```bash
-npm test              # 259 deterministic tests, no key needed
+npm test              # 304 deterministic tests, no key needed
 npm run smoke         # real-browser walkthrough of the whole intake (needs a dev server)
-npm run eval          # live extraction eval against the fixtures (needs ANTHROPIC_API_KEY)
+npm run eval          # live extraction eval against the fixtures (needs GEMINI_API_KEY)
 npm run build         # production build
 npm run typecheck
 ```
@@ -54,16 +65,22 @@ npm run smoke -- http://localhost:3130
 
 | Variable | Where to get it | Notes |
 | --- | --- | --- |
-| `ANTHROPIC_API_KEY` | [console.anthropic.com/settings/keys](https://console.anthropic.com/settings/keys) | Extraction |
-| `ANTHROPIC_MODEL` | - | `claude-haiku-4-5-20251001` (default, and the fastest of the four I probed) |
-| `ANTHROPIC_TEMPERATURE` | - | optional, defaults to `0`; dropped automatically if the model rejects it |
-| `SARVAM_API_KEY` | [dashboard.sarvam.ai](https://dashboard.sarvam.ai) | Speech to text |
+| `GEMINI_API_KEY` | [aistudio.google.com/apikey](https://aistudio.google.com/apikey) | Understanding what was said |
+| `SARVAM_API_KEY` | [dashboard.sarvam.ai](https://dashboard.sarvam.ai) | Turning speech into words |
 | `SARVAM_MODEL` / `SARVAM_MODE` | - | `saaras:v3` / `codemix` |
 
-Two keys, and the app is useful without either. [lib/llm.ts](lib/llm.ts) is the whole
-model boundary: `callModel()` is the only thing the route and the eval call, and if
-`ANTHROPIC_API_KEY` is absent it answers 503 with a message rather than throwing, so the
-patient taps or types instead.
+**The model is not configurable, and neither is the temperature.** Everything the form
+understands from a spoken reply is understood by `gemini-3-flash-preview` at
+`temperature: 0`, both constants in [lib/llm.ts](lib/llm.ts). There is no `GEMINI_MODEL`
+and no `GEMINI_TEMPERATURE`: on a medical form the same reply has to fill the same fields
+every time or the output cannot be audited, and "which model read this patient's words"
+should have one answer you can read off the source rather than one that depends on a
+deployment's environment. `tests/llm.test.ts` sets both anyway and asserts the request on
+the wire is unchanged.
+
+Two keys, and the app is useful without either. `callModel()` is the only thing the route
+and the eval call, and if `GEMINI_API_KEY` is absent `llmSettings()` returns null, the
+route answers 503, and the patient taps or types instead.
 
 Keys are read **only inside server routes** (`app/api/*/route.ts`). Nothing is shipped
 to the client and nothing is committed - `.env.example` is the only env file in git.
@@ -98,9 +115,10 @@ is what the research on form chunking actually supports.
 
 Three carve-outs, each for a reason:
 
-- The three **table questions** (habits, products, treatments) open into the existing
-  voice-first surface unchanged, and their collapsed summary states coverage rather than a
-  value: "5 answered, 2 in use". One value would misrepresent five rows.
+- The three **table questions** (habits, products, treatments) keep their grid, and their
+  collapsed summary states coverage rather than a value: "5 answered, 2 in use". One value
+  would misrepresent five rows. These are also where speaking pays for itself most - one
+  sentence against fourteen taps.
 - **About You** is a single always-open card. There is nothing to collapse it against.
 - **Consent** collapses like any other card, but its summary reads "Yes, I agree: sample and
   genetic analysis" rather than a bare "Yes". A clinical record should not reduce informed
@@ -176,8 +194,9 @@ components/LangToggle.tsx   the switch, and the <html lang> it writes for screen
 
 Nothing is hard-coded in a component any more, and a test reads the source to keep it that
 way: `tests/i18n.test.ts` fails on any English prose sitting in JSX. That guard is what
-found the last three leaks, because a runtime walk cannot reach the post-voice dialog
-without a microphone and an API key - which is exactly where two of them were.
+found the last three leaks, two of which were on screens a runtime walk could not reach at
+the time - the states behind the microphone. The browser smoke now reaches those too, by
+stubbing both network hops rather than needing a key.
 
 Two things carry the weight. Each Hindi dictionary is typed as
 `Record<keyof typeof ENGLISH, string>`, so **forgetting a translation fails `tsc`** rather
@@ -247,7 +266,7 @@ sessionStorage forgetting it is the correct behaviour, not a limitation.
 | --- | --- | --- |
 | Framework | Next.js (App Router) + TS on Vercel | one-command live link; API routes hide keys with no separate backend |
 | STT | **Sarvam Saaras v3** | the locally-right pick. Patients here speak Hinglish and Indian-accented English, which is where western STT degrades first. `mode=codemix` returns mixed Hindi/English in Roman script - also the easiest thing for the extraction model to read. |
-| Extraction | **Anthropic** - `claude-haiku-4-5`, temp 0 | chosen by probing this account's own model list, not by reputation: fastest of the four tried (1.1-1.3s for a full habits slice versus 1.9s), cheapest, correct on the Hinglish probe, and the only one that still accepts `temperature: 0` - which a medical form needs, because the same reply must fill the same fields every time. One provider, no adapter layer. See below. |
+| Extraction | **Google Gemini** - `gemini-3-flash-preview`, temp 0, both **pinned in code** | probed against the account's own model list and this app's own prompt rather than adopted on reputation: `temperature: 0` accepted, bare JSON via `responseMimeType`, the Hinglish probe correct, 2.8s for a full habits slice, **69/69 fields on the fixture eval**. One provider, one model, no env var that can change either, no adapter layer, and no SDK - it is one `fetch`. See below. |
 | Read-aloud | the **browser's** `speechSynthesis` | no key, no network round trip, works offline, and no audio of a patient's medical answers is ever sent anywhere. A hosted voice would sound better and buy none of that. It speaks only when the button is pressed, which is also what satisfies browsers that refuse to speak without a user gesture. |
 | Validation | **Zod** + a coverage check | one validator for shape *and* the conditional-null rules |
 | Form fields | **React Hook Form** + a zod resolver | at the three inputs a patient TYPES into (name, age, side-effect description). The choice controls stay on the store and the schema validator, which knows the clinical rules a form library cannot - see Implementation.md for where the line is drawn and why. |
@@ -285,11 +304,42 @@ that are hard 400s (reasoning models reject `temperature` and want
 `max_completion_tokens`), and free-tier throttling that turned a 76-second eval run into
 400 seconds on a bad afternoon.
 
-Worth saying plainly: Claude's own lineup has the same *class* of quirk - the newest
-models reject `temperature` outright, and one of them rejects assistant prefill - which
-is why [lib/llm.ts](lib/llm.ts) probes rather than assumes, and drops an unsupported
-parameter instead of failing. That code exists because the first Anthropic build shipped
-a 502 to the browser for exactly this reason.
+Worth saying plainly: Claude's own lineup had the same *class* of quirk - the newest
+models reject `temperature` outright, and one of them rejects assistant prefill. The first
+Anthropic build shipped a 502 to the browser for exactly that reason, and the fix at the
+time was a runtime negotiation: send `temperature`, catch the 400, remember that this model
+refuses it, retry without it.
+
+That code is gone, and pinning the model is what deleted it rather than what risked it. The
+negotiation existed to survive a model this app no longer lets anyone select; with one
+model, known to accept every parameter sent, a failure is a real failure and the right
+response is to let the patient tap, not to try again with less.
+
+### And then the provider moved anyway
+
+Extraction now runs on **Gemini 3 Flash**, and the reason is worth recording because it is
+the one failure mode none of the measurement above protects against: the Anthropic key
+stopped authenticating. A flat `401 authentication_error`, which no amount of code can
+retry its way out of - and a patient-facing form cannot wait on a credential.
+
+The swap took one file, which is the whole argument for having kept the boundary thin.
+`lib/llm.ts` is 190 lines of `fetch`, the route and the eval only ever call `callModel()`,
+and nothing else in the app knew which company was answering. Its SDK went with it: one
+dependency for one `messages.create` was never earning its place, and Gemini's endpoint is
+a POST with a JSON body.
+
+Two things had to be measured rather than assumed, and one of them bit:
+
+- **`responseMimeType: "application/json"`** is honoured, so the output is bare JSON with
+  no fence to strip. `parseModelJson()` still strips fences behind it - a parser you only
+  trust on the happy path is not a parser.
+- **Thinking tokens come out of `maxOutputTokens`.** The first version set 2048, reasoning
+  about the output alone, and two of twenty fixtures failed as "unparseable model output".
+  The JSON was not malformed, it was *cut off*: a products slice writes 153 tokens of
+  answer after 1357 tokens of thinking. A truncated object parses as nothing, so the
+  patient would have been told "nothing in that reply matched this question" for a reply
+  the model understood perfectly. The budget is 8192 now, and a `MAX_TOKENS` finish reason
+  throws with both counts in the message instead of returning a string that cannot parse.
 
 **The eval figure above does not transfer.** It was measured on `gpt-oss-20b`, not on
 Claude, and I have not re-run it since the switch - so treat it as evidence about the
@@ -299,10 +349,10 @@ extraction *design* (slices, prompt rules, tolerant scoring), not as this build'
 
 ## Language, validation, and the picture question
 
-**All patient-facing text is English.** Every string lives in `lib/copy.ts`, so a Hindi
-or Telugu build is a second map rather than a rewrite. The extraction prompt still
-handles Hindi and Hinglish *speech* - UI language and spoken-input language are
-different things, and a patient reading English may still answer the mic in Hindi.
+**The screen is in one language at a time, English or Hindi** - see the bilingual section
+above. The extraction prompt stays English regardless, because it maps a Hindi or Hinglish
+transcript onto the English schema options: UI language and spoken-input language are
+different things, and a patient reading English may still answer the microphone in Hindi.
 
 **One answer is required - the sex question. Otherwise the DOWNLOAD is what is gated.** `validateStep()` in
 `lib/steps.ts` is still the single source of "is this answered", and it is now used to
@@ -339,6 +389,55 @@ needle").
 
 ---
 
+## Answering by speaking
+
+Every question except consent can be answered out loud. The microphone is a **quiet row
+underneath the controls**, and the order is the whole design.
+
+Tapping comes first because tapping always works: no permission prompt, no network, no
+model, and it behaves the same in a quiet room and a loud one. Speaking is the second offer,
+for the patient who finds reading hard, and for the two table questions where one sentence
+replaces fourteen taps.
+
+An earlier revision had this the other way round - a "speak first" panel that opened before
+the question, and a microphone at the top of every card. It came out, and the reason is
+worth keeping: **a microphone offered before the question has been read is a demand, not an
+offer.**
+
+### What a spoken answer is not allowed to do
+
+| Rule | Why |
+| --- | --- |
+| It cannot fill **consent** | The one answer that may never be inferred from prose. `consent` is absent from the API route's allow-list, so it is unreachable rather than merely un-offered - a UI rule can be bypassed by a caller, and this one may not be. |
+| It cannot **advance the form** | A tap is the patient watching themselves choose; a fill is a machine's reading they have to be able to check. So a fill suppresses the auto-advance, the card stays open with *"what we heard"* on it, and the way on becomes a button. |
+| It cannot write **another question's answer** | A reply is reduced to the fields the answered question owns. `consent` is a legal answer key, so a filter of "must be one of the 16" would have waved it through. |
+| It cannot pick a **closed option** | A male patient who says "PCOS" gets it left out with the reason on screen, from the same function that greys the option out. The microphone and the thumb never disagree about what is on offer. |
+| It cannot record an **impossible age** | "It started when I was 40" from someone who said they are 34 is dropped, not clamped. Clamping would answer the question with a number nobody said, and would look exactly like a correct fill. |
+| It cannot **guess** | Every value is matched against the schema's own option strings - case and whitespace ignored, nothing else. A paraphrase is dropped and flagged for a tap. Fields the reply did not mention come back in `unfilled`, and the patient is told *"filled 4 of 7 answers, 3 still to go"*. |
+| It cannot **clear** an answer | A null in a fill means "not mentioned", never "forget what you told us". |
+
+### Two hops, and only one of them is a model
+
+The model reads text, not audio, so something has to turn the recording into words first.
+That is the only job Sarvam has here: it produces a string, the string is shown to the
+patient verbatim, and every decision about the *answer* is Gemini's at temperature 0.
+
+```
+lib/audio.ts        record on any browser, upload one format: 16 kHz mono WAV
+api/transcribe      Sarvam proxy - the only place SARVAM_API_KEY exists
+api/extract         one schema slice, one reply, Zod-validated on the way out
+lib/llm.ts          one model, one temperature, one fetch. No SDK.
+lib/voiceApply.ts   the rules above, pure and tested without a browser
+components/VoiceAnswer.tsx   the row, the panel, and what the patient is told
+```
+
+The transcript is shown **first and always**, including when nothing matched. A patient
+whose reply filled nothing needs to know whether they were misheard or misunderstood,
+because those two have different remedies - say it again, or tap it in. A bare "nothing
+matched" hides which one they are in.
+
+---
+
 ## The three table questions
 
 Habits, products and treatments are tables rather than choices: six rows, five rows and four
@@ -360,9 +459,11 @@ were working down.
 row owes, and `validateStep` counts the same descriptors that the "still needed" summary
 reads - so a row cannot look answered to one and unanswered to the other.
 
-Voice used to be the point of these three: a spoken checklist, one reply filling six fields
-through `/api/extract`. That UI has been removed. The server routes and the extraction prompt
-remain and are covered by tests, so the pipeline is intact and simply unreferenced by the form.
+**Speaking pays for itself most here.** Fourteen taps against one sentence, and the panel
+lists every row while the patient is talking - a microphone with no prompt is the worst
+version of voice input, because nobody knows how much to say. The row labels in that list
+are interpolated from the schema constants, so a row added to the schema cannot silently go
+unasked. Everything spoken still lands in the grid above for the patient to check.
 
 ## Light and dark
 
@@ -375,7 +476,7 @@ with dark hair on a light scalp.
 
 ## Bought vs built
 
-**Bought:** hosting + serverless (Vercel), STT (Sarvam), inference (Anthropic), schema
+**Bought:** hosting + serverless (Vercel), STT (Sarvam), inference (Google Gemini), schema
 validation (Zod), typed form fields (React Hook Form), state (Zustand), animation (Framer
 Motion). Every one of these is a solved problem where a hand-rolled version would be worse and
 slower.
@@ -404,7 +505,7 @@ slower.
 
 Two tiers, on purpose.
 
-**Deterministic (`npm test`, 259 tests, no key) - the dependable gate.** One test
+**Deterministic (`npm test`, 304 tests, no key) - the dependable gate.** One test
 diffs `lib/schema.ts` against the schema as downloaded from the URL in the brief, so
 "verbatim copy" is proven rather than claimed · step builder and
 schema coverage · sex gating across all four states, including that switching away from
@@ -414,14 +515,24 @@ highest-value group: the extraction layer fed what a 70B open model actually ret
 trigger, non-existent rows, arrays where objects belong. Each must end in a legal patch
 or nothing at all.
 
-**Tolerant (`npm run eval`, needs `ANTHROPIC_API_KEY`) - a measurement, not a gate.** 12 made-up
-patient transcripts in `fixtures/patients/`. Only fields the transcript *mentions* are
-compared; unmentioned fields must appear in `unfilled`, and `unmentionedRows` asserts
-the model did **not** invent a `false` for a row nobody spoke about. Kept out of CI
-because an LLM isn't deterministic and a flaky red build teaches a team to ignore red
-builds.
+**Tolerant (`npm run eval`, needs `GEMINI_API_KEY`) - a measurement, not a gate.** 20
+made-up patient transcripts in `fixtures/patients/`. Only fields the transcript *mentions*
+are compared; unmentioned fields must appear in `unfilled`, and `unmentionedRows` asserts
+the model did **not** invent a `false` for a row nobody spoke about. Kept out of CI because
+an LLM isn't deterministic and a flaky red build teaches a team to ignore red builds.
 
-**Measured result: 56-58/58 fields (97-100%) across runs, 0 hard failures.**
+The eight newest fixtures came with the microphone reaching every question, and they pin
+the prompt rules that only the non-table questions exercise: two ages in one sentence
+(*"I am 41 now, but it started when I was about 27"*), a number that has to be placed
+inside a range rather than rounded down, a blanket denial that lands on the schema's own
+"None" option, and one that has no option to land on and must come back as a UI-only flag
+instead of a silently empty list.
+
+**Measured result on Gemini 3 Flash: 69/69 fields (100%), 0 hard failures** across all
+twenty fixtures. The two that failed on the first run were the truncation bug above, not the
+model - and the one "wrong" answer was my fixture, not the model's: I wrote a Q4 denial
+whose transcript described the hair thinning evenly all over, which *is* "Diffuse thinning",
+so the model was marked wrong for being right. The fixture now denies without describing.
 
 The eval earned its keep. Its first run caught the model setting `Other: done = false`
 on a procedures row the patient never named - the exact "silence became a no" failure
@@ -448,34 +559,51 @@ live React client.
 
 So now Playwright taps the **entire** intake at 380px as a female patient (the longest
 path, six sections), fails on any console error, then asserts the accordion's invariants,
-the output object, that consent
-was never pre-selected, and that switching sex back to Male makes Q6 disappear. Two
-follow-ups came out of that bug: the store no longer exposes derived getters at all, and
-`tests/selectors.test.ts` scans the source to reject any selector that calls a function
-or builds an object - a guard I verified catches the original bug plus three variants
-rather than passing vacuously.
+the output object, that consent was never pre-selected, and that switching sex back to Male
+makes Q6 disappear. Two follow-ups came out of that bug: the store no longer exposes
+derived getters at all, and `tests/selectors.test.ts` scans the source to reject any
+selector that calls a function or builds an object - a guard I verified catches the original
+bug plus three variants rather than passing vacuously.
+
+**It drives the microphone too**, with a fake capture device and both network hops stubbed.
+That is the right seam: the model's accuracy is measured by the eval, while what breaks
+silently is everything *after* the payload arrives. Three real bugs came out of exactly this
+check, and none was reachable from a unit test:
+
+- a spoken age reached the store while the age box stayed empty, because React Hook Form
+  seeds a field once on mount - the form said *"filled 3 of 3"* over a blank input;
+- Q14's side-effect description was written and then immediately erased, because the effect
+  that pushed that box to the store ran in the same commit with the box's stale empty value
+  and read it as the patient clearing the field;
+- and the recording panel opened with "Stop and fill in" 130px below the fold on a phone,
+  because the row sits at the bottom of a card and `scrollIntoView` cannot see past two
+  `overflow: hidden` wrappers or below a fixed bar.
+
+All three look, from the outside, exactly like the microphone not working.
 
 **End-to-end, with live keys.** I generated real 16 kHz mono speech with Windows TTS and
 pushed it through the deployed path: `POST /api/transcribe` returned a verbatim
 transcript in **1.6 s**, and `POST /api/extract` filled all six habit fields correctly.
 Per-slice extraction latency measured 8-19 s on the free tier, which is why the route
-allows 28 s and the mic panel counts seconds up and offers tapping after 12 s - the UI
-matches the measured reality instead of assuming it is fast.
+allows 28 s, the panel counts the seconds up while recording, and *"taking a while - you can
+also tap below"* appears on its own after six seconds of waiting. The UI matches the
+measured reality instead of assuming it is fast.
 
 Also verified: clean production build, `tsc --noEmit` clean under `strict` +
-`noUncheckedIndexedAccess` with zero `any`, and the extract route rejects `consent` with
-a 400 - it is the one answer that can never be model-filled, even with a valid key.
-Neither can ever be model-filled, even with a valid key.
+`noUncheckedIndexedAccess` with zero `any`, and the extract route rejects `consent` with a
+400 - the one answer that can never be model-filled, even with a valid key.
 
 ---
 
 ## Three calls I'd defend
 
-1. **Voice fills the grid questions.** The three table questions are where a tap-only
-   form gets tedious; one spoken sentence fills them and the patient only corrects.
-   Every fill is schema-validated before it lands, unmentioned fields are flagged for a
-   tap rather than guessed, and the tap grid is always mounted underneath - so voice can
-   fail in any way and the form still finishes.
+1. **Speaking is offered under the taps, on every question but consent.** Tapping is what
+   always works, so it comes first and stays mounted; speaking is the second offer, and it
+   is worth most on the tables where one sentence replaces fourteen taps. Every fill is
+   schema-validated before it lands, unmentioned fields are flagged for a tap rather than
+   guessed, and the card stays open with the transcript on it so a machine's reading is
+   always checked by the person it is about. Voice can fail in any way and the form still
+   finishes.
 2. **Ask sex once, gate, and say why.** No inference from Q9. `"Prefer not to say"` is a
    real option that gates identically, and the resulting nulls are *valid*, not missing.
 3. **One schema drives UI + extraction + validation.** The wizard contains no list of
@@ -504,6 +632,7 @@ app/
 components/
   SectionShell.tsx  AppBar.tsx  SectionNav.tsx  ProgressBar.tsx  ReviewScreen.tsx
   QuestionSpeaker.tsx        the read-aloud button, on every question
+  VoiceAnswer.tsx            "answer by speaking" - the row under the controls
   ComfortToggle.tsx          text-size control (Aa), and the DOM projection of it
   ComfortPrompt.tsx          "would you like larger text?", asked once, previews both
   EditQuestionDialog.tsx     one question, corrected from the review screen
@@ -512,7 +641,7 @@ components/
   SectionIcons.tsx           one glyph per section, keyed by schema id
   HeroArt.tsx                the landing illustration, drawn not photographed
   ui/TextField.tsx           a labelled input with its error and the aria that links them
-  SectionNav.tsx             desktop sidebar: six steps, per-step progress, shortcuts
+  SectionNav.tsx             desktop sidebar: six steps, per-step progress
   questions/QuestionCard.tsx one question in one of three states
   questions/QuestionBody.tsx the controls for one question, shared by wizard and dialog
   LangToggle.tsx             EN / हिं, and the <html lang> it writes
@@ -524,7 +653,7 @@ lib/
   types.ts         Answers + enums, all derived from schema.ts
   steps.ts         schema -> ordered steps + gating + per-step validation
   followups.ts     conditional questions, as answerable descriptors
-  apply.ts         the write rules (grid, follow-up flow and voice fill share them)
+  apply.ts         the write rules (the grid and a voice fill share them)
   questionSpeech.ts what the speaker button reads out, derived from the schema
   patient.ts       personalisation: comfort scale, onset cap, age-aware suggestions
   i18n.ts          the language resolver: one language per render, placeholder filling
@@ -532,15 +661,17 @@ lib/
   summary.ts       short labels and the one-line answer a collapsed card shows
   multiSelect.ts   what a checkbox tap does, including the exclusive-option rule
   copy.hi.ts       Hindi for every question, option and UI string
-  llm.ts           the model boundary: one callModel(), and the parameter negotiation
+  llm.ts           the model boundary: one model, one temperature, both pinned
+  voiceClient.ts   the two network hops, and every failure mapped to what to say
+  voiceApply.ts    what a spoken reply may write for THIS patient. Pure.
   speak.ts         browser speechSynthesis, with barge-in and a no-voice fallback
   store.ts         Zustand
   validate.ts      Zod + 16-key coverage
   extractPrompt.ts system prompt + per-question schema slices
   audio.ts         in-browser 16kHz mono WAV encoding
   copy.ts          all microcopy, in one place
-fixtures/patients/ 12 transcripts (4 held out) + expected answers
-tests/             253 deterministic tests (incl. three source scans: selector stability,
+fixtures/patients/ 20 transcripts (4 held out) + expected answers
+tests/             304 deterministic tests (incl. three source scans: selector stability,
                    no hard-coded English, and no words on the accent fill)
 scripts/smoke-browser.mjs  Playwright walkthrough of the full intake
 scripts/eval-fixtures.ts   live extraction eval

@@ -42,7 +42,7 @@ export function YesNoDescribe({
 
   const {
     register,
-    watch,
+    setValue,
     formState: { errors, touchedFields },
   } = useForm({
     resolver: zodResolver(describeFormSchema(lang)),
@@ -50,16 +50,28 @@ export function YesNoDescribe({
     defaultValues: { describe: answers.past_treatment_describe ?? "" },
   });
 
-  const describe = watch("describe");
+  const stored = answers.past_treatment_describe ?? "";
 
-  // Straight through to the store: this is the answer, not a draft of one, and an empty box
-  // is a null rather than an empty string because that is what the output schema expects.
+  /*
+    THE STORE OWNS THE TEXT; RHF only mirrors it to produce the error message.
+
+    This used to be the other way round - the box was RHF's, and an effect pushed it to the
+    store - and the microphone broke it in the worst way available. A spoken reply writes
+    both fields at once, so `had` went true in the same commit that the description
+    arrived; the push-out effect then ran with the box still holding the empty string it
+    was seeded with on mount, decided the patient had cleared the field, and wrote null
+    over the description that had just been recorded. The patient saw "Filled 2 of 2" and
+    an empty box.
+
+    Unlike the age field there is no draft to protect here: every character of free text is
+    a legal value, so binding straight to the store costs nothing and removes the race
+    entirely. The mirror below keeps RHF's copy in step so the "please describe it" message
+    reflects what is actually on screen.
+  */
   useEffect(() => {
-    if (had !== true) return;
-    const next = describe.trim() === "" ? null : describe;
-    if (next !== answers.past_treatment_describe) patch({ past_treatment_describe: next });
+    setValue("describe", stored, { shouldValidate: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [describe, had]);
+  }, [stored]);
 
   // Shown only once the patient has been in the box. See the note at the top of the file.
   const error = touchedFields.describe === true ? errors.describe?.message : undefined;
@@ -96,6 +108,13 @@ export function YesNoDescribe({
 
               <textarea
                 {...register("describe")}
+                value={stored}
+                onChange={(e) => {
+                  const raw = e.target.value;
+                  // An empty box is a null, not an empty string: that is what the output
+                  // schema expects, and what validate.ts checks for.
+                  patch({ past_treatment_describe: raw.trim() === "" ? null : raw });
+                }}
                 id="side-effect-describe"
                 placeholder={t("sideEffectPlaceholder", lang)}
                 rows={3}

@@ -1,0 +1,9 @@
+{
+  "id": "onset-two-ages",
+  "questionKey": "age_hair_loss_began",
+  "note": "Two ages in one reply. The question asks for the second one.",
+  "transcript": "I am 41 now, but the hair fall started when I was about 27.",
+  "expected": {
+    "age_hair_loss_began": 27
+  }
+}

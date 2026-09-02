@@ -93,88 +93,196 @@ Each question picks the cheapest modality rather than sharing one control.
 
 ---
 
-## The voice question, end to end
+## Answering by speaking, under the taps
 
-A voice question is a small stage machine, not a grid with a mic bolted on top.
+Every question except one can be answered out loud, and the microphone is a single 44px row
+**underneath** the controls it is an alternative to.
 
-**1. Speak first (the default).** The grid is not shown. The screen is a numbered
-checklist of every item to cover, the conditional detail questions, one example answer,
-the mic, and "I would rather answer by tapping".
+**The order is the entire design.** Tapping comes first because tapping always works: no
+permission prompt, no network, no model, and it behaves identically in a quiet room and a
+loud one. Speaking is the second offer - for the patient who finds reading hard, and for the
+table questions where one sentence replaces fourteen taps.
 
-Two reasons the grid starts hidden. A grid on screen invites tapping, and the voice
-feature never gets used. And a mic with no prompt is the worst version of voice input:
-the patient does not know how much to say, answers one thing, and one field fills.
+This is the third shape this feature has had, and the two it replaced are why the current
+one looks so plain:
 
-**The prompt enumerates; it does not summarise.** The first version was a prose
-paragraph, and it was wrong - it read smoothly but quietly dropped rows, so patients
-answered three of six items and the fill looked broken. A form has to enumerate. Every
-row is now its own numbered point, and the labels are interpolated from the schema
-constants rather than retyped, so a row added to the schema cannot silently go unasked.
-The conditional layer is stated up front in the same block ("for every product you do
-use, also say how long, whether it helped, and any side effects"), which is what lets a
-single reply complete a row instead of leaving three blanks behind.
+1. **Speak first.** The grid was hidden and the card opened on a full-screen surface: a
+   numbered checklist, the mic, and "I would rather answer by tapping" as the way out. Voice
+   as the default, the form as the escape hatch. That is backwards for a medical intake - the
+   form is what every patient can complete.
+2. **Three stacked calls to action.** Moving the mic panel above the grid left the card
+   opening with a mic panel, an "answer all of these by speaking" button and an "answer the
+   remaining 6 one at a time" card, two of which led to the same screen. That is not a
+   choice, it is a decision the patient has to make before they can begin.
+3. **One row, opened on request.** Tapping it is what brings the mic out, which is the only
+   moment a mic is any use.
 
-Row names appear verbatim - "OTC/Medicated Shampoos", not "oTC/Medicated Shampoos". An
-earlier helper lowercased the first letter to read better mid-sentence and mangled every
-acronym; on a clinical form the product name a patient sees must match the one the doctor
-reads, so the helper is gone.
+The rule that survived all three: **a microphone offered before the question has been read
+is a demand, not an offer.**
 
-**2. The result popup.** After extraction, a modal answers the only two questions the
-patient actually has:
+### The one question that has no microphone
 
-- *How much did you get?* - "Filled 6 of 6", or "Filled 2 of 6 - 4 still to go",
-  itemised, with the transcript shown above it.
-- *Is it right?* - an explicit **"Yes, these match"**. An LLM just filled six medical
-  fields from one sentence; treating that as agreed because nobody objected is not
-  consent, it is silence. When something is missing, the primary action becomes
-  "Answer the rest (4)" instead, which opens the follow-up flow.
+`consent`. Permission for a genetic test is given by pressing the word "Yes", never inferred
+from prose that a transcriber and then a model both had to read. It is absent from
+`VOICE_KEYS`, which is the API route's allow-list, so it is **unreachable** rather than
+merely un-offered - a UI rule can be bypassed by a caller, and this one may not be.
+`voiceKeyForStep()` returns null for that card and the row is never rendered.
 
-**3. The form.** The grid, for confirming, correcting, or answering by hand. A patient
-who chose to tap, or whose mic or API key failed, lands here directly and never sees
-stages 1 and 2 - so there is exactly one fallback path to maintain.
+About You *does* get one, and it is the reason the claim "you can answer this form by
+speaking" is true at all: "mera naam Anita hai, main 34 saal ki hoon" fills the name, the
+sex and the age together. Those three are `Meta`, not answers, so the route returns them in
+a field of their own - `patch` becomes the downloaded object and nothing outside the 16 may
+be able to reach it, even by accident.
 
-Verified end to end with real speech (Windows TTS piped into Chromium's
-`--use-file-for-fake-audio-capture`): *"I smoke about six a day. No alcohol. The water at
-home is hard. I wash my hair every other day. I do not use a dryer or any chemicals. I
-had keratin at a salon last year."* filled all six fields, mapped "about six a day" to
-`Moderate 5-10/day`, and pulled `keratin` out as the salon detail. A deliberately short
-reply produced "Filled 2 of 6" and named the four it had not heard.
+### The prompt enumerates; it does not summarise
+
+On the table questions the panel lists every row while the patient is talking. The first
+version was a prose paragraph and it was wrong: it read smoothly but quietly dropped rows,
+so patients answered three of six items and the fill looked broken. A form has to enumerate.
+Each row is its own bullet, the labels are interpolated from the schema constants rather than
+retyped - so a row added to the schema cannot silently go unasked - and the conditional layer
+is stated up front in the same block ("for every product you do use, also say how long,
+whether it helped, and any side effects"), which is what lets one reply complete a row
+instead of leaving three blanks behind.
+
+Row names appear verbatim: "OTC/Medicated Shampoos", not "oTC/Medicated Shampoos". An earlier
+helper lowercased the first letter to read better mid-sentence and mangled every acronym; on
+a clinical form the product name a patient sees must match the one the doctor reads.
+
+On a single question there is no list, because the options are already on screen directly
+above the mic. One line covers it: "say it in your own words, Hindi, English or a mix".
+
+### A spoken answer does not close the card
+
+A tap and a fill are not the same event. Someone who tapped an option watched themselves
+choose it, so collapsing the card and opening the next one is exactly right. Someone who
+spoke is being shown **a machine's reading of a sentence**, and has to be able to check it -
+which they cannot do if the card collapses the moment it becomes answered, taking the
+transcript with it.
+
+So a fill suppresses that one auto-advance, through the same ref a correction uses, and the
+way on moves into the report as a button. The suppression fires *before* the store is
+written, because the auto-advance is an effect and by the time it runs the write has already
+happened.
+
+The report answers the only two questions the patient has, in this order:
+
+- **What did it hear?** The transcript, first and always, including when nothing matched. A
+  patient whose reply filled nothing needs to know whether they were misheard or
+  misunderstood - those two have different remedies, say it again or tap it in, and a bare
+  "nothing matched" hides which one they are in.
+- **What did it write?** "Filled 4 of 7 answers - 3 still to go", counted in leaves so a
+  nested table reports the facts the patient stated rather than the keys that changed. An
+  invariant null is not counted: `past_treatment_describe` goes null the moment side effects
+  are answered No, and calling that an answer would inflate the number.
+
+### What a fill may not write, and where that is enforced
+
+The route already validated the model's output against one schema slice.
+`lib/voiceApply.ts` is a second gate, and it exists because two rules **cannot** be checked
+on a stateless route:
+
+| Rule | Where the knowledge lives |
+| --- | --- |
+| The onset age cannot exceed the age this patient gave | the session, not the request |
+| `PCOS/PCOD` is closed to a male patient | the session, not the request |
+
+Out of range is **dropped, never clamped**. "It started when I was 40" from someone who said
+they are 34 is a contradiction, not a value to tidy; clamping it to 34 would answer the
+question with a number nobody said and would look exactly like a correct fill. A closed
+option is reported rather than swallowed - a male patient who says "PCOS" sees it named and
+the reason given, from the same function that greys the option out on screen, so the
+microphone and the thumb can never disagree about what is on offer.
+
+While it is there it also does the structural check, and the strict version of it: a reply
+may only write the fields **the answered question owns**. Not "any of the 16" - `consent` is
+one of the 16, so that filter would have let a reply about hair-wash frequency carry
+permission for a genetic test.
+
+### Two hops, and only one of them is a model
+
+```
+mic → WAV (16 kHz mono, encoded in the browser)
+    → POST /api/transcribe   (Sarvam Saaras, key server-side)
+    → transcript, shown to the patient verbatim
+    → POST /api/extract      (Gemini 3 Flash + ONE schema slice, temp 0)
+    → Zod-validated patch → planVoiceFill → the controls above update → the patient checks
+```
+
+The model reads text, not audio, so something has to turn the recording into words before
+it can read them. That is the only job the transcriber has: it produces a string, and every
+decision about the *answer* is the model's.
+
+### A microphone that cannot work stops being offered
+
+Both routes answer 503 with a plain sentence when their key is absent. The client treats
+that differently from every other failure, because it is the one that will never come right
+by trying again: the patient is told once, on the card where they tried, no retry button is
+offered, and a latch turns the row off for the rest of the page. A microphone that cannot
+possibly work is worse than none - the patient waits, reads an apology, and has learnt only
+that this form wastes their time.
+
+The latch is deliberately not persisted. A key can be added between sessions, and a stale
+"off" would hide a feature that now works.
+
+### Three bugs that only exist in a real client
+
+All three were found by the browser smoke, which drives the microphone with a fake capture
+device and both hops stubbed. All three look, from the outside, exactly like the microphone
+not working.
+
+- **A spoken age reached the store while the box stayed empty.** React Hook Form seeds a
+  field from `defaultValues` once, on mount. That was fine while typing was the only way to
+  fill it. The form said "filled 3 of 3" over a blank age field. Both typed fields on that
+  card now take a store value the box does not already represent - depending only on the
+  store value, never on what is typed, which is what keeps the effect from fighting the
+  keyboard.
+- **The way to stop recording opened below the fold.** The row sits at the bottom of a
+  card, so on a 390px phone the habits panel opened with "Stop and fill in" 130px past the
+  bottom of the screen - a patient who has just started talking going looking for the way to
+  stop. `scrollIntoView` is the obvious fix and it does nothing here: it walks up to the
+  nearest scrollable ancestor, and a question card has two `overflow: hidden` wrappers that
+  it treats as scroll containers, so the page never moves. It also knows nothing about a
+  fixed app bar or a fixed actions row, so even against the window it tucks the target
+  underneath one of them. The panel now scrolls itself, with the bounds read off those two
+  elements - both change height with the comfort scale, and one is only on screen at some
+  widths.
+
+  The first attempt at that measured nothing, reproducibly, and the reason is worth keeping:
+  it ran on a 150ms timer after the phase changed, and `AnimatePresence mode="wait"` unmounts
+  the outgoing pane before mounting the incoming one - so at 150ms the wrapper still had the
+  height of the 44px link that was leaving, and the tall panel was judged already in view.
+  It now runs when the pane mounts, because mounting is the event; a delay chosen to
+  approximate it is a delay that is wrong on some machine.
+- **Q14's description was written and then immediately erased.** A spoken reply writes the
+  yes/no and the description in the same commit, so `had` went true while the textarea still
+  held the empty string it was seeded with; the effect that pushed that box to the store read
+  it as the patient clearing the field and wrote null over the description that had just
+  arrived. Unlike an age there is no draft to protect - every character of free text is a
+  legal value - so the store now owns the text outright and RHF only mirrors it to produce
+  the error message.
 
 ---
 
-## Layered questions: what happens after a voice fill
+## What is still outstanding after a fill
 
-Q11/12/13 are tables whose rows unfold into more questions the moment a row is answered
-Yes. That is fine tapping down a grid, but it is the worst part of a voice fill: the
-model answers eight fields, leaves three blank, and those three are buried inside
-collapsed rows the patient now has to hunt for. Printing "3 things missing" and walking
-away is a bad ending to an otherwise magic moment.
+A fill can answer eight fields and leave three blank, and those three used to be buried
+inside collapsed rows the patient had to hunt for. Printing "3 things missing" and walking
+away is a bad ending to an otherwise good moment.
 
-So every outstanding field is described in `lib/followups.ts` as a **self-contained
-question** - its own wording, control and options - and the grid reveals them inline, one at
-a time at full size. Three taps and the patient is done.
+**Completeness is described once, in `lib/followups.ts`.** Every outstanding field is a
+self-contained descriptor - its own wording, control and options - and two things read the
+same list: the grid, which reveals the detail inline underneath the row that unlocked it,
+and `validateStep()`, which counts those descriptors to decide whether the question is
+complete. A row therefore cannot look answered to one and unanswered to the other.
 
-Four decisions carry it:
+That list is derived from the answers rather than from the model's `unfilled`, which is what
+makes it shrink identically whether the patient spoke or tapped.
 
-1. **Stateless about position.** The flow always renders `fields[0]`, and `fields` is
-   recomputed from the answers on every render. Answering the current question makes it
-   drop out of the list and the next slides in. Nothing to keep in sync, nothing that can
-   desync, and it self-closes the moment the list empties.
-2. **Layers appear next to their trigger.** "Do you smoke? → Yes" is immediately followed
-   by "How much do you smoke?", not four questions later. New layers unlock mid-flow for
-   free, because the list is derived rather than precomputed. That is the difference
-   between a conversation and a queue.
-3. **Derived from the answers, not from the model's `unfilled` list.** So the flow also
-   shrinks when the patient answers by tapping the grid, and it is always exactly in step
-   with what `validateStep()` is blocking Next on.
-4. **One question on screen at a time.** While the flow runs, the grid AND the outstanding
-   summary both stand down. The first version showed all three, so "Do you smoke?"
-   appeared twice on one screen - the kind of duplication that makes a form feel
-   assembled rather than designed.
-
-It is not voice-only: a tap-first patient gets the same guided treatment from an
-"Answer the remaining N one at a time" button, because a five-row grid with detail
-columns is worth guiding through either way.
+There used to be a third reader: a guided flow that handed the outstanding fields over as
+full-size cards, one at a time. It read well in isolation and it meant switching one row on
+made the other four vanish - the patient lost the list they were working down. It came out;
+the inline reveal was already the answer to the question it was answering.
 
 ---
 
@@ -790,12 +898,17 @@ Four things were removed on instruction, and the removals are worth recording be
 them deleted the more clever version of a feature.
 
 **Voice.** The mic, the spoken checklist and the result popup - `SpeakFirst`, `VoicePanel`,
-`ResultDialog` and the stage machine inside `VoiceMatrix` - are gone, along with the dictation
+`ResultDialog` and the stage machine inside `VoiceMatrix` - came out, along with the dictation
 button on the free-text field and the `npm run voice` harness. `/intake` lost 5.3 kB of
-JavaScript with them. The server side is untouched: `/api/transcribe` and `/api/extract` still
-exist, still hold the only copies of the keys, and `lib/extractPrompt.ts` and its tests still
-describe the schema slices - so the extraction pipeline is intact and merely unreferenced by the
-UI rather than deleted.
+JavaScript with them. The server side was left untouched: `/api/transcribe` and `/api/extract`
+still held the only copies of the keys, and `lib/extractPrompt.ts` and its tests still
+described the schema slices.
+
+**It came back, and not as it was.** Speaking is now offered on every question except
+consent, as one row *underneath* the tap controls rather than a surface in front of them -
+see "Answering by speaking, under the taps" above. The stage machine did not come back: there
+is no speak-first screen, no result modal and no separate manual mode. What returned is the
+part that was worth keeping, which is that the server side never left.
 
 **The guided follow-up flow.** Answering "yes" to a product creates three more questions, and
 the flow used to hand them over as their own full-size cards, one at a time. It read well in
@@ -971,23 +1084,11 @@ keeps 60, counts the question answered, and lets the patient leave. `setAge` the
 `number | null`, and the section becomes incomplete until the field is fixed. The smoke
 asserts it, typing "6a0" then appending a zero.
 
-**Voice is now secondary, and it is one line.** The three table questions used to open on a
-full-screen speak surface with "I would rather answer by tapping" as the way out - voice as
-the default and the form as the escape hatch. That is backwards for a medical intake: the
-form is what every patient can complete.
-
-Demoting it took two passes, and the first one was worse than it looked. Moving the mic panel
-above the grid left the card opening with THREE stacked calls to action - a full mic panel, an
-"answer all of these by speaking" button, and an "answer the remaining 6 one at a time" card -
-of which two led to the same screen. That is not a choice, it is a decision the patient has to
-make before they can begin.
-
-What is there now is one 44px row: a mic glyph and "Answer by speaking". Tapping it is what
-brings the mic out, which is the only moment a mic is any use, and the spoken checklist - the
-enumerated list of every row, the thing that lets one reply fill a whole table - comes with
-it. The follow-up shortcut is gated on `answered.length > 0`, because its real job is the gaps
-a voice fill left behind; offering to walk a patient through the six rows they are already
-looking at was noise.
+**Voice is secondary, and it is one line.** This is where that decision was taken, and the
+shape it produced is the shape the feature has now that it reaches every question: one 44px
+row, a mic glyph and "Answer by speaking", under the controls rather than in front of them.
+The full argument and the two shapes it replaced are in "Answering by speaking, under the
+taps" above.
 
 ### Verified
 
@@ -995,12 +1096,13 @@ Six sections in both languages at all three text sizes, on a 390px phone and a 1
 desktop: no horizontal overflow, no clipped Devanagari, chrome that agrees with its column,
 and no focusable control hidden behind the footer.
 
-**Voice, while it existed, was verified with a real microphone.** `npm run voice` drove
-Chromium's fake capture device with a synthesised WAV, so the recorder, the Sarvam request and
-the extraction were all real: one spoken sentence filled **6 of 6** habit rows including the
-layered follow-up, and "about ten a day" landed on "Moderate 5-10/day". The harness has been
-removed with the UI it drove. Kept here because it is the evidence that the extraction route -
-which is still there, still tested - does what it claims.
+**Voice was verified with a real microphone.** A standalone harness drove Chromium's fake
+capture device with a synthesised WAV, so the recorder, the Sarvam request and the extraction
+were all real: one spoken sentence filled **6 of 6** habit rows including the layered
+follow-up, and "about ten a day" landed on "Moderate 5-10/day". That harness was removed with
+the UI it drove; the checks that replaced it live in `npm run smoke`, which drives the same
+fake device with both network hops stubbed and asserts what happens *after* the payload
+arrives - see the two bugs it found, above.
 
 **The numeric boundaries, probed live** against the running extract route: 3/day to
 Mild, 5/day and 10/day to Moderate, 12/day to Severe. The 10/day case had been noted as
@@ -1042,9 +1144,9 @@ wizard page - so both callers render the same controls. Two implementations of "
 
 Three details worth the words:
 
-- **The three table questions open on the grid, not the speak screen.** Voice is the point
-  of those questions in the wizard, but someone who tapped one row to fix it should not be
-  asked to describe all six items out loud again. Both surfaces now render the same grid.
+- **The three table questions open on the grid.** Both surfaces render the same controls,
+  and the correction dialog deliberately has no microphone on it: someone who tapped one row
+  to fix it should not be offered a way to describe all six items out loud again.
 - **Done is never blocked.** If the question is still incomplete the dialog says so and
   still closes: the patient opened it to make a correction and must be able to get out. The
   review row then reads "not answered yet" and the download stays disabled, which is the
@@ -1079,10 +1181,11 @@ The smoke test asserts both halves of that on the review screen: no Latin words 
 ### How a missing translation fails
 
 The first pass at this shipped three leaks: "You did not mention (3)" and "…and 2 more" in
-the post-voice dialog, and an "N item(s) still need attention." template on the review
-screen. None were found by walking the app in Hindi, because the runtime walk cannot reach
-that dialog without a microphone and an API key. They were found by reading the source, so
-that is now a test.
+the post-voice result, and an "N item(s) still need attention." template on the review
+screen. None were found by walking the app in Hindi, because at the time the runtime walk
+could not reach the states behind the microphone at all. They were found by reading the
+source, so that is now a test - and the walk reaches those states too now, by stubbing both
+network hops rather than needing a key.
 
 The real failure mode of a bilingual form is not a clumsy sentence, it is one English
 sentence surviving on an otherwise Hindi screen - which is precisely the sentence the
@@ -1404,14 +1507,14 @@ choose how often"), and a test asserts those messages never leak a snake_case fi
 
 ---
 
-## Voice pipeline (Q11/12/13/14)
+## Voice pipeline: every question except consent
 
 ```
 mic → WAV (16kHz mono, in-browser)
     → POST /api/transcribe   (Sarvam Saaras, key server-side)
     → transcript
-    → POST /api/extract      (Claude + ONE schema slice, temp 0)
-    → Zod-validated patch → merged into store → grid highlights what changed → tap to confirm
+    → POST /api/extract      (Claude Haiku 4.5 + ONE schema slice, temp 0)
+    → Zod-validated patch → planVoiceFill → the store → the controls above update
 ```
 
 **Audio format.** MediaRecorder gives you `webm/opus` on Android Chrome, `mp4` on iOS
@@ -1420,24 +1523,82 @@ differently, and only in production. `lib/audio.ts` decodes whatever was capture
 re-encodes 16kHz mono WAV in the browser. One format reaches the server, speech models
 want 16kHz anyway, and the upload drops to ~32KB/s, which matters on clinic 4G.
 
-**Slices, not the whole form.** The model never sees 16 questions. Per voice step it
-gets one slice of the schema and one reply. That small output space is why temperature 0
-extraction is reliable enough to trust here - and small enough that a human can check the
-prompt by eye.
+**Slices, not the whole form.** The model never sees 16 questions. Per question it gets one
+slice of the schema and one reply. That small output space is why temperature 0 extraction is
+reliable enough to trust here - and small enough that a human can check the prompt by eye.
+
+There are sixteen slices now rather than four: the four tables, the four single choices, the
+four multi-selects, the two yes/nos, the onset age, and About You. Six are built by three
+small factories (`singleSlice`, `yesNoSlice`, `multiSlice`) which read their options **off the
+schema by key**. That is not tidiness. The alternative was passing the aliases in `lib/types`,
+which reach the schema *by position* - `S[0].questions[1].options` - and handing the wrong one
+to a slice is a mistake nothing would catch: the model would be shown one question's options
+under another question's name, answer it perfectly, and every value would be dropped as
+off-schema. It would look like a broken microphone. A keyed lookup makes the mistake
+unavailable, and a test walks the schema to prove each slice shows its own options.
+
+**Multi-selects carry two fields, not one.** `selected` and `none_apply`, because "nothing
+applies to me" is an answer and an empty list is not. `selected: []` with `none_apply: null`
+means the reply said nothing about the question and the card stays unanswered; `none_apply:
+true` means the patient denied all of it, which lands on the schema's own denial option
+("None", "No known family history") or, on the two questions that have none, in the UI-only
+`explicitNone` set. Collapsing those two states into one empty array is how a form ends up
+recording "no diagnosed conditions" for a patient who was never asked.
 
 **Model choice was measured, not assumed.** An earlier revision ran on NVIDIA's free NIM
 build and scored 56-58/58 on the fixture eval, so quality was never the issue. What ruled
 it out for a patient-facing screen: the brief's own suggested
 `meta/llama-3.3-70b-instruct` returns **410 Gone**, `openai/gpt-oss-120b` took **94-120 s**
 per call, and the survivors each had their own request-shape quirks that are hard 400s.
-Extraction now runs on Claude, one provider, with the settings in `callModel()`
-(`lib/llm.ts`) shared by the route and the eval - a benchmark that runs different
-settings than production is worthless.
 
-**Latency is designed for, not wished away.** Measured 8-19 s per slice on the free
-tier. So the route allows 28 s (`maxDuration` 60), and the mic panel counts seconds
-upward and explicitly offers tapping after 12 s. A static spinner at 19 s reads as
-frozen; a ticking number reads as working.
+**And then it stopped being a choice at all.** The model and the temperature are constants
+in `lib/llm.ts` - not defaults, constants - because on a medical form the same reply has to
+fill the same fields every time or the output cannot be audited, and "which model read this
+patient's words" should have one answer you can read off the source rather than one that
+depends on a deployment's environment. `tests/llm.test.ts` sets `GEMINI_MODEL` and
+`GEMINI_TEMPERATURE` anyway and asserts the request on the wire is unchanged.
+
+**And then the provider moved, which is the part worth recording.** The Anthropic key
+stopped authenticating mid-session: a flat `401 authentication_error`, the one failure no
+amount of measurement protects against and no amount of code can retry its way out of.
+Extraction runs on `gemini-3-flash-preview` now.
+
+The new model was probed rather than trusted, against the account's own model list and this
+app's own prompt: `temperature: 0` accepted, bare JSON via `responseMimeType`, the Hinglish
+probe correct ("din mein 6-7 ho jaati hai" to `Moderate 5-10/day`, with the unmentioned
+field left null), 2.8s for a full habits slice, and **69/69 fields on the fixture eval**.
+
+One thing had to be learned the hard way. **Thinking tokens come out of `maxOutputTokens`.**
+The first version set 2048, reasoning about the output alone, and two of twenty fixtures came
+back as "unparseable model output". The JSON was not malformed - it was cut off. A products
+slice writes 153 tokens of answer after 1357 tokens of thinking, and a truncated object
+parses as nothing, so the patient would have read "nothing in that reply matched this
+question" about a reply the model had understood perfectly. The budget is 8192 now, and a
+`MAX_TOKENS` finish reason throws with both token counts in the message rather than handing
+back a string that cannot parse: the failure names itself instead of arriving as a mystery.
+
+`-preview` in a pinned id is a known cost, worth stating rather than hiding: a preview model
+can be withdrawn. The pin is still right, because an id that moves under a medical form is
+worse - and a withdrawn model answers 404, which `isConfigError` turns into "auto-fill is
+off" rather than a retry loop.
+
+Pinning also **deleted** code rather than risking any. There used to be a runtime
+negotiation: send `temperature`, catch the `400 temperature is deprecated for this model`,
+remember that this model refuses it, retry without it. It existed because the first Anthropic
+build shipped that 400 to the browser as a bare 502 - and it existed to survive a model this
+app no longer lets anyone select. With one model, known to accept everything sent, a failure
+is a real failure and the right response is to let the patient tap, not to try again with
+less. The eval calls the same `callModel()`, so it measures production by construction rather
+than by two configurations being kept in step.
+
+The id is pinned exactly rather than to an alias, for the same reason: an alias moves, and
+extraction behaviour that changes under a medical form without a code change is not
+auditable.
+
+**Latency is designed for, not wished away.** Measured 8-19 s per slice on the free tier. So
+the route allows 28 s (`maxDuration` 60), the panel counts the seconds upward while
+recording, and "taking a while - you can also tap below" appears on its own after six seconds
+of waiting. A static spinner at 19 s reads as frozen; a ticking number reads as working.
 
 **Three rules that make the fill safe:**
 
@@ -1455,11 +1616,13 @@ Conditional invariants are enforced in the slice too: a followup whose trigger i
 `false` is discarded before the patch is built, so the store can never hold
 `smoking: false, smoking_severity: "Severe >10/day"`.
 
-**Voice is never a dead end.** The tap grid is *always* mounted, before and after
-recording. There is no "manual mode" to switch into - a mic denial, a missing API key,
-an unparseable model reply, or a patient who just prefers tapping all land in the same
-UI. Both routes return a plain-language 503 when their key is absent, and the panel
-hides itself entirely if the browser has no usable MediaRecorder.
+**Voice is never a dead end.** The tap controls are *always* mounted, above the row, before
+and after recording. There is no "manual mode" to switch into - a mic denial, a missing API
+key, an unparseable model reply, or a patient who just prefers tapping all land in the same
+UI. Both routes return a plain-language 503 when their key is absent, which the client treats
+as "not set up here" rather than "try again": said once, no retry offered, and the row turns
+itself off for the rest of the page. The row also never renders at all if the browser has no
+usable MediaRecorder.
 
 **Merge, never replace.** Patches shallow-merge over existing values, so the patient can
 record twice (*"...aur main biotin bhi leta hoon"*) without losing round one.
@@ -1497,13 +1660,21 @@ wrappers, invented option strings, extra keys, followups with no trigger, rows t
 don't exist, arrays where objects belong. Every one must end in a legal patch or
 nothing.
 
-**`npm run eval` - live fixture eval, needs a key, NOT a CI gate.** 12 made-up patient
-transcripts (Hinglish, English, blanket-denial, code-mixed, sparse) scored
-**tolerantly**: only fields the transcript *mentions* are compared, and
-`unmentionedRows` asserts the model did **not** invent a `false`. Kept out of `npm test`
-on purpose - an LLM isn't deterministic, and a flaky red build teaches a team to ignore
-red builds. Every patch is schema-validated *before* scoring, so a passing field is
-on-schema by construction.
+**`npm run eval` - live fixture eval, needs a key, NOT a CI gate.** 20 made-up patient
+transcripts (Hinglish, English, blanket-denial, code-mixed, sparse, plus one for each of
+the question kinds the microphone reached later) scored **tolerantly**: only fields the
+transcript *mentions* are compared, and `unmentionedRows` asserts the model did **not**
+invent a `false`. Kept out of `npm test` on purpose - an LLM isn't deterministic, and a
+flaky red build teaches a team to ignore red builds. Every patch is schema-validated
+*before* scoring, so a passing field is on-schema by construction.
+
+**Measured on Gemini 3 Flash: 69/69 fields (100%), 0 hard failures.** Two of the twenty
+failed on the first run and neither was the model: one was the token-budget truncation
+described above, and the other was my own fixture. I had written a Q4 denial whose
+transcript described the hair thinning evenly all over - which *is* "Diffuse thinning" - so
+the model was marked wrong for reading it correctly. Writing a fixture that denies without
+describing is harder than it sounds, and a scoring harness that lets you blame the model
+for your own transcript is a harness that will flatter you eventually.
 
 **Result: 56-58/58 fields (97-100%) across runs, 0 hard failures.** One borderline fixture flips between runs even at temperature 0, which is precisely why this is a measurement and not a CI gate. The eval paid for itself immediately - its first run caught the model writing `Other: done = false` for a procedures row the
 patient never named, which is precisely the "silence became a no" bug it was built to
@@ -1521,16 +1692,17 @@ over-eager `false` is visible and editable on the Review screen.
 through the actual routes: transcribe **1.6 s**, verbatim; extract filled all six habit
 fields correctly.
 
-**The write rules are tested without a browser.** `tests/apply.test.ts` pins the ones
-that decide validity - a flag answered No must null its detail columns, or the finished
-form is off-schema - and `tests/llm.test.ts` pins the request configuration, including the
-default model and a junk `ANTHROPIC_TEMPERATURE` being dropped rather than sent as NaN.
-That second file exists because of a real 502: see below.
+**The write rules are tested without a browser.** `tests/apply.test.ts` pins the ones that
+decide validity - a flag answered No must null its detail columns, or the finished form is
+off-schema - `tests/voiceApply.test.ts` pins what a spoken reply may write for a given
+patient, and `tests/llm.test.ts` pins the request itself: the model and temperature actually
+sent on the wire, and that setting `ANTHROPIC_MODEL`, `ANTHROPIC_TEMPERATURE` or
+`ANTHROPIC_BASE_URL` changes neither. That last file exists because of a real 502: see below.
 
 **Also verified by hand:** production build clean, `tsc --noEmit` clean (strict, plus
 `noUncheckedIndexedAccess`, zero `any`), both pages server-render the right copy, and the
-extract route rejects `consent` and `sample_type` with a 400 - neither can ever be
-model-filled, even with a valid key.
+extract route rejects `consent` with a 400 - the one answer that can never be model-filled,
+even with a valid key.
 
 ---
 
@@ -1596,8 +1768,8 @@ Two details worth the words:
   is precisely the wrong thing to say to someone who asked to have the question read to
   them. Only those hints are swapped; every other one is spoken as printed.
 - **The table questions reuse the microphone's own checklist.** Q11 speaks the same
-  enumerated six items the voice panel prints, so the button and the mic prompt cannot
-  disagree about what a complete answer covers.
+  enumerated six items the recording panel prints, so the read-aloud button and the mic
+  prompt cannot disagree about what a complete answer covers.
 
 The voice is the browser's `speechSynthesis`: no key, no network, works offline, and no
 audio of a patient's answers is sent anywhere. A hosted voice would sound better and buy
@@ -1617,13 +1789,20 @@ is a cost you pay every day for a decision you make once. Keeping every model-sp
 detail inside [lib/llm.ts](lib/llm.ts) already makes the swap a one-file change, and the
 route and the eval only ever call `callModel()`.
 
+**That claim then got tested for real,** which is the only reason it is worth leaving in.
+The provider moved from Anthropic to Google when the Anthropic key stopped authenticating,
+and it cost exactly what this paragraph predicted: one file rewritten, one test file
+rewritten, one dependency removed, and not a single line changed anywhere else in the app -
+because nothing else ever knew which company was answering. An adapter interface would have
+made the same change cost the same and charged rent for it every day in between.
+
 A missing key is not a crash and not a 500:
 
 ```
 llmSettings()
-  ANTHROPIC_API_KEY present -> settings
-  absent                    -> null, and the route answers 503 with a message telling
-                               the patient to tap or type instead
+  GEMINI_API_KEY present -> settings
+  absent                 -> null, and the route answers 503 with a message telling
+                            the patient to tap or type instead
 ```
 
 That fallback is a complete path, not a degraded one: every question in both modes can be
@@ -1676,7 +1855,8 @@ patient-safe either way - an API error string is not a thing to show someone in 
 room.
 
 `callModel()` is shared by the route and `npm run eval`, so the benchmark cannot run a
-different model or temperature than production does.
+different model or temperature than production does. There is nothing to keep in step
+either: both are constants in that one file.
 
 Sarvam remains the transcriber: it is trained for Hinglish and Indian-accented English,
 which is where general-purpose STT degrades first for this audience. And the assistant's

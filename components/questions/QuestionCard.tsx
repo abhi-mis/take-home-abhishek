@@ -23,6 +23,8 @@
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { QuestionBody } from "./QuestionBody";
 import { QuestionSpeaker } from "../QuestionSpeaker";
+import { VoiceAnswer } from "../VoiceAnswer";
+import { voiceKeyForStep } from "@/lib/voiceApply";
 import { questionSpeech } from "@/lib/questionSpeech";
 import { answerSummary, shortLabel } from "@/lib/summary";
 import { questionCopy, t, ui, type Lang } from "@/lib/i18n";
@@ -52,6 +54,8 @@ export function QuestionCard({
   chooseNone,
   onOpen,
   onContinue,
+  onVoiceWillFill,
+  onVoiceContinue,
 }: {
   step: Step;
   state: CardState;
@@ -82,9 +86,18 @@ export function QuestionCard({
    * describe box. See `advancesOnAnswer` in lib/sections.ts for which and why.
    */
   onContinue?: () => void;
+  /** Called before a voice fill writes, so the page can decline to auto-advance. */
+  onVoiceWillFill?: () => void;
+  /**
+   * The way on after a voice fill, for the cards that WOULD have advanced by themselves.
+   * The others already have `onContinue` below the question, and one card must never end
+   * up with two buttons saying the same thing.
+   */
+  onVoiceContinue?: () => void;
 }) {
   const reduce = useReducedMotion();
   const open = state === "open";
+  const voiceKey = voiceKeyForStep(step);
   const regionId = `question-${step.id}`;
   const title =
     step.key === null ? ui(lang).aboutTitle : (questionCopy(lang)[step.key]?.title ?? step.id);
@@ -219,6 +232,35 @@ export function QuestionCard({
                 setFirstName={setFirstName}
                 chooseNone={chooseNone}
               />
+
+              {/*
+                The microphone, BELOW the controls it is an alternative to.
+
+                Order is the whole argument. Tapping needs no permission, no network and no
+                model, so it is what the patient meets first and what they fall back to when
+                anything here fails. Speaking is offered underneath, once, as a row - and on
+                the one card where an answer may not be inferred from prose it is not offered
+                at all: `voiceKeyForStep` returns null for consent.
+              */}
+              {voiceKey === null ? null : (
+                <VoiceAnswer
+                  /*
+                    Keyed on the question, so opening a different card starts a fresh
+                    microphone instead of inheriting the last card's transcript and counts.
+                  */
+                  key={voiceKey}
+                  questionKey={voiceKey}
+                  lang={lang}
+                  meta={meta}
+                  patch={patch}
+                  setSex={setSex}
+                  setAge={setAge}
+                  setFirstName={setFirstName}
+                  chooseNone={chooseNone}
+                  onWillFill={onVoiceWillFill}
+                  onContinue={onVoiceContinue}
+                />
+              )}
 
               {/*
                 The way on, and only once there is something to move on FROM. An empty

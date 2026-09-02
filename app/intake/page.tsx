@@ -294,10 +294,27 @@ export default function IntakePage() {
       >
         {visible.map((step, i) => {
           const done = isAnswered(step, answers, meta, explicitNone);
-          // Null when this card advances on its own, or when nothing follows it here.
-          const continueTarget = advancesOnAnswer(step)
-            ? null
-            : nextUnansweredAfter(section, step, answers, meta, explicitNone);
+          /*
+            Where "next" goes from this card, or null when nothing follows it in this
+            section. Computed for EVERY card now, not only the ones that need a button:
+            a card that advances by itself still needs a target once a voice fill has
+            suppressed that advance. Which of the two buttons gets it is decided below.
+          */
+          const continueTarget = nextUnansweredAfter(
+            section,
+            step,
+            answers,
+            meta,
+            explicitNone,
+          );
+          const goToNextCard =
+            continueTarget === null
+              ? undefined
+              : () => {
+                  correcting.current = false;
+                  openQuestion(continueTarget.id);
+                };
+          const advances = advancesOnAnswer(step);
           return (
           <QuestionCard
             key={step.id}
@@ -323,11 +340,6 @@ export default function IntakePage() {
               openQuestion(step.id);
             }}
             /*
-              Only the cards that do not advance by themselves get a Continue button, and
-              only once they have an answer. Everything else moves on when the answer lands,
-              so a button there would be a second way to do what just happened.
-            */
-            /*
               Only where there is a next question to go to.
 
               The first version handed this to every card that does not advance by itself and
@@ -337,14 +349,21 @@ export default function IntakePage() {
               cannot do is worse than no button: the way on from the last card in a section is
               Next, which is already there and says where it goes.
             */
-            onContinue={
-              continueTarget === null
-                ? undefined
-                : () => {
-                    correcting.current = false;
-                    openQuestion(continueTarget.id);
-                  }
-            }
+            onContinue={advances ? undefined : goToNextCard}
+            /*
+              A spoken answer is not a tapped one.
+
+              Tapping an option is the patient watching themselves choose it, so closing
+              the card and opening the next is exactly right. A voice fill is a machine's
+              reading of a sentence, and the patient has to be able to check it - which
+              they cannot do if the card collapses the moment it becomes answered, taking
+              "what we heard" with it. So the fill suppresses that one advance, using the
+              same ref a correction uses, and the way on moves into the report instead.
+            */
+            onVoiceWillFill={() => {
+              correcting.current = true;
+            }}
+            onVoiceContinue={advances ? goToNextCard : undefined}
           />
           );
         })}

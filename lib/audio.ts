@@ -35,7 +35,7 @@ export interface Recorder {
   /**
    * Current input loudness, 0..1, read straight off the live mic.
    *
-   * The waveform in VoicePanel is driven by this rather than by a canned animation,
+   * The meter in VoiceAnswer is driven by this rather than by a canned animation,
    * which matters more than it sounds: a fake animation looks identical whether the mic
    * is working or muted, so a patient in a noisy clinic gets no feedback that they are
    * actually being heard. Real levels make "it is not picking me up" obvious in the

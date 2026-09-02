@@ -1,0 +1,9 @@
+{
+  "id": "acne-yes",
+  "questionKey": "adult_acne_oily_skin",
+  "note": "A yes/no said sideways rather than as a word.",
+  "transcript": "Haan, chehre par daane nikalte rehte hain aur skin oily rehti hai.",
+  "expected": {
+    "adult_acne_oily_skin": true
+  }
+}

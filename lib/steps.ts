@@ -173,7 +173,7 @@ export function validateStep(
  * detail columns filled. This is what stops a voice fill from leaving silent gaps.
  *
  * The list is built from lib/followups.ts descriptors rather than from its own set of
- * checks, so the "still needed" summary and the follow-up questions FollowUpFlow asks
+ * checks, so the "still needed" summary and the follow-up questions the grid reveals
  * are literally the same data. They cannot disagree about what is missing.
  */
 function validateTableStep(

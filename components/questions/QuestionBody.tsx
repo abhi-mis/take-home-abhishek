@@ -85,6 +85,7 @@ export function QuestionBody({
           value={answers.age_hair_loss_began}
           // Cannot have started after the age they just told us they are.
           max={maxOnsetAge(meta)}
+          currentAge={meta.patient_age}
           onChange={(v) => patch({ age_hair_loss_began: v })}
         />
       );

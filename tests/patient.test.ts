@@ -82,8 +82,10 @@ describe("the onset-age ceiling", () => {
     expect(maxOnsetAge(meta({ patient_age: 72 }))).toBe(72);
   });
 
-  it("falls back to a sane bound when no age was given", () => {
-    expect(maxOnsetAge(meta())).toBe(90);
+  it("falls back to AGE_MAX when no current age was given", () => {
+    // Not a guess like 90: the onset field is now a plain typed box with the same floor
+    // and ceiling as the rest of the form (16-100) until a real age narrows it.
+    expect(maxOnsetAge(meta())).toBe(AGE_MAX);
   });
 
   it("floors at the ONSET minimum rather than at the age field's", () => {

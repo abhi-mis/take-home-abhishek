@@ -1,23 +1,23 @@
 /**
- * POST /api/extract  { questionKey, transcript } -> { patch, unfilled, none? }
+ * POST /api/extract  { questionKey, transcript } -> { patch, meta?, noneOf?, unfilled }
  *
  * The one place the LLM key exists, and the boundary the model's output has to get past
  * before it can touch a patient's answers.
  *
  * Four defences, in order:
- *   1. `questionKey` must be one of the four voice-enabled keys, so a caller cannot ask
- *      the model to fill consent or sample_type.
+ *   1. `questionKey` must be one of the voice-enabled keys - every question except
+ *      `consent`, which is absent from that list on purpose and must never be added. A
+ *      patient agreeing to a genetic test says so by pressing the word "Yes", not by
+ *      saying something a transcriber and then a model both had to guess at.
  *   2. the model is shown ONE schema slice and nothing else, at temperature 0.
- *   3. the assistant turn is PREFILLED with an opening brace, so the model is continuing
- *      a JSON object rather than starting a message - no preamble, no code fence. The
- *      fence-stripping parser still runs behind it, because a parser you only trust on
- *      the happy path is not a parser.
- *   4. whatever comes back is JSON-parsed, Zod-validated against that slice, and
- *      reduced to allowed fields only. Off-schema values are dropped, not coerced - a
- *      wrong option string in a medical intake is worse than a blank.
+ *   3. whatever comes back is JSON-parsed, Zod-validated against that slice, and reduced
+ *      to allowed fields only. Off-schema values are dropped, not coerced - a wrong option
+ *      string in a medical intake is worse than a blank.
+ *   4. the About You slice writes to `meta`, a field of its own, because `patch` becomes
+ *      the downloaded answers and nothing outside the 16 may be able to reach it.
  *
- * Fields the reply did not mention come back in `unfilled` so the UI can ask again.
- * The model is never allowed to guess to fill a gap.
+ * Fields the reply did not mention come back in `unfilled` so the UI can ask again. The
+ * model is never allowed to guess to fill a gap.
  */
 import { NextResponse } from "next/server";
 import {
@@ -74,7 +74,6 @@ export async function POST(req: Request) {
       // The model produced something unparseable. The patient can still tap or type,
       // so this is a soft failure, not a 500.
       console.warn("[extract] unparseable output", {
-        provider: "anthropic",
         questionKey,
         sample: text.slice(0, 200),
       });
@@ -87,7 +86,27 @@ export async function POST(req: Request) {
 
     return NextResponse.json(result);
   } catch (e) {
-    console.error("[extract] anthropic", e);
+    /*
+      Two failures, two answers, and the distinction is about whether trying again could
+      ever help.
+
+      A revoked key, a key without access to this model, a model id that does not exist:
+      none of those come right by retrying, which makes them the same thing as no key at
+      all. So they answer 503, and the client latches the microphone off and says "not set
+      up on this device" instead of inviting the patient to fail again. That case is real -
+      it is what an expired key looks like, and the first version of this reported it as a
+      hiccup and offered a retry button.
+
+      Anything else - a timeout, a 500, a dropped connection - is worth another try.
+
+      Both reach the LOG differently from each other, because a config error is somebody's
+      job and a line that says only "auto-fill failed" is a whole afternoon.
+    */
+    if (isConfigError(e)) {
+      console.error("[extract] CONFIG - auto-fill is off until this is fixed:", providerDetail(e));
+      return NextResponse.json({ error: NO_PROVIDER_MESSAGE }, { status: 503 });
+    }
+    console.error("[extract] gemini", providerDetail(e));
     return NextResponse.json(
       { error: "Auto-fill failed. You can tap or type the answer instead." },
       { status: 502 },
