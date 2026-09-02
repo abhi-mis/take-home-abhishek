@@ -65,7 +65,14 @@ export function SingleChoice({
         </motion.div>
       ) : null}
 
-      <div role="radiogroup" className="flex flex-col gap-2.5">
+      {/*
+        Two columns from `desk` up: one-item-per-row on a 700px pane is a phone layout being
+        shown to a desktop. Halves the height without shrinking a single tap target.
+      */}
+      <div
+        role="radiogroup"
+        className="flex flex-col gap-2.5 desk:grid desk:grid-cols-2 desk:gap-2.5"
+      >
         {options.map((opt) => (
           <OptionCard
             key={opt}

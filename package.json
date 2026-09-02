@@ -15,11 +15,13 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.122.0",
+    "@hookform/resolvers": "^5.9.1",
     "clsx": "^2.1.1",
     "framer-motion": "^11.11.17",
     "next": "^15.1.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
+    "react-hook-form": "^7.87.0",
     "tailwind-merge": "^2.5.4",
     "zod": "^3.23.8",
     "zustand": "^5.0.1"

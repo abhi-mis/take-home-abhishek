@@ -284,6 +284,16 @@ async function checkFixedChrome(baseWidth, label) {
       });
   }
 
+  /*
+    Put the store back, or this check poisons the walk that follows it.
+
+    It moves through the sections by writing `currentSectionId`, and it used to leave the
+    store pointing at the last one - so the walkthrough tapped Start and resumed on "Sample
+    and consent", where there is no "Next: ..." button to press. The failure looked like a
+    missing button in the app; it was this helper not cleaning up after itself.
+  */
+  await page.evaluate(() => sessionStorage.clear());
+
   notes.push(`${label}: top bar geometry across six sections -> ${[...seen].join(" | ")}`);
   if (seen.size !== 1)
     errors.push({
@@ -319,7 +329,16 @@ try {
   if (!aboutBlocked)
     errors.push({ kind: "about", text: "About You did not gate Next", fatal: false });
 
-  await page.getByRole("textbox", { name: /First name/ }).fill("Asha");
+  /*
+    Located by the VISIBLE label now.
+
+    Both fields used to carry an `aria-label` ("First name, optional", "Your age in years")
+    while showing a different heading above them - two names for one control, which WCAG
+    2.5.3 exists to discourage and which leaves a speech-input user asking for a label they
+    cannot see. The fields have real <label> elements, so the accessible name is the words on
+    screen, and these locators say what a patient would say.
+  */
+  await page.getByRole("textbox", { name: /What should we call you/ }).fill("Asha");
   await page.waitForTimeout(600);
   if (!/Thank you, Asha/.test(await page.locator("main").innerText()))
     errors.push({ kind: "name", text: "the name was not echoed back", fatal: false });
@@ -338,7 +357,7 @@ try {
     un-answers the question rather than leaving the last good one behind, and a valid one
     commits.
   */
-  const ageField = page.getByRole("textbox", { name: /Your age in years/ });
+  const ageField = page.getByRole("textbox", { name: /How old are you/ });
   await ageField.type("6a0", { delay: 40 });
   await page.waitForTimeout(400);
   const typedValue = await ageField.inputValue();

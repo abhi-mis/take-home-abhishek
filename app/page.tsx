@@ -46,6 +46,7 @@ import { Button } from "@/components/ui/Button";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { ComfortToggle } from "@/components/ComfortToggle";
 import { LangToggle } from "@/components/LangToggle";
+import { HeroArt } from "@/components/HeroArt";
 
 export default function Home() {
   const answered = useIntake((s) => Object.keys(s.touched).length);
@@ -124,6 +125,16 @@ export default function Home() {
         <p className="mt-4 max-w-[46ch] text-[16px] leading-relaxed text-muted desk:mt-5 desk:text-[17px]">
           {UI.landingBody}
         </p>
+
+        {/*
+          The illustration, and only on a desktop.
+
+          On a phone the four facts and the button already fill the screen, and an image
+          above them would push the only button below the fold at the largest text size -
+          which is the exact problem this screen was fixed for once already. A wide screen
+          has the room, and the left column had space under the paragraph doing nothing.
+        */}
+        <HeroArt className="mt-8 hidden h-[220px] w-full max-w-[380px] desk:block" />
       </motion.div>
 
       {/*

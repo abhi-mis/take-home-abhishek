@@ -35,7 +35,7 @@ two accelerators:
 Read-aloud needs **no key at all** - it uses the browser's own `speechSynthesis`.
 
 ```bash
-npm test              # 254 deterministic tests, no key needed
+npm test              # 267 deterministic tests, no key needed
 npm run smoke         # real-browser walkthrough of the whole intake (needs a dev server)
 npm run eval          # live extraction eval against the fixtures (needs ANTHROPIC_API_KEY)
 npm run build         # production build
@@ -249,6 +249,7 @@ sessionStorage forgetting it is the correct behaviour, not a limitation.
 | Extraction | **Anthropic** - `claude-haiku-4-5`, temp 0 | chosen by probing this account's own model list, not by reputation: fastest of the four tried (1.1-1.3s for a full habits slice versus 1.9s), cheapest, correct on the Hinglish probe, and the only one that still accepts `temperature: 0` - which a medical form needs, because the same reply must fill the same fields every time. One provider, no adapter layer. See below. |
 | Read-aloud | the **browser's** `speechSynthesis` | no key, no network round trip, works offline, and no audio of a patient's medical answers is ever sent anywhere. A hosted voice would sound better and buy none of that. It speaks only when the button is pressed, which is also what satisfies browsers that refuse to speak without a user gesture. |
 | Validation | **Zod** + a coverage check | one validator for shape *and* the conditional-null rules |
+| Form fields | **React Hook Form** + a zod resolver | at the three inputs a patient TYPES into (name, age, side-effect description). The choice controls stay on the store and the schema validator, which knows the clinical rules a form library cannot - see Implementation.md for where the line is drawn and why. |
 | State | Zustand + sessionStorage | no server state. sessionStorage (not local) so an intake left open on a shared clinic phone isn't readable by the next patient. |
 | Tests | Vitest | deterministic units, plus a separate tolerant eval for the LLM |
 
@@ -362,9 +363,10 @@ with dark hair on a light scalp.
 
 ## Bought vs built
 
-**Bought:** hosting + serverless (Vercel), STT (Sarvam), inference (Anthropic), form
-validation (Zod), state (Zustand), animation (Framer Motion). Every one of these is a
-solved problem where a hand-rolled version would be worse and slower.
+**Bought:** hosting + serverless (Vercel), STT (Sarvam), inference (Anthropic), schema
+validation (Zod), typed form fields (React Hook Form), state (Zustand), animation (Framer
+Motion). Every one of these is a solved problem where a hand-rolled version would be worse and
+slower.
 
 **Built, deliberately:**
 
@@ -390,7 +392,7 @@ solved problem where a hand-rolled version would be worse and slower.
 
 Two tiers, on purpose.
 
-**Deterministic (`npm test`, 254 tests, no key) - the dependable gate.** One test
+**Deterministic (`npm test`, 267 tests, no key) - the dependable gate.** One test
 diffs `lib/schema.ts` against the schema as downloaded from the URL in the brief, so
 "verbatim copy" is proven rather than claimed · step builder and
 schema coverage · sex gating across all four states, including that switching away from
@@ -495,6 +497,9 @@ components/
   EditQuestionDialog.tsx     one question, corrected from the review screen
   SectionShell.tsx           the app shell: bar, sidebar, content pane, actions
   AppBar.tsx                 fixed top chrome, one constant height on every screen
+  SectionIcons.tsx           one glyph per section, keyed by schema id
+  HeroArt.tsx                the landing illustration, drawn not photographed
+  ui/TextField.tsx           a labelled input with its error and the aria that links them
   SectionNav.tsx             desktop sidebar: six steps, per-step progress, shortcuts
   questions/QuestionCard.tsx one question in one of three states
   questions/QuestionBody.tsx the controls for one question, shared by wizard and dialog

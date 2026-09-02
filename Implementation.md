@@ -273,6 +273,107 @@ is not, and an extra tap to dismiss a card is ceremony the patient did not ask f
 
 ---
 
+## React Hook Form, at the three fields that type
+
+The form now uses React Hook Form, and where it does NOT is as deliberate as where it does.
+
+The intake has exactly three inputs a patient types into: their name, their age, and the
+side-effect description. Those are registered with RHF and validated by zod schemas in
+`lib/formSchemas.ts`. Everything else is a choice control - a radio, a checkbox, a segmented
+row - validated by `lib/steps.ts` against the published schema, which knows things a form
+library cannot: that Q6 must be `null` unless the patient is female, that a table row's detail
+columns must be `null` while its flag is false. Wiring those through a second validation layer
+would add indirection without adding a check.
+
+What RHF actually bought at those three fields, concretely:
+
+| | before | after |
+| --- | --- | --- |
+| the age rule | re-derived inline in the component | one zod schema, one message |
+| error state | three separate booleans | `formState.errors` |
+| aria wiring | remembered per call site | from the field, via `TextField` |
+| "not yet answered" vs "wrong" | conflated on the describe box | `touchedFields` |
+
+**The describe box was scolding patients.** It showed "please describe the side effects" the
+instant it appeared, before a character had been typed, because the condition was
+`!answers.past_treatment_describe`. RHF's `touchedFields` is the distinction that was missing:
+the message now waits until the patient has actually been in the box.
+
+**Empty is valid at the field level, deliberately.** A blank age is "not answered yet", which
+is a section-completeness question that `validateSection` already blocks Next on - not a field
+error. Colouring the box red the moment someone focuses it and types nothing is the form
+telling them off for arriving. Out of range is a different matter and maps to `null`, so the
+section goes incomplete rather than keeping the last good number.
+
+`components/ui/TextField.tsx` exists because there were three hand-wired inputs and each
+remembered a different subset of the job: one had `aria-invalid` and no `aria-describedby`, one
+had a `<label>` and one an `aria-label`. Both fields now have real visible labels, so their
+accessible name is the words on screen - which is what WCAG 2.5.3 is about, and which meant two
+now-redundant `aria-label` strings came out of the dictionary.
+
+---
+
+## Icons, and one drawing
+
+Added where a picture removes doubt or makes a list scannable, not as decoration:
+
+- **six section icons** (`components/SectionIcons.tsx`), keyed by the schema's own section ids,
+  in the sidebar and beside the section heading. A list of clinical categories with a glyph per
+  row is how every health record a patient has seen presents itself, and on a six-item nav that
+  is the whole job.
+- **the six diagnosed conditions**, which is the one list a patient skims for the word that
+  applies to them.
+- **the three About You options**, where the icon carries the label at a glance.
+- **one illustration** on the landing (`components/HeroArt.tsx`): a cross-section of skin with
+  three follicles in it.
+
+All of it is inline SVG rather than image files. That costs no network request on a clinic's
+signal, stays sharp at any density, inherits the palette so it is correct in both themes without
+a second asset, and has no licence to get wrong on a medical product. The illustration is also
+desktop-only - on a phone the facts and the button already fill the screen, and an image above
+them would push the only button below the fold at the largest text size, which is the exact
+problem that screen was fixed for once already.
+
+What it is NOT is a photograph. A model with good hair sets up the wrong expectation for an
+intake form, and a stock doctor-with-clipboard says nothing the patient did not already know.
+An anatomical drawing says "this is a clinical instrument", which is what this is.
+
+---
+
+## Making it shorter
+
+The question count is fixed - sixteen, verbatim from the published schema - so what could
+change is the space each one takes. Three changes, measured by opening every question in every
+section and totalling the heights, on one build with the old layout re-imposed by an override
+stylesheet so it is the same content both times:
+
+| section | before | after | |
+| --- | --- | --- | --- |
+| About you | 773px | 542px | -30% |
+| Your history | 1634px | 1423px | -13% |
+| Health | 1793px | 1185px | -34% |
+| Lifestyle | 1726px | 997px | -42% |
+| Treatments | 2061px | 1096px | -47% |
+| Consent | 1020px | 866px | -15% |
+| **total, 1280px wide** | **9007px** | **6109px** | **-32%** |
+
+On a 390px phone the total goes 9360px to 7877px, **-16%** - less, because two of the three
+changes are desktop-only by design.
+
+What did it:
+
+- **Table rows put the label and the control on one line.** Stacked, the six habit rows came to
+  about 660px; side by side they are around 380px. This is where the phone gain comes from too.
+- **Option lists are two columns from `desk` up.** Six conditions at 70px each is 420px of
+  one-item-per-row on a pane 700px wide, which is a phone layout being shown to a desktop.
+- **The three About You options go three across** on a wide screen.
+
+Nothing was removed and no tap target shrank below 44px. The largest text size still stacks
+everything, through the `row-split` rule that already existed for exactly that case - at that
+size there genuinely is not room for two columns.
+
+---
+
 ## The app shell, and the breakpoint that caused all of this
 
 A patient reported the desktop app rendering as a phone column. Five complaints came with that
@@ -1038,7 +1139,7 @@ of the UI, so a bad extraction patch can't bypass the interface.
 
 ## What's tested, and what deliberately isn't
 
-**`npm test` - 254 deterministic tests, no API key needed.** These are the dependable
+**`npm test` - 267 deterministic tests, no API key needed.** These are the dependable
 checks: the step builder, sex gating in all four states, every conditional-followup
 rule in both directions, exclusive options, 16-key coverage, the personalisation rules
 (comfort thresholds, the onset-age ceiling, and that a suggestion never writes an answer),

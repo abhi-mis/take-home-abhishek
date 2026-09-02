@@ -22,6 +22,7 @@ import { sectionLabel, t, type Lang } from "@/lib/i18n";
 import type { Section } from "@/lib/sections";
 import { cn } from "@/lib/utils";
 import { APP_BAR_PAD } from "./AppBar";
+import { SectionIcon, hasSectionIcon } from "./SectionIcons";
 
 export interface NavProgress {
   answered: number;
@@ -82,19 +83,30 @@ export function SectionNav({
                 />
               ) : null}
 
+              {/*
+                Three states in one 26px box: done is a tick on the green fill, the current
+                step is the numeral on ink, and everything else is the section's own icon.
+                The icon is the resting state rather than the selected one on purpose - a
+                patient scanning for "the one about treatments" is looking at the steps they
+                have NOT reached yet.
+              */}
               <span
                 aria-hidden
                 className={cn(
-                  "grid size-[22px] shrink-0 place-items-center rounded-full text-[10.5px] font-bold tabular-nums transition-colors",
+                  "grid size-[26px] shrink-0 place-items-center rounded-lg text-[11px] font-bold tabular-nums transition-colors",
                   done
                     ? // accent-icon-ok: the done fill carries a tick, never a word.
-                      "bg-done text-white"
+                      "rounded-full bg-done text-white"
                     : current
-                      ? "bg-ink text-paper"
-                      : "border border-line text-muted group-hover:border-brand/50",
+                      ? "rounded-full bg-ink text-paper"
+                      : "text-muted group-hover:text-brand-ink",
                 )}
               >
-                {done ? <Tick /> : i + 1}
+                {done ? <Tick /> : current ? i + 1 : hasSectionIcon(s.id) ? (
+                  <SectionIcon id={s.id} className="size-[18px]" />
+                ) : (
+                  i + 1
+                )}
               </span>
 
               <span

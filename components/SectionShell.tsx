@@ -28,6 +28,7 @@ import { useEffect, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { AppBar, APP_BAR_PAD } from "./AppBar";
 import { SectionNav, type NavProgress } from "./SectionNav";
+import { SectionIcon } from "./SectionIcons";
 import { Button } from "./ui/Button";
 import { sectionLabel, t, ui, type Lang } from "@/lib/i18n";
 import type { Comfort } from "@/lib/patient";
@@ -144,9 +145,18 @@ export function SectionShell({
             <p className="hidden text-[11.5px] font-bold uppercase tracking-[0.14em] text-brand-ink desk:block">
               {t("sectionOf", lang, { n: index + 1, total })}
             </p>
-            <h1 className="font-display text-[27px] leading-[1.25] text-ink desk:mt-1.5 desk:text-[34px]">
-              {title}
-            </h1>
+            <div className="flex items-center gap-3">
+              {/* The same glyph the sidebar row carries, so the two read as one place. */}
+              <span
+                aria-hidden
+                className="grid size-9 shrink-0 place-items-center rounded-xl bg-brand-soft text-brand-ink desk:size-11"
+              >
+                <SectionIcon id={section.id} className="size-[21px] desk:size-6" />
+              </span>
+              <h1 className="font-display text-[25px] leading-[1.25] text-ink desk:mt-0 desk:text-[33px]">
+                {title}
+              </h1>
+            </div>
             <p className="mt-1 text-[13px] font-medium text-muted desk:mt-1.5 desk:text-[13.5px]">
               {t("answeredOf", lang, { n: answered, total: visible })}
             </p>

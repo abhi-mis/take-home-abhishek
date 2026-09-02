@@ -43,10 +43,24 @@ export function HabitsGrid({
       {HABIT_ROWS.map((row) => {
         return (
           <Row key={row.key}>
-            <RowLabel field={row.key} lang={lang} />
+            {/*
+              Label on the left, control on the right, rather than stacked.
 
+              Stacked, six habit rows came to about 660px - the label block, then the
+              control underneath, then 2.5rem of gap, six times over. Side by side the same
+              six rows are around 380px with nothing removed and nothing shrunk below a 44px
+              target. `row-split` is the existing escape hatch: at the largest text size it
+              stacks them again, because at that size there genuinely is not room for two
+              columns.
+            */}
+            <div className="row-split flex items-center gap-3">
+              <div className="min-w-0 flex-1">
+                <RowLabel field={row.key} lang={lang} />
+              </div>
+              <div className="row-control shrink-0">
             {row.key === "hair_wash_frequency" ? (
               <SegmentedRow
+                className="min-w-[190px]"
                 options={WASH}
                 lang={lang}
                 value={value.hair_wash_frequency}
@@ -75,6 +89,8 @@ export function HabitsGrid({
                 }}
               />
             )}
+              </div>
+            </div>
 
             {/* Conditional followups, revealed only when their trigger is true. */}
             {row.key === "smoking" && value.smoking ? (
@@ -123,7 +139,7 @@ export function Row({ children }: { children: React.ReactNode }) {
 function RowLabel({ field, lang }: { field: string; lang: Lang }) {
   const l = LABELS[field];
   return (
-    <div className="mb-2.5">
+    <div>
       <p className="text-[14.5px] font-semibold leading-tight text-ink">
         {l === undefined ? field : t(l.en, lang)}
       </p>
@@ -167,14 +183,16 @@ export function SegmentedRow({
   value,
   lang,
   onSelect,
+  className,
 }: {
   options: readonly string[];
   value: string | null;
   lang: Lang;
   onSelect: (v: string) => void;
+  className?: string;
 }) {
   return (
-    <div className="no-scrollbar -mx-0.5 flex gap-2 overflow-x-auto px-0.5">
+    <div className={cn("no-scrollbar -mx-0.5 flex gap-2 overflow-x-auto px-0.5", className)}>
       {options.map((o) => (
         <button
           key={o}

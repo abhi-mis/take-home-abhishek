@@ -65,8 +65,16 @@ export function MultiChoice({
     onChange(toggleMulti(values, opt, exclusive));
   }
 
+  /*
+    Two columns from `desk` up.
+
+    Six conditions at 70px each is 420px of one-item-per-row on a pane 700px wide, which is a
+    phone layout being shown to a desktop. Two columns halve it without shrinking a single tap
+    target, and each gloss still has 330px to sit in. One column on a phone, where two would
+    put a 150px target beside another.
+  */
   return (
-    <div className="flex flex-col gap-2.5">
+    <div className="flex flex-col gap-2.5 desk:grid desk:grid-cols-2 desk:gap-2.5">
       {options.map((opt) => (
         <OptionCard
           key={opt}
